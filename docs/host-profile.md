@@ -43,7 +43,15 @@ Consequences:
 Anything here needed `sudo`, so it was the user's to make. Recorded with
 whether it survives a reboot and how to revert it.
 
+| Date | Change | Persistent? | Revert |
+|---|---|---|---|
+| 2026-09-17 | `shellcheck` installed on the primary host, for the repository's tests | yes | `sudo apt remove shellcheck` |
 ## 4. Generalization ledger
+
+**Each row is a hypothesis until a second host has tried to falsify it.**
+`docs/test-hosts.md` says which machine can settle which row. A row ends
+up confirmed host-specific, demoted to portable, or corrected; a row
+nobody has tried to falsify is not knowledge.
 
 | # | Assumption, and what is known | What another host would need |
 |---|---|---|

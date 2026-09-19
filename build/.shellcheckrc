@@ -1,0 +1,14 @@
+# build/msc.sh is shipyard's canonical template, carried here VERBATIM: the
+# family conventions gate compares it byte for byte with
+# $SHIPYARD_SCRIPTS/templates/msc.sh and fails on any difference. So it
+# cannot carry a `# shellcheck disable=` line of its own -- adding one here
+# would break every product repo's gate at once -- and it cannot be fixed
+# locally either. Fix the template in shipyard instead; this file is how we
+# lint the rest of build/ without lying about that one.
+#
+# SC2148: no shebang. It is sourced, never executed; that is the point.
+# SC2317: the last line looks unreachable to shellcheck because the line
+#         above it can `return`, which only happens when sourced.
+# SC2016: the single-quoted CMake snippet it writes must NOT expand here --
+#         ${MavericksShipyard_DIR} is for cmake to expand, not the shell.
+disable=SC2148,SC2317,SC2016

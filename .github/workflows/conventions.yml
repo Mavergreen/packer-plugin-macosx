@@ -1,0 +1,21 @@
+name: conventions
+
+# The family conventions gate. Every check lives in shipyard, so adding one
+# never touches this file.
+#
+# Today it exits early and passes trivially: the gate's first act is to look
+# for .github/workflows/release.yml, and this repository has none yet --
+# the first release is what will add it (decisions/0007). Wiring it now rather than then is
+# deliberate. A gate added at the same time as the thing it gates is a gate
+# nobody has ever seen pass, and the first time it runs it runs against the
+# release that matters.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  conventions:
+    uses: Mavergreen/shipyard/.github/workflows/family-conventions.yml@v1
