@@ -38,6 +38,9 @@ Consequences:
   Apple-branded hardware.
 - **No GPU passthrough.** One iGPU, no PCIe slots:
   `docs/decisions/0001-no-gpu-passthrough.md`.
+- **The repository lives on NFS; the build's state must not.**
+  `docs/decisions/0003-build-state-on-local-storage.md`.
+
 ## 3. Host state changes
 
 Anything here needed `sudo`, so it was the user's to make. Recorded with

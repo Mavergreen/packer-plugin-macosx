@@ -1,0 +1,56 @@
+# Third-party artifacts. Tab-separated: name, url, sha256.
+#
+# sha256 of TOFU means "not yet known" -- the checksum is computed and
+# pinned on first fetch, and the change is committed deliberately.
+#
+# The two Tier 2 entries below (utm-bundle, opencore-legacy-img) are
+# evidence, not ingredients: someone else's blobs, never in the repo, and
+# nothing the plugin builds or boots references them (INGREDIENTS.md,
+# "Provenance"; docs/decisions/0004).
+#
+# name	url	sha256
+utm-bundle	https://adam.kostarelas.com/blog/mavericks-in-utm-on-silicon/Mavericks-OSX-10.9-Config.utm.zip	c7990c86c2dda00b5b88c21dd8d9337552d25f9de0b7ea0bb2e24f2cea5dcab3
+opencore-legacy-img	https://raw.githubusercontent.com/khronokernel/khronokernel.github.io/refs/heads/master/Binaries/OpenCore/EFI-LEGACY.img.zip	04d0af359b7db3d7f6f3db8361f7b13f03b79359f6a682e87181e433826ab7c9
+opencorepkg-src	https://github.com/acidanthera/OpenCorePkg/archive/refs/tags/1.0.7.tar.gz	98e4faf7cf0ce4ac89ec2a35fec3671f30b82d101aa573b9016fed95a50c176e
+
+# The OpenCore build's other inputs. Upstream's build_oc.tool curls
+# ocbuild's efibuild.sh off master and evals it, and that script clones
+# acidanthera/audk at master; both are pinned here instead.
+#
+# The audk-* entries after audk-src are audk's own submodules, at the
+# commits its gitlinks name. A GitHub archive tarball carries no submodule
+# content, and EDK II's build.py validates every [Includes] path in every
+# .dec it parses, so the whole set is fetched rather than only the two that
+# get compiled. internal/firmware/pins.go declares which commit each one is
+# pinned to, and mavericks-firmware refuses a URL here that names a
+# different one (firmware.CheckPins).
+ocbuild-efibuild	https://raw.githubusercontent.com/acidanthera/ocbuild/e9ed49cb7a4f7fa2830c024a13d63de27c2e0d1a/efibuild.sh	4ae2461427bf68be18276483b58e7e295bf77b83782b80b817586a2c817cdb30
+audk-src	https://github.com/acidanthera/audk/archive/0672a009e9ca85753d240324d761341adf0291b3.tar.gz	2c4f5754c0b49d86a387fb21d97ffd61a7b638ee386074a6ebbd37d2fd26561d
+audk-openssl	https://github.com/openssl/openssl/archive/aea7aaf2abb04789f5868cbabec406ea43aa84bf.tar.gz	0db2c5888e78b3ee10df5991c9bd049a2ca0eb693b3c44a05f3078a90add349a
+audk-brotli	https://github.com/google/brotli/archive/e230f474b87134e8c6c85b630084c612057f253e.tar.gz	a9ba3940267de5dd73581a47c2e81b3eb1e1df6a704138c599020d66f3677a92
+audk-mbedtls	https://github.com/ARMmbed/mbedtls/archive/8c89224991adff88d53cd380f42a2baa36f91454.tar.gz	b5c7e7c54e013c168f4aae036e59912785f11b4aeebd57f6165a14e879b9a82c
+audk-oniguruma	https://github.com/kkos/oniguruma/archive/4ef89209a239c1aea328cf13c05a2807e5c146d1.tar.gz	70bfed97ee8390f5ac08fea28e3e930a3b33df871c6fc1888c8d436c6c6b755d
+audk-libfdt	https://github.com/devicetree-org/pylibfdt/archive/cfff805481bdea27f900c32698171286542b8d3c.tar.gz	1193910f475fde07f3cd4fe1c1a353d69b8cedb574967134838fcdc8208d224e
+audk-mipisyst	https://github.com/MIPI-Alliance/public-mipi-sys-t/archive/370b5944c046bab043dd8b133727b2135af7747a.tar.gz	9fda3b9a78343ab2be6f06ce6396536e7e065abac29b47c8eb2e42cbb4c4f00b
+audk-jansson	https://github.com/akheron/jansson/archive/e9ebfa7e77a6bee77df44e096b100e7131044059.tar.gz	e7935c0d91d6d22f6dee710a26b23e228ecc4fe8ef7e8f756558c3599f68c3b4
+audk-libspdm	https://github.com/DMTF/libspdm/archive/98ef964e1e9a0c39c7efb67143d3a13a819432e0.tar.gz	634cbdf10bcaf32f3446b1bf8be7e8a60cecd1e9500e512f01e3c15b74cbcfd3
+audk-cmocka	https://github.com/tianocore/edk2-cmocka/archive/1cc9cde3448cdd2e000886a26acf1caac2db7cf1.tar.gz	59cd4b81abafae35d94ac5d91cf4ae5b05122e688713cd6db51e5e4cef471d8f
+audk-googletest	https://github.com/google/googletest/archive/86add13493e5c881d7e4ba77fb91c1f57752b3a4.tar.gz	3c3095488b936b14538dca64d7e68bcde09a8a18d2a32a47b59877eff0340403
+audk-subhook	https://github.com/tianocore/edk2-subhook/archive/83d4e1ebef3588fae48b69a7352cc21801cb70bc.tar.gz	f65b2e6dd304e19185d751652bd5ebc72a81d503bf542037acb3450e43abc095
+
+# SMC emulation kexts, injected by OpenCore. Tier 1: acidanthera release
+# binaries, pinned to an exact release tag (never "latest") and checksummed.
+# We do not build these from source; assets/firmware/README.md records why these
+# versions and how their 10.9 (Darwin 13) support was verified.
+lilu-release	https://github.com/acidanthera/Lilu/releases/download/1.7.2/Lilu-1.7.2-RELEASE.zip	53967d7dcfaab01023a33df2e969a89522f13d6654a6a56ac4711b62dabf3ab8
+virtualsmc-release	https://github.com/acidanthera/VirtualSMC/releases/download/1.3.7/VirtualSMC-1.3.7-RELEASE.zip	12f1d379969f926306fa92d94ddbf33b32b31176589dc42089d864a26b31b700
+
+# Apple. Mavericks 10.9.5 InstallESD.dmg, the one thing here that may not
+# come from anywhere else. lib/vendor.sh's fetch_source cannot fetch it:
+# the URL below is Apple's real one, but it answers only with an
+# AssetToken cookie obtained from osrecovery.apple.com. mavericks-installesd
+# does that handshake and checks this checksum -- the transfer is plain
+# HTTP, so the checksum is the only integrity there is. Recorded here so
+# the registry names every third-party artifact, including the one a plain
+# download cannot get.
+apple-installesd-10.9.5	http://oscdn.apple.com/content/downloads/33/62/031-10295/gho4r94w66f5v4ujm0sz7k1m0hua68i6oo/OSInstaller/InstallESD.dmg	c861fd59e82bf777496809a0d2a9b58f66691ee56738031f55874a3fe1d7c3ff

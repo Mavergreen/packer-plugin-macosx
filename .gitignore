@@ -1,0 +1,12 @@
+# Disk images are large and, in the case of guest images, must never be
+# published (bin/no-apple-bytes.sh refuses them in the tracked tree).
+*.qcow2
+*.img
+*.dmg
+*.iso
+*.zip
+
+# Python bytecode, left by running a helper script by hand. Never
+# something to commit.
+__pycache__/
+*.pyc

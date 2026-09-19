@@ -10,10 +10,29 @@ jobs:
   tests:
     runs-on: ubuntu-latest
     steps:
+      # fetch-depth: 0 so bin/verify-changed-sources.sh has a base revision
+      # to diff assets/pins/sources.tsv against. With a shallow clone it would
+      # find none and skip -- silently, which is the failure mode that
+      # check exists to prevent.
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: Install bats
         run: sudo apt-get update -qq && sudo apt-get install -y -qq bats shellcheck
 
       - name: Test suite and the bash 3.2 floor
         run: ./bin/run-tests.sh
+
+      # OURS ALONE: a release must contain no Apple-derived bytes. It passes
+      # by construction -- the tool fetches Apple's media at runtime, on the
+      # user's machine -- which is precisely why it is asserted rather than
+      # assumed. See bin/no-apple-bytes.sh.
+      - name: No Apple-derived bytes in a release
+        run: ./bin/no-apple-bytes.sh
+
+      # A Renovate bump moves a URL in assets/pins/sources.tsv and cannot compute
+      # the checksum beside it. Without this the resulting PR is green and
+      # the shared preset automerges a pin that will fail at fetch time.
+      - name: Every changed source pin still verifies
+        run: ./bin/verify-changed-sources.sh "${{ github.event.pull_request.base.sha || github.event.before }}"

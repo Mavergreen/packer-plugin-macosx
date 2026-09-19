@@ -1,0 +1,58 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["github>Mavergreen/shipyard"],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "The guest's OpenSSH. Mavergreen/openssh publishes two product archives per release; mavericks-media reads their names out of the release's SHA256SUMS, so a renamed asset prefix cannot 404 across this bump.",
+      "managerFilePatterns": ["/^components/openssh/version$/"],
+      "matchStrings": ["^(?<currentValue>[0-9][^\\s#]*)\\s*$"],
+      "depNameTemplate": "Mavergreen/openssh",
+      "datasourceTemplate": "github-releases",
+      "versioningTemplate": "regex:^(?<major>\\d+)\\.(?<minor>\\d+)p(?<patch>\\d+)-mavericks\\.(?<build>\\d+)$"
+    },
+    {
+      "customType": "regex",
+      "description": "OpenCore, built from pinned source (Tier 0). The version appears once in the URL, so no autoReplaceStringTemplate is needed. The sha256 in the next column is NOT something Renovate can compute -- .github/workflows/ci.yml re-verifies every changed assets/pins/sources.tsv line, so the bump PR stays red until the checksum is pinned with it. See INGREDIENTS.md.",
+      "managerFilePatterns": ["/^assets/pins/sources\\.tsv$/"],
+      "matchStrings": [
+        "https://github\\.com/acidanthera/OpenCorePkg/archive/refs/tags/(?<currentValue>[^/\\s]+)\\.tar\\.gz"
+      ],
+      "depNameTemplate": "acidanthera/OpenCorePkg",
+      "datasourceTemplate": "github-tags"
+    },
+    {
+      "customType": "regex",
+      "description": "Lilu, an acidanthera release binary injected by OpenCore (Tier 1). The version appears TWICE in one URL, so the whole match is rewritten from a template -- a manager that replaced only the captured occurrence would leave a half-updated URL that 404s.",
+      "managerFilePatterns": ["/^assets/pins/sources\\.tsv$/"],
+      "matchStrings": [
+        "https://github\\.com/acidanthera/Lilu/releases/download/(?<currentValue>[^/\\s]+)/Lilu-[^\\s]+\\.zip"
+      ],
+      "autoReplaceStringTemplate": "https://github.com/acidanthera/Lilu/releases/download/{{{newValue}}}/Lilu-{{{newValue}}}-RELEASE.zip",
+      "depNameTemplate": "acidanthera/Lilu",
+      "datasourceTemplate": "github-releases"
+    },
+    {
+      "customType": "regex",
+      "description": "VirtualSMC, the SMC emulation kext OpenCore injects (Tier 1). Same two-occurrences-in-one-URL shape as Lilu.",
+      "managerFilePatterns": ["/^assets/pins/sources\\.tsv$/"],
+      "matchStrings": [
+        "https://github\\.com/acidanthera/VirtualSMC/releases/download/(?<currentValue>[^/\\s]+)/VirtualSMC-[^\\s]+\\.zip"
+      ],
+      "autoReplaceStringTemplate": "https://github.com/acidanthera/VirtualSMC/releases/download/{{{newValue}}}/VirtualSMC-{{{newValue}}}-RELEASE.zip",
+      "depNameTemplate": "acidanthera/VirtualSMC",
+      "datasourceTemplate": "github-releases"
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "A boot-stack bump changes what every future guest boots, and every guest and box already built stops being what the repository would build, with nothing going red. It also arrives with a sha256 nobody has recomputed. So these land by hand, with a read of the upstream release notes and a re-pinned checksum. This is the 'builds fine and is wrong' exception the shared preset asks for a reason for.",
+      "matchDepNames": [
+        "acidanthera/OpenCorePkg",
+        "acidanthera/Lilu",
+        "acidanthera/VirtualSMC"
+      ],
+      "automerge": false
+    }
+  ]
+}

@@ -34,4 +34,8 @@ T2-patched Linux kernel is an unproven combination stacked on another.
 ## Consequences
 
 - The guest has no 3D acceleration. This is a known, accepted limitation.
+- What the guest's display can do is set by the firmware: OpenCore's
+  `UEFI > Output > Resolution` picks the framebuffer macOS inherits
+  (`assets/firmware/README.md`), and the guest cannot change it at
+  runtime.
 - If the primary host ever changes to a machine with slots, revisit this.
