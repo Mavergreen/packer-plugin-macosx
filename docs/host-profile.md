@@ -60,3 +60,5 @@ nobody has tried to falsify is not knowledge.
 |---|---|---|
 | G1 | The host is Apple hardware, so running OS X in a VM is licensed. | Non-Apple hosts are outside Apple's licence. A legal constraint, not a technical one. |
 | G2 | An Intel CPU with VT-x. **INHERITED**: the brief this project started from treated AMD as a hard stop, and AMD is a known-harder case for macOS guests. `mavericks-media` refuses an AMD host by name. Nothing here has run on one. | An AMD host that installs a guest would move this. |
+| G17 | `kvm_intel.nested = Y` here, so nested virtualization is available without configuration. | Other hosts may have it disabled: it is a module parameter. Needed for VMware Fusion in the guest (`docs/decisions/0005`). |
+| G18 | The default guest CPU, `Penryn`, predates EPT. **`ap-juicer` has no EPT at all**, so nested virtualization is out of reach there whatever the `cpu`. `Nehalem`, the first model with EPT, boots an installed guest here (MEASURED 2026-09-21). | If VMware Fusion needs EPT, the work is to install on `Nehalem` and make it the default for that use. |
