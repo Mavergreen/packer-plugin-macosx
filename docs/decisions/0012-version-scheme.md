@@ -1,0 +1,47 @@
+# 0012 — The version scheme is the family's self-upstream branch
+
+Date: 2026-09-24
+Status: accepted
+
+## Context
+
+The family's `mavergreen-conventions` versioning asks first whether a
+repository *ports an external upstream* or *is its own upstream*. A port
+versions as `<upstream>-mavericks.N`. A self-upstream repository drops the
+`-mavericks` suffix and versions itself directly, with `YYYYMMDD.N` as the
+family's date form, "precisely because it is not a port";
+`mavericks-porthole` is the date instance. (INHERITED from the sibling:
+`mavericks-porthole`'s `UPSTREAM_VERSION` held `20260802` and its
+`release.yml` computed the version the same way, read 2026-09-22.)
+
+This plugin repackages no one's release. OpenCore, EDK II, QEMU and
+Apple's 10.9.5 are ingredients that move independently, and none is *the*
+upstream. So it takes the self-upstream branch.
+
+## Decision
+
+**`YYYYMMDD.N`**, as `build/version.sh` computes it. `UPSTREAM_VERSION`
+holds a bare eight-digit date, bumped by hand when the plugin itself has
+changed enough to ship. The version is `<date>.<n>`, never committed; the
+git tag carries it.
+
+Two axes, mirroring `<upstream>-mavericks.N` with this product's own date
+line standing in for the upstream release:
+
+| Axis | Moves when | Effect |
+|---|---|---|
+| The **date** (`UPSTREAM_VERSION`) | a human decides the plugin changed enough to ship. There is no Renovate datasource, because there is nothing external to track | `N` resets to 1 |
+| **`N`** | anything else that warrants a release with the plugin's own code unchanged, most importantly an ingredient bump (`INGREDIENTS.md`'s `## Declared state`) | `N+1` on the same date line |
+
+The date is not the release date. It names the version line, and `N`
+counts every release cut on it, ingredient-only ones included:
+`20260922.4` can mean "the fourth release of the `20260922` line", cut in
+November because Renovate moved the OpenCore pin.
+
+## Why not the family's shared scripts
+
+The family's `scripts/version.sh` and `resolve-version.sh` both hardcode
+the literal `-mavericks.` of the port shape. `mavericks-porthole` inlines
+the equivalent in its `release.yml`; here it is a committed script
+instead, because inline YAML cannot be tested and this repository tests it
+(`tests/version.bats`).

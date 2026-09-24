@@ -10,3 +10,7 @@
 # something to commit.
 __pycache__/
 *.pyc
+
+# VERSION is a build product: build/version.sh writes it, the tags
+# are the record. A committed copy drifts (family-conventions check 7).
+/VERSION

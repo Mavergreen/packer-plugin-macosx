@@ -101,6 +101,32 @@ make_repo() {
     [ "$status" -eq 0 ]
 }
 
+@test "a violation on a TAG is caught when that tag is checked" {
+    # The release path checks the tag it is about to publish, not the
+    # working tree. A planted .dmg at that tag must fail it.
+    dir="$(make_repo)"
+    [ -n "$dir" ]
+    printf 'not really\n' > "$dir/InstallESD.dmg"
+    git -C "$dir" add -A
+    git -C "$dir" -c commit.gpgsign=false commit -qm planted
+    git -C "$dir" tag 20260922.1
+    run bash -c "cd '$dir' && ./bin/no-apple-bytes.sh 20260922.1"
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"InstallESD.dmg"* ]]
+}
+
+@test "a clean tag passes even when the WORKING TREE has Apple's media beside it" {
+    # This is how the project is meant to work: decisions/0003 puts images
+    # on local disk outside the repo. An untracked InstallESD.dmg must not
+    # redden a release.
+    dir="$(make_repo)"
+    [ -n "$dir" ]
+    git -C "$dir" tag 20260922.1
+    printf 'x\n' > "$dir/InstallESD.dmg"
+    run bash -c "cd '$dir' && ./bin/no-apple-bytes.sh 20260922.1"
+    [ "$status" -eq 0 ]
+}
+
 @test "an unknown ref is a failure, never a pass, and names the ref" {
     # Cannot-verify is a FAILURE. A release gate that green-lights because
     # it could not find the tag is worse than no gate. It should also say
@@ -110,6 +136,27 @@ make_repo() {
     run bash -c "cd '$dir' && ./bin/no-apple-bytes.sh 19700101.1"
     [ "$status" -ne 0 ]
     [[ "$output" == *"19700101.1"* ]]
+}
+
+@test "a violation on a TAG is caught even though the same file was removed from the index afterward" {
+    # This is the case that distinguishes checking the ref from checking
+    # the index: a planted .dmg is committed and tagged, then git-rm'd in a
+    # later commit. Checking the TAG must still fail, naming the file --
+    # that .dmg really did ship in the tagged tree. Checking with no ref
+    # (today's index behavior) must pass, because the index has moved on.
+    dir="$(make_repo)"
+    [ -n "$dir" ]
+    printf 'not really\n' > "$dir/InstallESD.dmg"
+    git -C "$dir" add -A
+    git -C "$dir" -c commit.gpgsign=false commit -qm planted
+    git -C "$dir" tag 20260922.2
+    git -C "$dir" rm -q InstallESD.dmg
+    git -C "$dir" -c commit.gpgsign=false commit -qm removed
+    run bash -c "cd '$dir' && ./bin/no-apple-bytes.sh 20260922.2"
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"InstallESD.dmg"* ]]
+    run bash -c "cd '$dir' && ./bin/no-apple-bytes.sh"
+    [ "$status" -eq 0 ]
 }
 
 # --- C-quoting, pipefail/SIGPIPE, and unreadable blobs --------------------

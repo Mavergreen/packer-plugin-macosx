@@ -5,6 +5,12 @@ package vmguest
 
 import "embed"
 
+// UpstreamVersion is this product's own version line, a bare YYYYMMDD,
+// exactly as UPSTREAM_VERSION holds it (docs/decisions/0012).
+//
+//go:embed UPSTREAM_VERSION
+var UpstreamVersion string
+
 // Files is the data the plugin carries inside its binary, at the paths
 // the repository keeps them under assets/.
 //
