@@ -22,6 +22,12 @@ Air, and Debian on a 2006 Woodcrest Mac Pro with no EPT.
 What ties the plugin to Linux today is small, and it is kept in known
 places:
 
+- **The privops microVM is an interface** (`internal/privops`). The media
+  build needs root inside a filesystem, and gets it by booting the host's
+  own Linux kernel with a busybox initramfs under QEMU, with no host root.
+  A second backend could boot a kernel and initramfs shipped with the
+  plugin, under any accelerator, which would make media building work on
+  any host with QEMU. Nothing like it exists yet.
 - **Linux-only checks stay inside the Linux backend and the host check.**
   Everything else is portable Go.
 - **Host tools run through `proc.Runner`**, one seam for every external

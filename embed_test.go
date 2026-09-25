@@ -15,6 +15,7 @@ func TestEmbeddedFilesAreTheFilesOnDisk(t *testing.T) {
 		"components/openssh/version",
 		"assets/firmware/config.plist",
 		"assets/pins/apple-packages.sha256",
+		"assets/privops/init.sh",
 	}
 	for _, p := range want {
 		emb, err := fs.ReadFile(Files, p)

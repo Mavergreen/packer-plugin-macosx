@@ -18,5 +18,5 @@ var UpstreamVersion string
 // pin: naming a second component's version file here is what makes that
 // glob find it, since go:embed only carries paths named explicitly below.
 //
-//go:embed assets/pins/sources.tsv components/openssh/version assets/firmware/config.plist assets/pins/apple-packages.sha256
+//go:embed assets/pins/sources.tsv components/openssh/version assets/firmware/config.plist assets/pins/apple-packages.sha256 assets/privops/*.sh
 var Files embed.FS

@@ -1,0 +1,11 @@
+# assets/privops/init.sh is the privops microVM's /init, which
+# internal/privops embeds byte for byte. This file is how it is linted:
+# its settings live here rather than as `# shellcheck` lines in init.sh.
+#
+# shell=dash: its shebang is `#!/bin/busybox sh`, busybox's ash, which
+#         shellcheck checks as dash anyway and warns about (SC2187).
+# SC2231: `for s in /sys/class/block/$mqg_base*` -- mqg_base is a device
+#         name like vdb, which cannot split, and the glob must expand.
+# SC2016: `awk '{print "/dev/" $2}'` -- $2 is awk's field, not the shell's.
+shell=dash
+disable=SC2231,SC2016

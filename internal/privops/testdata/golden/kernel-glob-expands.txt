@@ -1,0 +1,10 @@
+CANDIDATES
+@ROOT@/boot/vmlinuz-6.1.0-test
+@ROOT@/modules/6.1.0-test/vmlinuz
+@ROOT@/boot/kernel-6.1.0-test
+@ROOT@/boot/vmlinuz-linux
+@ROOT@/boot/vmlinuz
+@ROOT@/boot/kernel-other
+@ROOT@/boot/kernel-zzz
+KERNEL
+@ROOT@/boot/kernel-other
