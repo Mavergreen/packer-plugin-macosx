@@ -1,0 +1,1 @@
+OvmfPkg/OvmfPkgX64.dsc	X64	GCC	RELEASE

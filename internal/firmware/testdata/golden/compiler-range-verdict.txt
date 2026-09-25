@@ -1,0 +1,10 @@
+BELOW	gcc 12.4.0 is below the floor of this project's supported range, gcc 13 through 16, verified at gcc 13.3.0, 14.2.0 and 16.2.1
+INSIDE	gcc 13.0.0 is inside this project's supported range, gcc 13 through 16, verified at gcc 13.3.0, 14.2.0 and 16.2.1
+INSIDE	gcc 13.3.0 is inside this project's supported range, gcc 13 through 16, verified at gcc 13.3.0, 14.2.0 and 16.2.1
+INSIDE	gcc 15.1.1 is inside this project's supported range, gcc 13 through 16, verified at gcc 13.3.0, 14.2.0 and 16.2.1
+INSIDE	gcc 16.2.1 is inside this project's supported range, gcc 13 through 16, verified at gcc 13.3.0, 14.2.0 and 16.2.1
+ABOVE	gcc 17.0.0 is above the ceiling of this project's supported range, gcc 13 through 16, verified at gcc 13.3.0, 14.2.0 and 16.2.1
+UNKNOWN	cannot read a major version out of "x.y"
+UNKNOWN	clang 17.0.0: this project builds with TOOLCHAINS=GCC and has never built with clang, so the declared range (gcc 13 through 16, verified at gcc 13.3.0, 14.2.0 and 16.2.1) does not cover it
+UNKNOWN	clang (no version): this project builds with TOOLCHAINS=GCC and has never built with clang, so the declared range (gcc 13 through 16, verified at gcc 13.3.0, 14.2.0 and 16.2.1) does not cover it
+UNKNOWN	not a recognised gcc: the range (gcc 13 through 16, verified at gcc 13.3.0, 14.2.0 and 16.2.1) has nothing to say about it

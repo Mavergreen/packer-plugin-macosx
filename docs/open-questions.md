@@ -42,3 +42,42 @@ during the build, which makes the build depend on the day, and a 2013 OS
 talking to 2026 servers may hang.
 
 ---
+
+## Q3. Can an arm64 host build the same firmware?
+
+**Unknown, and untestable on an x86_64 host.** EDK II compiles x86_64
+firmware. On an x86_64 Debian-family host the native compiler *is* the
+cross compiler: MEASURED 2026-09-22 on the primary host, `gcc` and
+`x86_64-linux-gnu-gcc` resolve to the same file (same device, same inode,
+`/usr/bin/x86_64-linux-gnu-gcc-13`), so comparing them measures nothing.
+Only a host of another architecture can ask it.
+
+Three claims are tangled together:
+
+| | Claim | Why it might fail |
+|---|---|---|
+| **A** | a cross-gcc's code generation does not depend on the architecture it runs on | it should not; reproducible cross-builds rest on it |
+| **B** | Debian's `gcc-13-x86-64-linux-gnu` built *for arm64* generates the same code as the one built for amd64 | separately built packages of the same source and version |
+| **C** | EDK II's BaseTools produce the same PE images when they are aarch64 binaries | `GenFw` post-processes the compiler's output rather than compiling it; nothing about compiler determinism covers it, and it is the one silent failure |
+
+**What would settle it:** one pair of builds on an arm64 host with the
+same gcc version as the primary host (`13.3.0-6ubuntu2~24.04.1`, Ubuntu
+24.04), at the same build directory, on the same UTC day
+(`docs/decisions/0004` says why each matters), then the eight artifact
+checksums, plus the intermediate `.dll` files. `GenFw` turns `.dll` into
+`.efi`, so a matching `.dll` with a differing `.efi` is claim C failing,
+and a differing `.dll` is A or B.
+
+It matters because a CI runner on Apple Silicon is arm64: the answer
+decides whether such a runner can build the firmware, or must be handed
+one built elsewhere.
+
+---
+
+## Q5. Do the inherited `Booter` quirks matter?
+
+Five `Booter > Quirks` came from an OpenCore 0.6.6 configuration under TCG
+on Apple Silicon and have never been tested on OpenCore 1.0.7 under KVM.
+Nothing has failed, so nothing has been flipped. **Turning each off, one
+boot at a time,** would say which are needed
+(`docs/configuration-register.md` §12).

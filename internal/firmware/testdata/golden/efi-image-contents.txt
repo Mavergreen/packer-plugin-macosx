@@ -1,0 +1,8 @@
+BOOTx64.efi
+OpenCore.efi
+OpenRuntime.efi
+OpenPartitionDxe.efi
+OpenHfsPlus.efi
+Lilu.kext
+VirtualSMC.kext
+config.plist

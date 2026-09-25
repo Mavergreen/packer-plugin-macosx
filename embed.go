@@ -18,5 +18,9 @@ var UpstreamVersion string
 // pin: naming a second component's version file here is what makes that
 // glob find it, since go:embed only carries paths named explicitly below.
 //
-//go:embed assets/pins/sources.tsv components/openssh/version assets/firmware/config.plist assets/pins/apple-packages.sha256 assets/privops/*.sh
+// assets/firmware/patches/*.patch are also embedded: the firmware build
+// applies them from the binary, not from the checkout, so a build can
+// run from nothing but the plugin's binary itself.
+//
+//go:embed assets/pins/sources.tsv components/openssh/version assets/firmware/config.plist assets/pins/apple-packages.sha256 assets/firmware/patches/*.patch assets/privops/*.sh
 var Files embed.FS

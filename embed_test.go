@@ -15,6 +15,9 @@ func TestEmbeddedFilesAreTheFilesOnDisk(t *testing.T) {
 		"components/openssh/version",
 		"assets/firmware/config.plist",
 		"assets/pins/apple-packages.sha256",
+		"assets/firmware/patches/0001-build_oc-source-pinned-efibuild.patch",
+		"assets/firmware/patches/0002-ovmf-pin-the-c-dialect.patch",
+		"assets/firmware/patches/0003-firmware-drop-werror.patch",
 		"assets/privops/init.sh",
 	}
 	for _, p := range want {

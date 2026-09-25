@@ -1,0 +1,13 @@
+ocbuild-efibuild
+audk-src
+audk-openssl
+audk-brotli
+audk-mbedtls
+audk-oniguruma
+audk-libfdt
+audk-mipisyst
+audk-jansson
+audk-libspdm
+audk-cmocka
+audk-googletest
+audk-subhook

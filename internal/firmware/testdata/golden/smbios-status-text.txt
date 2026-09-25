@@ -1,0 +1,6 @@
+a guest was installed with this SMBIOS, booted from it and answered SSH
+a guest installed under a different SMBIOS booted with this one, but nothing has been installed with it
+a guest kernel-panicked with this SMBIOS, and the row says where and how often
+nobody here has tried it, which is not the same as knowing it fails
+not one of the models this project has an opinion about, which is not a refusal -- the list is guidance and any well-formed smbios value still works
+unknown status "WEIRD"

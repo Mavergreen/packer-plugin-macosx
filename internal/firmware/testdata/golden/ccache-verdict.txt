@@ -1,0 +1,4 @@
+USED	/usr/bin/ccache
+MISSING	ccache was asked for, but ccache is not installed; compiling everything
+OFF	ccache is installed at /usr/bin/ccache but not used: set ccache = true to use it. The default is off because nobody has yet shown that a ccache build produces the same eight checksums as a cold one -- see docs/decisions/0004
+OFF	ccache is not installed; every file is compiled

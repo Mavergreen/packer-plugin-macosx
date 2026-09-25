@@ -1,0 +1,50 @@
+Pin the C dialect OvmfPkg is compiled in, instead of inheriting gcc's.
+
+EDK II's tools_def sets no -std, so every file is compiled in whatever
+dialect the host compiler happens to default to. That was gnu17 for years;
+GCC 15 defaults to gnu23. OpenCorePkg fails outright under C23 (see
+internal/firmware's OpenCore build, which pins the same dialect through
+upstream's own $(OCPKG_BUILD_OPTIONS) hook and therefore needs no patch).
+OvmfPkg does not fail -- it compiles clean -- but it does not come out the
+same:
+
+  built with gcc 13.3.0's default (gnu17)
+    OVMF_CODE.fd  195c4dcff2abf2f5aea08c290f057432704a250eab56b0b887ac0f8503ee58d2
+  same tree, same compiler, -std=c2x forced
+    OVMF_CODE.fd  3373692a6739121bec67d458d09a60d602b40cf5235398f208d58f28db3306b8
+
+Measured on pet-power-plant, 2026-09-20. A host whose gcc defaults to C23
+would therefore have shipped a *different firmware* than docs/decisions/0004
+records, silently and with a successful build. That is worse than the
+OpenCore failure, which at least announced itself.
+
+The project pins every source input by commit and checksum but does not
+pin the compiler (see decisions/0004, "The compiler"). Pinning
+the dialect does not close that hole, but it removes the largest thing that
+moved underneath it, and it makes two hosts' firmware checksums comparable,
+which is what comparing two hosts' builds is for.
+
+gnu17 rather than c17 because that is what these trees have always been
+compiled as -- EDK II's GCC flags assume GNU extensions -- so this changes
+nothing on a host that was already correct. Verified: OVMF_CODE.fd is
+byte-identical with and without this patch on gcc 13.3.0.
+
+Applied by internal/firmware's OVMF build, guarded by a grep, against the
+EDK II tree its OpenCore build assembles from the pinned audk tarball.
+
+--- a/OvmfPkg/OvmfPkgX64.dsc
++++ b/OvmfPkg/OvmfPkgX64.dsc
+@@ -113,6 +113,13 @@
+   GCC:*_*_*_CC_FLAGS = -D DISABLE_NEW_DEPRECATED_INTERFACES
+ 
+   #
++  # The C dialect is an input to the build, so it is stated rather than
++  # inherited from whatever the host compiler defaults to this year.
++  # packer-plugin-mavericks: assets/firmware/patches/0002-ovmf-pin-the-c-dialect.patch
++  #
++  GCC:*_*_*_CC_FLAGS = -std=gnu17
++
++  #
+   # Add TDX_GUEST_SUPPORTED
+   #
+   MSFT:*_*_*_CC_FLAGS = /D TDX_GUEST_SUPPORTED

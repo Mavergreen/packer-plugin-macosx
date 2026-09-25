@@ -1,0 +1,89 @@
+Stop treating upstream's warnings as errors in the OVMF build.
+
+EDK II compiles with -Werror -- it is in every `gcc` line this build
+runs, out of BaseTools/Conf/tools_def.template, which we do not touch.
+That is upstream's discipline for upstream's own development, and it is a
+good one: a warning nobody is allowed to ignore is a warning that gets
+fixed.
+
+We are not upstream. We are a downstream consumer pinning one commit of
+acidanthera/audk and one release of OpenCorePkg, and compiling them with
+whatever C compiler the host distribution happens to ship. We cannot fix
+their warnings. Patching upstream source to satisfy a compiler upstream
+never used would be us maintaining a fork we did not intend to have, and
+it would grow by a hunk per compiler release, forever.
+
+A NEW COMPILER INVENTS NEW WARNINGS. This is the second instance, not
+the first, which is why this patch fixes the class rather than the case:
+
+  GCC 15  defaults to -std=gnu23, under which OpenCorePkg's vendored
+          libDER does not compile at all. That one is a real change of
+          language, not a new diagnostic, and it is fixed properly by
+          stating the dialect -- patch 0002 here, and the dialect
+          internal/firmware passes OpenCorePkg. Not this.
+
+  GCC 16  squirrel-zapper, 2026-09-20, gcc 16.2.1. The OpenCore build
+          finished clean in 397 s; the OVMF build died in 26 s:
+
+            MdeModulePkg/Library/CustomizedDisplayLib/CustomizedDisplayLib.c:435:18:
+            error: variable 'Count' set but not used
+            [-Werror=unused-but-set-variable=]
+            cc1: all warnings being treated as errors
+
+          Note the trailing `=` in the diagnostic's name: GCC 16 gave
+          that warning a level argument, so it is not even spelled the
+          way GCC 13 spells it.
+
+`Count` is genuinely set and never read, in a file we do not own, did not
+write and have no standing to change. -Wno-unused-but-set-variable would
+make today's error go away and teach nothing, and GCC 17 will bring a
+diagnostic nobody has heard of yet. The rule this patch states instead:
+A WARNING WE CANNOT ACT ON SHOULD NOT STOP OUR BUILD. -Werror belongs to
+whoever can fix the warning.
+
+Upstream keeps its discipline -- nothing here changes what tianocore or
+acidanthera see when they build these trees. We stop inheriting a build
+failure from it.
+
+THE WARNINGS ARE STILL PRINTED. -Wno-error cancels the promotion to
+errors and nothing else: -Wall is still on, cc1 still says everything it
+said before, and all of it is still in ovmf-build.log. Warnings becoming
+invisible would be a regression and would mean this patch is the wrong
+shape; warnings becoming non-fatal is the entire intent.
+
+IT DOES NOT CHANGE THE BYTES, and that was measured rather than assumed,
+because decisions/0004's whole claim is that this firmware is
+reproducible. Cold builds either side of this patch on pet-power-plant,
+gcc 13.3.0, 2026-09-19 -- all three images byte-identical:
+
+  OVMF_CODE.fd  195c4dcff2abf2f5aea08c290f057432704a250eab56b0b887ac0f8503ee58d2
+  OVMF_VARS.fd  5d2ac383371b408398accee7ec27c8c09ea5b74a0de0ceea6513388b15be5d1e
+  OVMF.fd       e44f708330318e8963baea94c91ed265761794e565e6a48db8821e92e4cbda17
+
+which is what -Werror ought to do: it decides whether a diagnostic aborts
+the build, not what the compiler emits.
+
+Applied by internal/firmware's OVMF build, guarded by a grep so a warm
+tree is not patched twice and asserted afterwards so a patch that silently
+did nothing cannot pass for success -- the shape 0001 and 0002 also use.
+It is a separate patch from 0002 because it is a separate claim: 0002
+says which language this is, this one says whose job it is to fix a
+warning.
+
+--- a/OvmfPkg/OvmfPkgX64.dsc
++++ b/OvmfPkg/OvmfPkgX64.dsc
+@@ -119,5 +119,14 @@
+   INTEL:*_*_*_CC_FLAGS = /D TDX_GUEST_SUPPORTED
+   GCC:*_*_*_CC_FLAGS = -D TDX_GUEST_SUPPORTED
+ 
++  #
++  # -Werror is upstream's discipline for upstream's own development.
++  # We are a downstream consumer pinning a commit we cannot patch, so a
++  # warning we cannot act on must not stop our build. Still printed,
++  # just no longer fatal. See the patch header for the whole argument.
++  # packer-plugin-mavericks: assets/firmware/patches/0003-firmware-drop-werror.patch
++  #
++  GCC:*_*_*_CC_FLAGS = -Wno-error
++
+ !include NetworkPkg/NetworkBuildOptions.dsc.inc
+ 

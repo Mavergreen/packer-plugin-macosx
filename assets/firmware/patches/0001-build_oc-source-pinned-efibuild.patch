@@ -1,0 +1,32 @@
+Source ocbuild's efibuild.sh from a pinned local copy, not from master.
+
+Upstream's last act in build_oc.tool is to curl ocbuild's efibuild.sh off
+the master branch and eval it. That is a mutable input executed at build
+time: the script it fetches also decides which EDK II tree to clone, so
+the whole build hangs off whatever master happened to say today.
+
+This patch replaces the fetch with a read of $EFIBUILD_SH, which
+internal/firmware's OpenCore build points at the checksum-verified copy
+named in assets/pins/sources.tsv. The eval is kept exactly as upstream has it, so
+efibuild.sh still runs in build_oc.tool's own shell and still sees the
+positional parameters it expects -- the only thing that changes is where
+the text comes from.
+
+Applied by internal/firmware's OpenCore build with `git apply`, against
+the tree unpacked from the pinned OpenCorePkg tarball.
+
+--- a/build_oc.tool
++++ b/build_oc.tool
+@@ -400,7 +400,11 @@
+ export NO_ARCHIVES
+ export DISCARD_SUBMODULES
+ 
+-src=$(curl -LfsS https://raw.githubusercontent.com/acidanthera/ocbuild/master/efibuild.sh) && eval "$src" || exit 1
++if [ "${EFIBUILD_SH}" = "" ] || [ ! -f "${EFIBUILD_SH}" ]; then
++  echo "ERROR: EFIBUILD_SH must name a local, pinned copy of ocbuild efibuild.sh!"
++  exit 1
++fi
++src=$(cat "${EFIBUILD_SH}") && eval "$src" || exit 1
+ 
+ cd Utilities/ocvalidate || exit 1
+ ocv_tool=""

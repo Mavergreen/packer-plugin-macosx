@@ -59,6 +59,13 @@ nobody chose it, and changing it is fair game.
 
 ### `PlatformInfo > Generic > SystemProductName` = `iMac14,2`
 
+**Evidence: observation.** The reference config sets `MacPro5,1`. Under KVM
+that produces an immediate kernel panic in `AppleTyMCEDriver`, the Xeon
+machine-check driver, which loads *because* the SMBIOS says the machine is a
+Xeon Mac Pro and then faults writing a machine-check register QEMU does not
+provide. See `docs/configuration-register.md`, `docs/host-profile.md` G14, and
+`docs/decisions/0010`.
+
 Changing the model to `iMac14,2` attacks what the driver matches on rather
 than trying to stop it loading, and the panic disappeared.
 
@@ -68,6 +75,13 @@ it. It is the first model that worked, not a model that was shown to be
 best.
 
 ### `UEFI > Drivers` — `OpenHfsPlus.efi`, never `HfsPlus.efi`
+
+**Evidence: `docs/decisions/0002-openhfsplus-over-apple-hfsplus.md`.** OVMF
+cannot read HFS+, so OpenCore needs an HFS+ driver to see the installed
+system at all. The reference image uses `HfsPlusLegacy.efi`, which is
+extracted from Apple firmware: no source, no way to rebuild it, Tier 2 by
+construction. Removing it is the reason the boot stack is built from
+source at all.
 
 `OpenHfsPlus.efi` is built from pinned source by `mavericks-firmware`.
 Decision 0002 expected it to be slower and asked for the cost to be
@@ -267,6 +281,16 @@ configuration that is not vaulted. Note what this means: the config on the
 EFI image is not tamper-evident. It is reproducible instead — rebuild the
 image from this repo and compare.
 
+### `Misc > Debug > DisableWatchDog` = `true`
+
+**Evidence: `docs/decisions/0002`.** `OpenHfsPlus.efi` was expected to be
+slower than Apple's driver by an unmeasured amount, and the firmware
+watchdog reboots the machine if `boot.efi` takes too long, which would have
+turned "slow" into "reboots forever". The cost was then measured at 3.3 s,
+nowhere near a watchdog timeout, so this setting has outlived its reason;
+turning the watchdog back on is a one-boot experiment nobody has run
+(`docs/configuration-register.md` §7).
+
 ### `Misc > Debug > Target` = `67`
 
 **Evidence: observation.** `Target = 67` writes OpenCore's log to a file on
@@ -275,6 +299,17 @@ the only direct answer (`EFI_ALREADY_STARTED`) where everything else gave
 hypotheses. A RELEASE build logs only warnings and errors, so a clean boot
 writes an empty log. The OpenCore image is attached `snapshot=on`, so the
 log file lasts only as long as the VM runs.
+
+### The debug switch: `AppleDebug`, `DisplayLevel`, `debug=0x100`
+
+Not a change: this file carries the sample's `AppleDebug` = `false`,
+`DisplayLevel` = `2147483650` and no `debug=0x100` in `boot-args`. A build
+with `debug = true` (the template's variable, `mavericks-firmware`'s
+`debug`) ships a copy with exactly these three values changed to what
+firmware bring-up ran with -- `AppleDebug` = `true`, `DisplayLevel` =
+`2147483714` (adding `DEBUG_INFO`), `boot-args` = `-v keepsyms=1
+debug=0x100` -- and nothing else (`internal/firmware/debug.go`). Why each
+is a debugging aid is in `docs/configuration-register.md` §7.
 
 ### `Misc > Boot > HideAuxiliary` = `false`
 
