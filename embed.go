@@ -22,5 +22,11 @@ var UpstreamVersion string
 // applies them from the binary, not from the checkout, so a build can
 // run from nothing but the plugin's binary itself.
 //
-//go:embed assets/pins/sources.tsv components/openssh/version assets/firmware/config.plist assets/pins/apple-packages.sha256 assets/firmware/patches/*.patch assets/privops/*.sh
+// The microVM's scripts travel in the binary for the same reason: its
+// /init (assets/privops/init.sh) and the media build's payloads
+// (assets/privops/*.sh) run inside the privops guest, and the
+// unattended-install hooks (assets/guest/autoinstall/*) are injected into
+// the installer media it assembles.
+//
+//go:embed assets/pins/sources.tsv components/openssh/version assets/firmware/config.plist assets/pins/apple-packages.sha256 assets/firmware/patches/*.patch assets/privops/*.sh assets/guest/autoinstall/autoinstall.sh assets/guest/autoinstall/minstallconfig.xml assets/guest/autoinstall/OSInstall.collection
 var Files embed.FS

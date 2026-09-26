@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Injected as /System/Installation/Packages/OSInstall.collection, and named
+  by minstallconfig.xml's Package key.
+
+  A collection is a list of packages the installer installs in order, so
+  the OS and anything that should be part of it go in one pass. THIS IS
+  WHERE THE FIRST-BOOT PAYLOAD BELONGS: build it as a .pkg, drop it beside
+  OSInstall.mpkg, and add a line here. That installs it as part of the
+  install rather than injecting it into a finished volume afterwards,
+  which is worse.
+
+  OSInstall.mpkg IS LISTED TWICE, AND THAT IS NOT A TYPO. Upstream
+  (timsutton/osx-vm-templates) does the same, and it reads like a
+  copy/paste slip. MEASURED: listed once, the install fails with "There
+  was a problem with the automated installation" before writing one byte
+  to the target volume; the second entry is what makes it run.
+
+  Additional packages go after these two.
+-->
+<plist version="1.0">
+<array>
+	<string>/System/Installation/Packages/OSInstall.mpkg</string>
+	<string>/System/Installation/Packages/OSInstall.mpkg</string>
+</array>
+</plist>

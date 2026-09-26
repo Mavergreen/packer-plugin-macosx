@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Injected as /System/Installation/Packages/Extras/minstallconfig.xml.
+
+  This is the OS X Installer's own automation config, and its presence is
+  what makes the install unattended. /etc/rc.install:
+
+    104: MINSTALL_CONF=/System/Installation/Packages/Extras/minstallconfig.xml
+         ...
+         if [ -e ${MINSTALL_CONF} ]; then
+           # no splash or lang chooser for autoinstalls
+           CatchExit=Minstaller
+           "${OSINSTALLER}" -f ${MINSTALL_CONF} -AppleLanguages "(${MINSTALL_LANG})" ...
+         ...
+         elif [ "${CatchExit}_" = "Minstaller_" ]; then
+           /sbin/reboot
+
+  So Apple's installer does the installing and Apple's rc.install does the
+  rebooting. Nothing here shells out to `installer -pkg`.
+
+  Schema taken from timsutton/osx-vm-templates prepare_iso/support/, which
+  took it from Greg Neagle's createOSXInstallPkg. It is not invented.
+
+  Target must already exist when the installer starts: /etc/rc.cdrom.local
+  (assets/guest/autoinstall/autoinstall.sh) is what creates it.
+-->
+<plist version="1.0">
+<dict>
+	<key>InstallType</key>
+	<string>automated</string>
+	<key>Language</key>
+	<string>en</string>
+	<key>Package</key>
+	<string>/System/Installation/Packages/OSInstall.collection</string>
+	<key>Target</key>
+	<string>/Volumes/Mavericks</string>
+	<key>TargetName</key>
+	<string>Mavericks</string>
+</dict>
+</plist>

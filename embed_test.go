@@ -18,6 +18,14 @@ func TestEmbeddedFilesAreTheFilesOnDisk(t *testing.T) {
 		"assets/firmware/patches/0001-build_oc-source-pinned-efibuild.patch",
 		"assets/firmware/patches/0002-ovmf-pin-the-c-dialect.patch",
 		"assets/firmware/patches/0003-firmware-drop-werror.patch",
+		"assets/privops/assemble.sh",
+		"assets/privops/content-digest.sh",
+		"assets/privops/extract-basesystem.sh",
+		"assets/privops/fix-ownership.sh",
+		"assets/privops/verify-packages.sh",
+		"assets/guest/autoinstall/autoinstall.sh",
+		"assets/guest/autoinstall/minstallconfig.xml",
+		"assets/guest/autoinstall/OSInstall.collection",
 		"assets/privops/init.sh",
 	}
 	for _, p := range want {
