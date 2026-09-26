@@ -37,3 +37,12 @@ not a change to make in passing.
 `reference.pkg.gz` and the two keys never change: a failing
 `TestSameContentsAsTheReferencePackage` is `flatPackage` drifting from
 the flat-package format.
+
+## The data sources' recipe
+
+These goldens pin the output of code that shapes a data source's store
+entry, so `datasource/media` carries their digest in a `recipe` constant, a
+row in every listing. A change here without a recipe bump fails
+`TestRecipePinsTheGoldens` there: bump the recipe's number and set its
+goldens part to the digest the failure names, so that entries users
+built with the old code are rebuilt rather than reused.

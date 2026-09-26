@@ -27,3 +27,12 @@ with the reason in the commit message. `hfs-create-gpt.img.gz` records
 sgdisk's and mkfs.hfsplus's layout: `CreateHFSGPT` is compared with it by
 sgdisk's reading of both, so it changes only if that layout does. The
 `mark-clean-*` images change only if what "clean" means does.
+
+## The data sources' recipe
+
+These goldens pin the output of code that shapes a data source's store
+entry, so `datasource/media` carries their digest in a `recipe` constant, a
+row in every listing. A change here without a recipe bump fails
+`TestRecipePinsTheGoldens` there: bump the recipe's number and set its
+goldens part to the digest the failure names, so that entries users
+built with the old code are rebuilt rather than reused.

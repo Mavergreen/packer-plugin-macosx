@@ -20,3 +20,13 @@ change to diskimg changes them: a test here that fails means diskimg
 drifted from the tools. Replace an image only to record a different
 tool version's behaviour -- made the way the table says, gzip'd the same
 way -- and name the tool versions in the commit message.
+
+## The data sources' recipe
+
+These goldens pin the output of code that shapes a data source's store
+entry, so `datasource/firmware` and `datasource/media`
+each carry their digest in a `recipe` constant, a
+row in every listing. A change here without a recipe bump fails
+`TestRecipePinsTheGoldens` there: bump the recipe's number and set its
+goldens part to the digest the failure names, so that entries users
+built with the old code are rebuilt rather than reused.
