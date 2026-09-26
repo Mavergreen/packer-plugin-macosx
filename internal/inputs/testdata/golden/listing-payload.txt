@@ -1,0 +1,4 @@
+component:openssh	10.5p1-mavericks.2
+payload:com.mqg.firstboot.plist	60d06e9c7784da0f100761d9583b62e04b72b8b91835c9bd0680a39ad6a4bbec
+payload:firstboot.sh	dbbf8358e85b1ba571c0d0935c3c89c6b80dabbd9562a4b3f4a74910a8110cdf
+payload:postinstall	f7e493f162200278bb707de0348300c03d1129b1551109427975bbe2edfe926e

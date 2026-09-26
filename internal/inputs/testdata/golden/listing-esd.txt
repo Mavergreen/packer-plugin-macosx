@@ -1,0 +1,2 @@
+source-url:apple-installesd-10.9.5	http://oscdn.apple.com/content/downloads/33/62/031-10295/gho4r94w66f5v4ujm0sz7k1m0hua68i6oo/OSInstaller/InstallESD.dmg
+source:apple-installesd-10.9.5	c861fd59e82bf777496809a0d2a9b58f66691ee56738031f55874a3fe1d7c3ff

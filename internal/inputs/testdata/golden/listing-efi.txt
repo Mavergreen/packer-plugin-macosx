@@ -1,0 +1,5 @@
+config.plist	f93a55b18fe24f148982b788a6a6580047fa74c51a5ab2b86a4efac14f89ea6e
+opencore-artifacts	absent
+smbios	iMac14,2
+source:lilu-release	53967d7dcfaab01023a33df2e969a89522f13d6654a6a56ac4711b62dabf3ab8
+source:virtualsmc-release	12f1d379969f926306fa92d94ddbf33b32b31176589dc42089d864a26b31b700

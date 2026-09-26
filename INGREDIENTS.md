@@ -13,6 +13,51 @@ The pin registry is `assets/pins/sources.tsv`: name, URL, sha256. The
 checksum is the identity; the URL is only how to get it. The plugin embeds
 the registry, so a plugin binary carries the pins it was built with.
 
+## What a bump does here is not what it does in a sibling
+
+**This is the one place this repository genuinely differs from the family,
+and it is worth its own section.**
+
+Every sibling ships a **built artifact**. An ingredient moves, a release
+is cut, the rebuilt `.pkg` supersedes the old one, and what is published
+is never stale for long.
+
+We ship a **recipe**: the plugin and the template. Our release contains no
+image, and it cannot, because the image is made of Apple's operating
+system and this project never publishes that (`README.md`,
+`docs/decisions/0007`, and `bin/no-apple-bytes.sh`, which enforces it).
+
+A moved pin changes what the recipe builds. What it does to things already
+built is quieter: **every guest and box already on disk stops being what
+the repository would build.** Renovate moves the OpenCore pin; a box built
+last week still boots, and simply no longer means what a build from this
+commit would mean. Nothing fails and nothing goes red.
+
+### What we chose
+
+**Every output is filed under the inputs that made it, so a moved pin is
+a rebuild, never a silent reuse.**
+
+1. Each data source keys its output in Packer's cache by the digest of a
+   **listing** of its inputs, one row per pin, patch, embedded asset and
+   setting (`internal/inputs`, `internal/store`; `docs/decisions/0006`).
+   `mavericks-firmware`'s listing names every boot-stack pin, each patch,
+   `config.plist` and the compiler; `mavericks-media`'s names the ESD pin,
+   the OpenSSH release and every update package's pin. A bumped OpenCore
+   pin therefore changes the firmware's listing, and the next build
+   rebuilds the firmware instead of reusing the one in the cache.
+2. The stored output keeps its listing as `inputs`, so **what an output
+   was made of is written down beside it**, row by row, while the cache
+   holds it. Diffing two outputs' `inputs` names the ingredient that
+   differs.
+3. Each listing carries a `recipe` row for the plugin's own code, bumped
+   whenever that code changes what an output holds, so a newer plugin does
+   not reuse an older plugin's output either.
+
+What this does not do: a finished box does not carry the listings, so
+"is this box still made of what the repository is made of?" has no answer
+from the box alone. Rebuilding answers it.
+
 ## The registry
 
 | Ingredient | Pinned in | Renovate | On bump |
@@ -20,6 +65,7 @@ the registry, so a plugin binary carries the pins it was built with.
 | **ocbuild `efibuild.sh`** (Tier 0, build script) | `assets/pins/sources.tsv` `ocbuild-efibuild` | ❌ **untrackable.** A `raw.githubusercontent.com` URL at a commit on `master`; there are no releases and no tags to track. Upstream's `build_oc.tool` fetches it off `master` and `eval`s it. **Compensates:** pinned commit and checksum, and `assets/firmware/patches/0001-*` makes `build_oc.tool` read the pinned copy rather than fetch one | Deliberate, alongside OpenCore |
 | **Lilu** (SMC injection, Tier 1 release binary) | `assets/pins/sources.tsv` `lilu-release` | ✅ `github-releases` on `acidanthera/Lilu`, with an `autoReplaceStringTemplate` — the version appears **twice** in one URL and a manager that rewrote only the captured occurrence would leave a half-updated URL that 404s. **Automerge off** | A new kext in every future guest. Re-pin the checksum; re-read `assets/firmware/README.md`, which records how each version's 10.9 (Darwin 13) support was checked |
 | **VirtualSMC** (Tier 1 release binary) | `assets/pins/sources.tsv` `virtualsmc-release` | ✅ as Lilu | as Lilu |
+| **`assets/firmware/config.plist`** (OpenCore's configuration) | ours, in-tree | n/a — we author it | Changes how every future guest boots. Its sha256 is a row of the firmware's input listing, so a change rebuilds the EFI image |
 | **Safari 9.1.3** and **iTunes 12.6.2** (`updates = "all"`; iTunes is one softwareupdate product made of five flat packages, so six pins) | `assets/pins/sources.tsv` `apple-safari-9.1.3`, `apple-itunes-12.6.2-*` | ❌ **no datasource, as above, and for the same reason.** Frozen 2016/2017 artifacts for an OS that stopped receiving them. Opt-in, because they are applications rather than the operating system | Never bumps. The five iTunes pins move together or not at all — they are one product, installed in the order `internal/fetch/updates.go` gives |
 | **`iBooksDelta-1.0.1`, `RemoteDesktopClient-3.8.4`** — offered to a live 10.9.5 guest by Apple, **not pinned, not installed, not findable** | **nowhere.** Deliberately, and this row is why | ❌ **untrackable AND unfetchable.** A 10.9.5 guest's own `softwareupdate -l` offered five items on 2026-09-21; three are in `index-10.9.merged-1.sucatalog` and these two are not — not in its package URLs, and not in any of its 333 distribution files, all of which were fetched and searched. There is no URL to pin, so there is nothing for a checksum to be the identity of. **Recorded here rather than omitted**, because "we could not find it" is a reason and "we did not mention it" is not. **Compensates:** nothing, and that is the honest answer; `docs/open-questions.md` Q1 says to ask the guest again rather than guess | Nothing. If one is ever located, it becomes an `assets/pins/sources.tsv` row like its three siblings |
 | **`utm-bundle`, `opencore-legacy-img`** (Tier 2 reference blobs) | `assets/pins/sources.tsv` | ❌ **deliberately untracked.** Evidence, not ingredients: the UTM bundle that booted 10.9 before this project built its own boot stack, and khronokernel's OpenCore image inside it. Nothing the plugin builds or boots reads either one. A blob nothing ships cannot go stale in anything | Never bumped. If one ever needed to be, that is a sign it stopped being Tier 2 |
