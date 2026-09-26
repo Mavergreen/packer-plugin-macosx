@@ -53,3 +53,12 @@ changes both `smbios-plist-set-*.plist`, both `debug-plist-set-*.plist`,
 the `EFI/OC/config.plist` in `efi-image/files.tar.gz`, and
 `goldenEFIImage` in `efi_test.go` (the fixture image's sha256): carry the
 same edit into each.
+
+## The data sources' recipe
+
+These goldens pin the output of code that shapes a data source's store
+entry, so `datasource/firmware` carries their digest in a `recipe` constant, a
+row in every listing. A change here without a recipe bump fails
+`TestRecipePinsTheGoldens` there: bump the recipe's number and set its
+goldens part to the digest the failure names, so that entries users
+built with the old code are rebuilt rather than reused.
