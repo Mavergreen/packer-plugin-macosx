@@ -110,3 +110,16 @@ columns 3 and 4 where the answer is interesting.
 | `ccache` | off | **MEASURED**, the seam only: builds through a `PATH` wrapper are identical to straight ones. ccache itself was never measured (not installed on any host). | `docs/decisions/0004`. | A cache hit compared against a cold compile. |
 
 ---
+
+## 9. Guest software and first boot
+
+| Knob | Value | Why, and on whose word | How we know | What would change it |
+|---|---|---|---|---|
+| passwordless `sudo` | on, for `user` | **REASONED**: the build's `shutdown_command` and the box's halt trigger both need it without a prompt; the account has no password. | **MEASURED**: `sudo -n true` succeeds, `verify.sh` checks it, and the shutdown took 5 s. | Nothing. |
+| `openssh` | `true`: the family's OpenSSH 10.5p1 replaces 10.9's 6.2p2 at first boot | **MEASURED**: stock 6.2p2 cannot read an Ed25519 `authorized_keys` line (added in 6.5, 2014) and offers only host keys a modern client refuses. | Every build: `OpenSSH_10.5p1, LibreSSL 4.3.2`, and an Ed25519 key authenticating with no client options. | Nothing. SSH is the guest's whole interface. |
+| hostname | `mavericks` | **REASONED**: Setup Assistant would derive `Maverickss-iMac` from a full name. | The guests report it. | Nothing. |
+| auto-login | on | **INHERITED from Setup Assistant**, which turned it on for a single-user system on a hand-driven install; an unattended boot must not stall at a login window. | The guests boot to a desktop. | Nothing, but note it grants a desktop to anyone who can boot the disk: one more reason it is never published. |
+| sleep, screensaver | off | **REASONED**: a guest that sleeps stops answering SSH; a screensaver spends the CPU. | Nothing measured. | Nothing. |
+| software-update schedule | off | **REASONED**: a guest that reaches out on its own is not reproducible, and 10.9 against 2026 servers may hang. | Nothing measured. | Nothing. |
+
+---

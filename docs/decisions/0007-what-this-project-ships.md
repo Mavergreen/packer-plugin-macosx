@@ -44,6 +44,14 @@ That is the reason to assert it rather than assume it: a 6 GB `.dmg`
 committed "just for a minute" is one `git add -A` away and looks like
 nothing in a large diff.
 
+## Decision 4 — the guest-side payload
+
+The first-boot payload (`internal/payload`, `assets/guest/`) is a real
+flat `.pkg` that Apple's own installer installs, with 10.9.5 as its
+floor. It is built on the host, with no Apple tool, and rides on the
+installer media. It is a family-shaped artifact in its own right, but it
+ships only inside media a user builds, never on its own.
+
 ## The sibling boundary
 
 `mavericks-vm-host` (publishing as `Mavergreen/vm-host`) ships

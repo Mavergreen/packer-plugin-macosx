@@ -15,6 +15,9 @@ func TestEmbeddedFilesAreTheFilesOnDisk(t *testing.T) {
 		"components/openssh/version",
 		"assets/firmware/config.plist",
 		"assets/pins/apple-packages.sha256",
+		"assets/guest/firstboot.sh",
+		"assets/guest/postinstall",
+		"assets/guest/com.mqg.firstboot.plist",
 		"assets/firmware/patches/0001-build_oc-source-pinned-efibuild.patch",
 		"assets/firmware/patches/0002-ovmf-pin-the-c-dialect.patch",
 		"assets/firmware/patches/0003-firmware-drop-werror.patch",
@@ -27,6 +30,10 @@ func TestEmbeddedFilesAreTheFilesOnDisk(t *testing.T) {
 		"assets/guest/autoinstall/minstallconfig.xml",
 		"assets/guest/autoinstall/OSInstall.collection",
 		"assets/privops/init.sh",
+		"assets/vagrant/vagrant.pub.rsa",
+		"assets/vagrant/vagrant.pub.ed25519",
+		"assets/vagrant/vagrant.key.rsa",
+		"assets/vagrant/vagrant.key.ed25519",
 	}
 	for _, p := range want {
 		emb, err := fs.ReadFile(Files, p)

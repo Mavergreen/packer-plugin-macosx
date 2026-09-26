@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Installed at /Library/LaunchDaemons/com.mqg.firstboot.plist by
+  ./postinstall, which the OS X Installer runs because mqg-firstboot.pkg is
+  listed in OSInstall.collection.
+
+  RunAtLoad with no KeepAlive: launchd starts it once at boot and does not
+  restart it when it exits. firstboot.sh then deletes THIS FILE as its last
+  act, so there is no second boot on which it could run. Two independent
+  guards, because a first-boot script that keeps running is a fault whose
+  symptom appears long after its cause.
+
+  Owned root:wheel, mode 0644. launchd refuses to load a job from a file it
+  does not trust ("Dubious ownership on file (skipping)"), and the installer
+  writes it as root. That is the whole reason the payload is a package
+  rather than something copied onto the volume afterwards.
+
+  (No pair of hyphens anywhere in this comment: XML forbids it, plistlib
+  rejects the file, and that has cost a build cycle once already.)
+-->
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.mqg.firstboot</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/bin/sh</string>
+		<string>/private/var/db/.mqg-firstboot/firstboot.sh</string>
+	</array>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<false/>
+	<key>StandardOutPath</key>
+	<string>/private/var/log/mqg-firstboot.out</string>
+	<key>StandardErrorPath</key>
+	<string>/private/var/log/mqg-firstboot.err</string>
+</dict>
+</plist>
