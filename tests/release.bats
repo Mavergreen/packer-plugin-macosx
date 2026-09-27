@@ -568,6 +568,94 @@ print('ok')
     [ "$status" -eq 0 ]
 }
 
+@test "INGREDIENTS.md exists and every declared deviation has a reason" {
+    [ -f "$REPO/INGREDIENTS.md" ]
+    # The family's own grammar: "- <check>[:<glob>]: <reason>". An entry
+    # with no reason fails deviations.sh; reproduce enough of the parse to
+    # catch that here, where shipyard is not checked out.
+    run bash -c "sed -n '/^## Conformance deviations/,/^## /p' '$REPO/INGREDIENTS.md' | grep -c '^- '"
+    [ "$output" -ge 1 ]
+    run bash -c "
+        sed -n '/^## Conformance deviations/,/^## /p' '$REPO/INGREDIENTS.md' \
+        | grep '^- ' \
+        | grep -cvE '^- [a-z][a-z0-9_-]*(:[^ :]+)?: +\\S'"
+    [ "$output" = "0" ]
+}
+
+@test "no INGREDIENTS.md row is marked untracked without saying untrackable" {
+    # The family gate's rule: a bare cross reads as an oversight rather
+    # than a decision.
+    #
+    # "no datasource" joined the list for Apple's update packages
+    # (docs/decisions/0011). They are not untrackABLE in the sense the
+    # other phrases mean -- the URL is stable and fetchable -- there is
+    # simply no feed to track and no newer version to find, because the
+    # product line was discontinued in 2016. That is a decision with a
+    # reason, which is all this gate is asking for.
+    run bash -c "grep '^|' '$REPO/INGREDIENTS.md' | grep '❌' | grep -cv 'untrack\|not ingredients\|unpinnable\|deliberately untracked\|no datasource'"
+    [ "$output" = "0" ]
+}
+
+@test "INGREDIENTS.md says what a release does about upstream release notes" {
+    run grep -c '^No upstream release notes: .' "$REPO/INGREDIENTS.md"
+    [ "$output" = "1" ]
+}
+
+# --- declared state, and a narrower version-scheme deviation -------------
+
+@test "INGREDIENTS.md declares a release state, with exactly one upstream entry" {
+    run bash -c "sed -n '/^## Declared state/,/^## /p' '$REPO/INGREDIENTS.md' \
+        | grep -c '^- upstream: '"
+    [ "$output" = "1" ]
+}
+
+@test "the declared upstream is the file build/version.sh reads" {
+    # release-state.sh exits 2 when these disagree, nightly, from its
+    # first run. Catch it here instead.
+    run bash -c "sed -n '/^## Declared state/,/^## /p' '$REPO/INGREDIENTS.md' \
+        | sed -n 's/^- upstream: //p'"
+    [ "$output" = "UPSTREAM_VERSION" ]
+    [ -f "$REPO/UPSTREAM_VERSION" ]
+}
+
+@test "no prose line in the declared-state section starts with a dash and a colon" {
+    # A dash-line containing a colon is parsed as an entry. If the text
+    # after the colon happens to name a real file, the digest silently
+    # gains an entry nobody intended -- the failure mode the whole design
+    # exists to prevent.
+    run bash -c "sed -n '/^## Declared state/,/^## /p' '$REPO/INGREDIENTS.md' \
+        | grep '^- ' | grep -cvE '^- (upstream|pins|openssh|opencore-config): '"
+    [ "$output" = "0" ]
+}
+
+@test "every declared-state path exists" {
+    while IFS= read -r p; do
+        [ -n "$p" ] || continue
+        [ -e "$REPO/$p" ] || { echo "declared but absent: $p"; false; }
+    done < <(sed -n '/^## Declared state/,/^## /p' "$REPO/INGREDIENTS.md" \
+             | sed -n 's/^- [a-z-]*: //p' | cut -d: -f1)
+}
+
+@test "every version-scheme deviation names the self-upstream shape, not a bare refusal" {
+    # Every one, not just ONE of the version-scheme lines with the others
+    # riding on "same product, same reason" -- which a reader hits
+    # without ever seeing the words that explain what the reason IS.
+    total=$(sed -n '/^## Conformance deviations/,/^## /p' "$REPO/INGREDIENTS.md" \
+        | grep -c '^- version-scheme')
+    named=$(sed -n '/^## Conformance deviations/,/^## /p' "$REPO/INGREDIENTS.md" \
+        | grep '^- version-scheme' | grep -ci 'self-upstream')
+    [ "$total" -ge 1 ]
+    [ "$named" = "$total" ]
+}
+
+@test "every declared deviation still carries a reason" {
+    run bash -c "
+        sed -n '/^## Conformance deviations/,/^## /p' '$REPO/INGREDIENTS.md' \
+        | grep '^- ' \
+        | grep -cvE '^- [a-z][a-z0-9_-]*(:[^ :]+)?: +\\S'"
+    [ "$output" = "0" ]
+}
+
 # --- the README as product documentation ----------------------------------
 #
 # The README's own promises, held here: what the plugin is, how to install

@@ -1,5 +1,21 @@
 name: ci
 
+# What this repository can check without a Mac, a KVM host or 6 GB of
+# Apple's media: the whole test suite and the three checks that guard the
+# ingredient registry. template/'s own TestValidate (go test ./template/...)
+# validates mavericks.pkr.hcl against real Packer, for every NIC choice; the
+# `go` job's plain `go test -race ./...` still skips it (no `packer` on
+# PATH there), but the `template` job below gives it both PACKER and
+# PACKER_PLUGIN_PATH, so `packer validate` genuinely runs here on every
+# push and PR.
+#
+# What it deliberately does NOT check: that an image builds. That needs
+# nested virtualization, an InstallESD this project must never publish, and
+# half an hour. Building an image is exercised on the host it is for.
+# `packer validate` never executes a data source (see template/mavericks.pkr.hcl's
+# own comment on ssh_private_key_file), so the `template` job fetches no
+# Apple bytes either -- and must never be changed so that it does.
+
 on:
   push:
     branches: [main]
@@ -36,6 +52,33 @@ jobs:
       # the shared preset automerges a pin that will fail at fetch time.
       - name: Every changed source pin still verifies
         run: ./bin/verify-changed-sources.sh "${{ github.event.pull_request.base.sha || github.event.before }}"
+
+  ingredient-pins:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check out shipyard (for the gate script)
+        uses: actions/checkout@v7
+        with:
+          repository: Mavergreen/shipyard
+          ref: v1
+          path: .shipyard
+
+      # Guards the ingredient-pin declaration against a glob that matches
+      # nothing. We declare no repackage-on-ingredient-bump caller -- we
+      # ship a recipe, so there is no artifact to repackage; INGREDIENTS.md
+      # says so with the reason -- and this check passes trivially for a
+      # repo with no caller. It is here so that the day a caller lands, the
+      # gate is already watching it.
+      - name: Ingredient pin declaration
+        run: sh .shipyard/scripts/check-ingredient-pins.sh
+
+      # An INGREDIENTS.md deviation with no reason is indistinguishable from
+      # drift, so the family's own parser rejects it. Both of ours come from
+      # decisions/0007.
+      - name: Declared deviations all carry a reason
+        run: sh .shipyard/scripts/deviations.sh .
 
   # the plugin itself: vet, tests, staticcheck, and builds for every host
   # it targets, not only the one CI runs on:

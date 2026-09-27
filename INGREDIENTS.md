@@ -13,6 +13,18 @@ The pin registry is `assets/pins/sources.tsv`: name, URL, sha256. The
 checksum is the identity; the URL is only how to get it. The plugin embeds
 the registry, so a plugin binary carries the pins it was built with.
 
+## Declared state
+
+A release is the realisation of a declared state, not the side effect of a
+push. These are the inputs whose movement should cut one. Deliberately a
+SUBSET of the full ingredient registry (`## The registry`, below): `bats`
+moving must never cut a release.
+
+- upstream: UPSTREAM_VERSION
+- pins: assets/pins/sources.tsv
+- openssh: components/openssh/version
+- opencore-config: assets/firmware/config.plist
+
 ## What a bump does here is not what it does in a sibling
 
 **This is the one place this repository genuinely differs from the family,
@@ -57,6 +69,24 @@ a rebuild, never a silent reuse.**
 What this does not do: a finished box does not carry the listings, so
 "is this box still made of what the repository is made of?" has no answer
 from the box alone. Rebuilding answers it.
+
+### `repackage-on-ingredient-bump`: no caller declared
+
+The family's caller exists to cut a release when an ingredient moves, so
+that what is published picks up the bump. What gets published here is the
+recipe, and a moved pin changes what that recipe builds: someone who
+installs last month's plugin builds last month's OpenCore from then on.
+That is exactly the staleness the caller exists to catch, so it applies in
+principle.
+
+**No caller is declared, because no release workflow exists.** Releases
+are cut by hand (`docs/decisions/0012`). `check-ingredient-pins.sh` runs in
+CI anyway (`.github/workflows/ci.yml`); it passes trivially for a
+repository declaring no caller, and is wired so that the day a caller
+lands, the gate is already watching it.
+
+The `sparkle-updater:` deviations in `## Conformance deviations` below are
+untouched by any of this: they were never an argument about publishing.
 
 ## The registry
 

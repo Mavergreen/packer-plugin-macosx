@@ -63,5 +63,11 @@ instead, because inline YAML cannot be tested and this repository tests it
   plugin's own globs (`cmd/packer-plugin-mavericks/*`, `datasource/*`,
   `internal/*`, `version/*`) so that a deviation on one cannot quietly
   license the rest.
+- **A release is a declared state, not an event.** `INGREDIENTS.md`'s
+  `## Declared state` lists the inputs whose movement should cut one:
+  `UPSTREAM_VERSION` as the single `upstream` entry, the pin registry,
+  the OpenSSH component pin and `config.plist`. It is deliberately a
+  subset of the full ingredient registry, so that a test tool moving never
+  cuts a release.
 - **Releases are cut by hand**, with `goreleaser release --clean` from a
   tag. No workflow publishes them, and there has been no release yet.
