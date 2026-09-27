@@ -129,3 +129,17 @@ Your project's Vagrantfile can still override any of them.
 
 `debug = true` turns on three OpenCore and kernel debug settings for
 diagnosing a boot (docs/configuration-register.md §7); off by default.
+
+## Where things are
+
+| Path | What |
+|---|---|
+| `cmd/packer-plugin-mavericks/` | The plugin binary's entry point |
+| `datasource/` | The three data sources |
+| `internal/` | The libraries the data sources are built from |
+| `template/` | The Packer template, attached to every release |
+| `assets/` | What the plugin embeds: pins, the OpenCore config and patches, the guest's first-boot payload, the privops microVM's scripts |
+| `docs/decisions/` | Why the plugin is built the way it is, one decision per file |
+| `docs/configuration-register.md` | Every setting, why it has its value, and what would change it |
+| `docs/host-profile.md`, `docs/test-hosts.md` | The hosts it has run on, and what each measured |
+| `INGREDIENTS.md` | Every pinned input: where it's tracked, what a bump does |

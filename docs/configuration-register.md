@@ -207,3 +207,37 @@ so none may be written as VERIFIED: a NIC showed that "boots with X" and
 "installs with X" are different claims in this guest.
 
 ---
+
+## 12. Where a wrong answer would cost most
+
+Ranked by cost times the likelihood of being wrong.
+
+### 1. The five inherited `Booter > Quirks`
+
+**None has been tested on 1.0.7 under KVM.** They decide whether
+`boot.efi` is loaded and relocated correctly, so a wrong one does not
+produce a warning; it produces a hang or a panic that looks like something
+else. They came from another bootloader major version, on another
+hypervisor and another CPU architecture. The way to change them, one at a
+time, is written down, and has never run because nothing has failed.
+
+### 2. `memory` and `cpus` for the *install*
+
+Both came from a bring-up brief, and neither has been tested at install
+time. A small CI runner has about 7 GB and 3 cores. The boots above
+suggest 4096/2 is not a floor, and one 20-minute install at less would
+say.
+
+### 3. The compiler above the ceiling
+
+The range is gcc 13–16. The failure mode above it is silent: a green build
+with different bytes, already measured for C23 and `OVMF_CODE.fd`. A wrong
+answer does not break a build; it breaks the claim that the boot stack is
+what `docs/decisions/0004` says it is.
+
+### Below the line
+
+`vmport=off`, `SecureBootModel`, `SetApfsTrimTimeout`, `EnableJumpstart`,
+`disk_size`, `vgamem_mb`, `usb-tablet`, `DisableWatchDog`: all untested or
+barely tested, all cheap to be wrong about. `run-efi-updater=No` is the
+odd one: untested, and the one whose failure could be interesting.
