@@ -45,3 +45,11 @@ the literal `-mavericks.` of the port shape. `mavericks-porthole` inlines
 the equivalent in its `release.yml`; here it is a committed script
 instead, because inline YAML cannot be tested and this repository tests it
 (`tests/version.bats`).
+
+## Consequences
+
+- **`INGREDIENTS.md`'s `version-scheme:` deviations** name the shape
+  taken, the self-upstream branch, and point here. They are scoped to the
+  plugin's own globs (`cmd/packer-plugin-mavericks/*`, `datasource/*`,
+  `internal/*`, `version/*`) so that a deviation on one cannot quietly
+  license the rest.

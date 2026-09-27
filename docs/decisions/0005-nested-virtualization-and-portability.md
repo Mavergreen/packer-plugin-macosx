@@ -32,11 +32,21 @@ places:
   Everything else is portable Go.
 - **Host tools run through `proc.Runner`**, one seam for every external
   program, faked in tests.
+- **The plugin cross-builds** for linux, darwin and netbsd on amd64 and
+  arm64, and CI builds them, so nothing Linux-only creeps into the shared
+  code.
 - **The firmware needs a host C toolchain.** A prebuilt, checksummed
   firmware would remove that requirement; `docs/decisions/0004` says why
   the firmware's bytes depend on the toolchain.
 
 ### What another host changes
+
+`docs/host-profile.md` §4 is the ledger of host-specific assumptions, each
+a hypothesis until a second host has tried to falsify it. Some findings
+are about the guest and hold anywhere: 10.9 cannot drive QEMU's XHCI
+controller, so the machine has EHCI with UHCI companions (G13, confirmed
+under three QEMUs). Others are about KVM: `MacPro5,1` SMBIOS panics under
+KVM on every host and boots under TCG (`docs/decisions/0010`).
 
 **NetBSD with NVMM** is a different accelerator, not KVM (`-accel nvmm`).
 What would carry over: the data sources' downloads, the firmware build,

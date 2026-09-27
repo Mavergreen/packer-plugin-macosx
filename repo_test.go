@@ -2,7 +2,9 @@ package vmguest_test
 
 import (
 	"encoding/json"
+	"io/fs"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -105,5 +107,55 @@ func TestRenovateTracksTheOpenSSHPin(t *testing.T) {
 	n := tag[strings.LastIndex(tag, ".")+1:]
 	if !strings.Contains(vt, `-mavericks\.(?<`) || sm[len(sm)-1] != n {
 		t.Errorf("versioningTemplate %q has no group of its own capturing the N of -mavericks.N (%q)", vt, n)
+	}
+}
+
+// "Nothing anywhere asks softwareupdate to list, download or install". The embedded guest
+// scripts are internal/payload's TestNoGuestScriptAsksSoftwareupdateForAnything;
+// this is everything else that runs -- the host-side scripts, the
+// workflows, and the Go program, which must never exec softwareupdate at
+// all.
+func TestNothingInTheTreeRunsSoftwareupdate(t *testing.T) {
+	verb := regexp.MustCompile(`softwareupdate\s+(-[ildar]|--install|--list|--download|--all|--recommended)`)
+	literal := regexp.MustCompile(`"softwareupdate"`)
+	checked := 0
+	for _, root := range []string{"assets", "bin", "build", "cmd", "components", "internal", "lib", ".github", "."} {
+		err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if d.IsDir() {
+				if root == "." && path != "." {
+					return fs.SkipDir // "." is the top level's own files only
+				}
+				if d.Name() == "testdata" {
+					return fs.SkipDir
+				}
+				return nil
+			}
+			ext := filepath.Ext(path)
+			goSrc := ext == ".go" && !strings.HasSuffix(path, "_test.go")
+			script := ext == ".sh" || ext == ".yml" || ext == ".py" || d.Name() == "postinstall"
+			if !goSrc && !script {
+				return nil
+			}
+			checked++
+			b, err := os.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			for i, line := range strings.Split(string(b), "\n") {
+				if verb.MatchString(line) || (goSrc && literal.MatchString(line)) {
+					t.Errorf("%s:%d runs softwareupdate: %s", path, i+1, line)
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if checked < 50 {
+		t.Fatalf("checked %d files; the walk is not finding the tree", checked)
 	}
 }

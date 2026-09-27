@@ -7,6 +7,20 @@ Intel hardware and KVM**; AMD hosts are a known-harder case for macOS
 guests, and the build refuses one by name (`docs/host-profile.md` G2,
 `docs/decisions/0005`).
 
+## What it is
+
+Three Packer data sources fetch and verify Apple's installer, build OVMF
+and OpenCore from pinned source, and assemble unattended installer media:
+
+| Data source | Does |
+|---|---|
+| `mavericks-installesd` | Downloads and verifies Apple's `InstallESD.dmg` |
+| `mavericks-firmware` | Builds OVMF and the OpenCore EFI image from pinned source |
+| `mavericks-media` | Builds unattended installer media carrying a first-boot payload |
+
+Each caches its own output by the content of its inputs, so a rerun with
+unchanged inputs costs seconds, not the whole build again.
+
 ## Never publish the image or the box
 
 **The built image and the box both contain Apple's operating system.**

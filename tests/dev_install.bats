@@ -1,0 +1,37 @@
+#!/usr/bin/env bats
+#
+# bin/dev-install.sh builds the plugin and hands it to `packer plugins
+# install`. It is exercised here with a stub `packer` that only records
+# its arguments -- the real binary is exercised by a real build, with the
+# real thing on the real PACKER_PLUGIN_PATH (docs/test-hosts.md).
+
+setup() {
+    REPO="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
+    STUB_DIR="$BATS_TEST_TMPDIR/stub"
+    mkdir -p "$STUB_DIR"
+    RECORD="$BATS_TEST_TMPDIR/packer-args"
+    cat > "$STUB_DIR/packer" <<STUB
+#!/usr/bin/env bash
+printf '%s\n' "\$*" > "$RECORD"
+STUB
+    chmod +x "$STUB_DIR/packer"
+}
+
+teardown() {
+    rm -f "$REPO/packer-plugin-mavericks"
+}
+
+@test "dev-install builds the plugin and installs it with the stub packer" {
+    run env PACKER="$STUB_DIR/packer" "$REPO/bin/dev-install.sh"
+    [ "$status" -eq 0 ]
+    [ -x "$REPO/packer-plugin-mavericks" ]
+    [ -f "$RECORD" ]
+    run cat "$RECORD"
+    [ "$output" = "plugins install --path ./packer-plugin-mavericks github.com/mavergreen/mavericks" ]
+}
+
+@test "dev-install uses PACKER, not a hardcoded name" {
+    run env PACKER="$STUB_DIR/nonexistent-packer" "$REPO/bin/dev-install.sh"
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"nonexistent-packer"* ]]
+}

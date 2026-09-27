@@ -37,6 +37,9 @@ jobs:
       - name: Every changed source pin still verifies
         run: ./bin/verify-changed-sources.sh "${{ github.event.pull_request.base.sha || github.event.before }}"
 
+  # the plugin itself: vet, tests, staticcheck, and builds for every host
+  # it targets, not only the one CI runs on:
+  # a darwin or netbsd build break is found here, not by a user.
   go:
     runs-on: ubuntu-latest
     steps:
@@ -55,6 +58,18 @@ jobs:
       - name: Staticcheck
         run: go run honnef.co/go/tools/cmd/staticcheck@2026.2.1 ./...
 
+      # docs/decisions/0005: the plugin cross-builds for every host it
+      # names, not only the one it is measured on.
+      - name: Cross-build
+        run: |
+          set -eu
+          for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 netbsd/amd64 netbsd/arm64; do
+              GOOS=${target%/*} GOARCH=${target#*/} go build -o /dev/null ./cmd/packer-plugin-mavericks
+          done
+
+  # The go job cross-builds for darwin; this one RUNS the tests there.
+  # flock semantics, sun_path's 104-byte limit and signal delivery are
+  # host behaviour a cross-build cannot check.
   go-macos:
     runs-on: macos-latest
     steps:
