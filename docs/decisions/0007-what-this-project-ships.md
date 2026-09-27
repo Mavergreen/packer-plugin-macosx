@@ -16,6 +16,25 @@ compatible `.pkg`, on a modern runner, with no 10.9 build machine
 anywhere. This project inverts that: what it makes *runs* Mavericks, as a
 guest, on a Linux host.
 
+## Decision 1 — what a release carries
+
+A release of `packer-plugin-mavericks` carries exactly three kinds of
+file, and nothing else:
+
+1. **The plugin binaries**, `packer-plugin-mavericks_v<ver>_x5.0_<os>_<arch>`,
+   zipped, for linux, darwin and netbsd on amd64 and arm64: the names
+   `packer init` expects for the plugin source
+   `github.com/mavergreen/mavericks`.
+2. **The template**, `template/` as one zip: `mavericks.pkr.hcl`,
+   `variables.pkr.hcl`, the box's Vagrantfile template, the two guest-side
+   scripts the build runs, and Vagrant's insecure private key. A build
+   needs this directory and the plugin, not a checkout.
+3. **A `SHA256SUMS`** over both. `packer init` checks the plugin binary
+   against it.
+
+`.goreleaser.yml` produces all three. The version scheme is
+`docs/decisions/0012`.
+
 ## Decision 2 — never publish Apple's bytes
 
 **The built disk and the box both contain Apple's operating system. They
@@ -44,6 +63,25 @@ That is the reason to assert it rather than assume it: a 6 GB `.dmg`
 committed "just for a minute" is one `git add -A` away and looks like
 nothing in a large diff.
 
+## Decision 3 — what the box is
+
+The template's `vagrant` post-processor makes a **libvirt-format box**
+that `vagrant-qemu` runs. It carries:
+
+- the installed disk;
+- the OVMF code and variable-store images and the OpenCore EFI image, the
+  firmware's own outputs, beside the disk;
+- a Vagrantfile rendered from `template/box.Vagrantfile.pkrtpl` with the
+  build's own `user`, `cpu`, `memory`, `cpus`, `nic` and `accelerator`, so
+  the box logs in and boots the way its image was installed. It wires up
+  the firmware and the machine, and adds a `before :halt` trigger that
+  shuts the guest down from inside, because 10.9 ignores the ACPI power
+  button (`docs/test-hosts.md` has the measurements).
+
+The box authorizes Vagrant's own well-known insecure key by default, which
+Vagrant replaces at the first `vagrant up`. That key is public by design
+(`assets/vagrant/README.md`).
+
 ## Decision 4 — the guest-side payload
 
 The first-boot payload (`internal/payload`, `assets/guest/`) is a real
@@ -60,3 +98,32 @@ QEMU can use hardware acceleration *on* Mavericks. That is Mavericks as a
 **host**; this repository is Mavericks as a **guest**. They are orthogonal
 and stay separate repositories. Nothing in the guest stack depends on the
 host project.
+
+## What the family gives, and where this project deviates
+
+The family's ingredient apparatus fits well: `INGREDIENTS.md` with
+file-based pins, a Renovate manager for each pin, and the tier scheme of
+`docs/decisions/0004` under the family's names. A bump there changes what
+the recipe builds, which is exactly what the apparatus is for.
+
+Declared deviations, transcribed into `INGREDIENTS.md` scoped to filename
+globs:
+
+| Deviation | Reason |
+|---|---|
+| Version scheme is not `<upstream>-mavericks.N` | This product is its own upstream: it takes the family's self-upstream `YYYYMMDD.N` shape (`docs/decisions/0012`). |
+| No Sparkle updater for the plugin | Sparkle is a macOS framework, and the plugin runs on the build host, whose primary OS is Linux. Packer installs and updates plugins itself (`packer init`). The guest payload, a 10.9 `.pkg`, is a different product and takes the family's shape unchanged. |
+
+## A future want, recorded and deliberately not designed for
+
+A later version of this product will also want to build Snow Leopard and
+Tiger guests (noted 2026-09-22 by the user). **Nothing here adds a 10.6 or
+10.4 branch until there is a 10.6 or 10.4 guest to test it against.** A
+parameter with one value is honest; a parameter with one value and a
+second branch nobody has run is a claim nobody can support.
+
+What will help, at no cost now: tables with evidence per row (the SMBIOS
+table, the compiler range), and a template whose machine is variables.
+What will not transfer: both releases predate the EFI and SMBIOS
+assumptions this boot stack is built on. That is a different bring-up, not
+a parameter.

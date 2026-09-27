@@ -43,6 +43,9 @@ Under that directory:
 - **Speed.** A firmware build writes thousands of files; at 18 ms each over
   NFS against 0.06 ms locally, the tree's location decides the build's
   time.
+- **Space.** MEASURED 2026-09-27 on the primary host: after one complete
+  build the cache held 14 GB. It belongs where the space is, not beside the
+  code.
 - **The repository stays a repository.** It holds code, docs and pins,
   never Apple's bytes (`bin/no-apple-bytes.sh`, `docs/decisions/0007`).
 

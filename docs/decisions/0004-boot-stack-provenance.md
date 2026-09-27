@@ -255,3 +255,7 @@ ccache, is what would move the default.
 for each before it builds and names whatever is missing. These are
 build-time tools, not shipped components: nothing in the boot path above
 is a distribution package.
+
+Build times, MEASURED on the primary host: OpenCore 3m23s cold and 20 s
+warm, OVMF 1m22s cold and 11 s warm (2026-09-17); OpenCore 3m33s inside a
+complete `packer build` (2026-09-27).

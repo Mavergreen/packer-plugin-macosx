@@ -32,6 +32,9 @@ places:
   Everything else is portable Go.
 - **Host tools run through `proc.Runner`**, one seam for every external
   program, faked in tests.
+- **The accelerator is a template variable** (`accelerator`: kvm, tcg,
+  hvf, whpx, xen, hax, nvmm, none). Only `kvm` has built a guest. Another
+  is a value plus a measurement, not a redesign.
 - **The plugin cross-builds** for linux, darwin and netbsd on amd64 and
   arm64, and CI builds them, so nothing Linux-only creeps into the shared
   code.
@@ -67,6 +70,11 @@ guest a hypervisor host.
 - **QEMU can expose it.** No base CPU model advertises `vmx` — `Penryn`,
   `Nehalem`, `Westmere` and `Haswell-noTSX` all report `vmx=False` — so it
   must be asked for, and `-cpu Penryn,+vmx` is accepted under KVM.
+- **`Nehalem` boots the guest.** MEASURED 2026-09-21 on the primary host:
+  an installed guest booted with `-cpu Nehalem`, answered SSH in 40 s and
+  reported `Intel Core i7 9xx (Nehalem Class Core i7)` with `POPCNT`. No
+  guest has been *installed* on it (`docs/decisions/0009`).
+
 ### What is not
 
 **Penryn (2008) predates EPT**, which arrived with Nehalem, and VMware's

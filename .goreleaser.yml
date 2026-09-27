@@ -1,0 +1,138 @@
+# Builds and packages releases of the Mavericks Packer plugin.
+#
+# Run BY HAND (`goreleaser release --clean`, from a signed `vYYYYMMDD.N.0`
+# tag) -- there is no CI workflow that runs this. A release is published
+# by a person, not by automation (docs/decisions/0012).
+#
+# NAMING. `packer init` resolves a GitHub-source plugin by fetching, for
+# each OS/arch, a zip named
+#   packer-plugin-mavericks_v<version>_x5.0_<os>_<arch>.zip
+# containing exactly one file, the binary, named the same way minus
+# ".zip" (hashicorp/packer@v1.16.1's packer/plugin-getter/plugins.go,
+# comment above the Getter interface's Get method, and
+# ExpectedFileName/expectedBinaryFilename in the same file). "x5.0" is
+# the plugin protocol's own version, MAJOR.MINOR joined with a literal
+# "x" -- github.com/hashicorp/packer-plugin-sdk@v0.6.11's
+# plugin/server.go:57, `APIVersionMajor, APIVersionMinor = "5", "0"`,
+# assembled the same way at plugin/set.go:70 (`"x" + APIVersionMajor +
+# "." + APIVersionMinor`) -- not something this file computes; it is
+# hardcoded to match that constant, and moves only if a future SDK bump
+# changes it.
+#
+# VERSIONING. UPSTREAM_VERSION/build/version.sh track this product's own
+# two-axis scheme, YYYYMMDD.N (docs/decisions/0012-version-scheme.md) --
+# but `version.NewPluginVersion` (the SDK) and `packer init`'s own
+# resolution want a full three-component semver. The release tag bridges
+# the two: `v<UPSTREAM_VERSION>.<N>.0`, e.g. `v20260927.1.0` for the
+# family's `20260927.1` -- a literal, unmoving ".0" patch component
+# (INGREDIENTS.md's version-scheme deviation carries the same note).
+# goreleaser's {{ .Version }} is that tag with the leading "v" stripped,
+# which is what -ldflags below writes into version.Version.
+#
+# SIGNING. `packer init`'s GitHub-source path verifies a downloaded zip
+# against the release's own SHA256SUMS file, fetched over plain HTTP as
+# "<prefix>_SHA256SUMS" (github.com/hashicorp/packer-plugin-sdk's sibling
+# repo hashicorp/packer@v1.16.1, packer/plugin-getter/github/getter.go:
+# 249-250) -- there is no ".sig" fetched anywhere on that path, and
+# packer/plugin-getter/plugins.go's InstallLatest (ParseChecksumFileEntries,
+# ~line 632, through the checksum.Checksummer.Checksum call past line 830)
+# never verifies a GPG signature, only the sha256 in that plain file.
+# Official releases on releases.hashicorp.com are signed separately, but
+# that is HashiCorp's own registry, not the github.com/mavergreen/mavericks
+# source this plugin ships under -- so no `signs:` step here. REASONED,
+# not run: goreleaser is not installed in this sandbox, so this file has
+# not been through `goreleaser check`.
+#
+# RELEASING. From a clean checkout of the tag:
+#   goreleaser release --clean
+#   ./bin/no-apple-bytes.sh "$(git describe --exact-match)"
+#   ./bin/no-apple-bytes.sh --archives dist
+# and upload nothing unless both checks pass. The second reads the zips
+# goreleaser actually wrote -- a check of the tree alone cannot see a
+# git-ignored build output that an archive glob picked up. goreleaser's
+# open-source edition has no after-hook to run it from, so it is a step
+# here rather than a hook.
+version: 2
+
+# Explicit rather than left to goreleaser v2's own fallback (the `project`
+# pipe reads `go list -m`'s last path segment when unset, which already
+# resolves to this from go.mod's module path) -- named here so every
+# `{{ .ProjectName }}` template below doesn't depend on a reader knowing
+# that fallback exists.
+project_name: packer-plugin-mavericks
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: packer-plugin-mavericks
+    main: ./cmd/packer-plugin-mavericks
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X github.com/Mavergreen/packer-plugin-mavericks/version.Version={{ .Version }}
+      - -X github.com/Mavergreen/packer-plugin-mavericks/version.VersionPrerelease=
+    goos:
+      - linux
+      - darwin
+      - netbsd
+    goarch:
+      - amd64
+      - arm64
+    binary: "{{ .ProjectName }}_v{{ .Version }}_x5.0_{{ .Os }}_{{ .Arch }}"
+
+archives:
+  - id: packer-plugin-mavericks
+    ids: [packer-plugin-mavericks]
+    format: zip
+    name_template: "{{ .Binary }}"
+    # The zip packer init fetches carries the one binary file and nothing
+    # else -- no default LICENSE/README/CHANGELOG additions, which a
+    # "this zip is expected to contain a <name> file" reader (see the
+    # NAMING comment above) has no reason to tolerate.
+    files:
+      - none*
+
+  # The template, attached to every release (docs/decisions/0007) -- its own
+  # archive, never inside a per-OS/arch plugin zip, which packer init's
+  # own comment says holds exactly one file.
+  #
+  # EVERY FILE BY NAME, NEVER A GLOB. goreleaser's file globs include a
+  # matched directory's whole contents, and a checkout that has run the
+  # README's own `packer build` holds template/output/*.box and
+  # template/output-mavericks/*.qcow2 -- Apple's OS, git-ignored, so the
+  # dirty-tree check never sees them. `template/*` would zip exactly
+  # those, and template/*_test.go (meaningless outside this repository)
+  # besides. tests/release.bats holds this list to `git ls-files
+  # template/` minus the tests, and template's TestValidate validates a
+  # copy of exactly these files, so a file the template needs cannot be
+  # left off.
+  - id: template
+    meta: true
+    format: zip
+    name_template: "packer-plugin-mavericks_v{{ .Version }}_template"
+    files:
+      - src: template/box.Vagrantfile.pkrtpl
+      - src: template/firstboot-wait.sh
+      - src: template/mavericks.pkr.hcl
+      - src: template/vagrant.key.rsa
+      - src: template/variables.pkr.hcl
+      - src: template/verify.sh
+
+checksum:
+  name_template: "{{ .ProjectName }}_v{{ .Version }}_SHA256SUMS"
+  algorithm: sha256
+
+release:
+  # This project never publishes a release for you (see the header
+  # comment); goreleaser still builds and checksums locally with this
+  # set, and `goreleaser release --clean` needs a token to go further.
+  disable: true
+
+changelog:
+  # decisions/0007 / INGREDIENTS.md's "No upstream release notes" section:
+  # a dozen upstreams, no single changelog to generate one from here.
+  disable: true

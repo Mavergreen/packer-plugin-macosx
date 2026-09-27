@@ -43,6 +43,18 @@ talking to 2026 servers may hang.
 
 ---
 
+## Q2. Is `usb-net` the right NIC, or only the one inherited? ANSWERED 2026-09-21
+
+**`e1000-82545em`, the default.** `usb-net` came from the UTM bundle, and
+the guest had been on a 10 Mbit link: `e1000-82545em` is 140x faster to
+receive and 18x to send, and a NIC is build-time state in 10.9.
+`docs/decisions/0008`, and `docs/host-profile.md` G24 for the part that is
+QEMU's.
+
+The inherited claim that held: stock 10.9 has no virtio networking.
+
+---
+
 ## Q3. Can an arm64 host build the same firmware?
 
 **Unknown, and untestable on an x86_64 host.** EDK II compiles x86_64
@@ -71,6 +83,18 @@ and a differing `.dll` is A or B.
 It matters because a CI runner on Apple Silicon is arm64: the answer
 decides whether such a runner can build the firmware, or must be handed
 one built elsewhere.
+
+---
+
+## Q4. What does the install need, at the least?
+
+The template installs with `memory = 4096` and `cpus = 2`, both INHERITED
+from a bring-up brief and never tested at install time. MEASURED
+2026-09-21: an *installed* guest boots and answers SSH with 1024 MB, and
+with one CPU (`docs/configuration-register.md` §11). Neither is an
+install, and the installer unpacks into a ramdisk, so the install is where
+memory is used. **One install at less would settle each**, and the answer
+decides how small a runner can build a guest.
 
 ---
 

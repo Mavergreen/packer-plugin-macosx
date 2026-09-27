@@ -388,6 +388,160 @@ make_repo() {
     [ "$status" -eq 0 ]
 }
 
+# --- what a release archive carries ------------------------------------------
+#
+# The tree checks above cannot see goreleaser's dist/. A glob in
+# .goreleaser.yml would zip template/'s git-ignored build outputs -- a
+# 7.7 GB box of Apple's OS among them -- into the template archive. These
+# hold the archive's file list to the tracked template, and fire archive
+# mode (bin/no-apple-bytes.sh --archives) at planted violations.
+
+# The template archive's files, as .goreleaser.yml names them, one per line.
+template_srcs() {
+    sed -n -e 's/^ *- src: \(template\/.*\)$/\1/p' "$REPO/.goreleaser.yml"
+}
+
+# A zip at $1 holding the named files ($2...), read from the repository
+# root with their repository paths, as goreleaser lays the template out.
+zip_from_repo() {
+    local out=$1
+    shift
+    (cd "$REPO" && zip -q "$out" "$@")
+}
+
+teardown() {
+    # Only what a test planted, and the output/ directory only if that
+    # test made it: a real build's output is never this suite's to touch.
+    if [ -n "${PLANTED_BOX:-}" ]; then
+        rm -f "$PLANTED_BOX"
+    fi
+    if [ -n "${PLANTED_DIR:-}" ]; then
+        rmdir "$PLANTED_DIR" 2>/dev/null || true
+    fi
+}
+
+@test "the template archive names each tracked template file, no glob and no test" {
+    run template_srcs
+    [ "$status" -eq 0 ]
+    [ -n "$output" ]
+    [[ "$output" != *'*'* ]]
+    [[ "$output" != *'?'* ]]
+    [[ "$output" != *'['* ]]
+    [[ "$output" != *_test.go* ]]
+    want=$(git -C "$REPO" ls-files template/ | grep -v '_test\.go$' | sort)
+    got=$(template_srcs | sort)
+    [ "$got" = "$want" ]
+}
+
+@test "a build's box left in template/output/ would not ship in the template archive" {
+    if [ ! -d "$REPO/template/output" ]; then
+        mkdir "$REPO/template/output"
+        PLANTED_DIR="$REPO/template/output"
+    fi
+    PLANTED_BOX="$REPO/template/output/planted-by-release-bats-$$.box"
+    printf 'not really a box\n' > "$PLANTED_BOX"
+
+    # Every name the archive takes is a regular file, never a directory
+    # whose contents goreleaser would sweep in with it.
+    while IFS= read -r src; do
+        [ -f "$REPO/$src" ]
+        [ ! -d "$REPO/$src" ]
+        [ "$REPO/$src" != "$PLANTED_BOX" ]
+    done < <(template_srcs)
+
+    # What goreleaser would zip from those names, checked the way a
+    # release is: it passes, and the planted box is not in it.
+    mkdir -p "$BATS_TEST_TMPDIR/dist"
+    # shellcheck disable=SC2046  # one word per listed file
+    zip_from_repo "$BATS_TEST_TMPDIR/dist/t_template.zip" $(template_srcs)
+    run unzip -Z1 "$BATS_TEST_TMPDIR/dist/t_template.zip"
+    [ "$status" -eq 0 ]
+    [[ "$output" != *planted-by-release-bats* ]]
+    [[ "$output" == *template/mavericks.pkr.hcl* ]]
+    run "$REPO/bin/no-apple-bytes.sh" --archives "$BATS_TEST_TMPDIR/dist"
+    [ "$status" -eq 0 ]
+
+    # And had it been swept in, as template/* once did, archive mode says so.
+    rm -f "$BATS_TEST_TMPDIR/dist/t_template.zip"
+    # shellcheck disable=SC2046
+    zip_from_repo "$BATS_TEST_TMPDIR/dist/t_template.zip" $(template_srcs) \
+        "template/output/${PLANTED_BOX##*/}"
+    run "$REPO/bin/no-apple-bytes.sh" --archives "$BATS_TEST_TMPDIR/dist"
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"planted-by-release-bats-$$.box"* ]]
+}
+
+@test "archive mode passes the plugin binary, a Mach-O over the size limit, and its zip" {
+    d="$BATS_TEST_TMPDIR/dist"
+    mkdir -p "$d/bin"
+    bin=packer-plugin-mavericks_v20260927.1.0_x5.0_darwin_arm64
+    { printf '\317\372\355\376'; head -c 3000000 /dev/zero; } > "$d/bin/$bin"
+    (cd "$d/bin" && zip -q "../$bin.zip" "$bin")
+    printf 'deadbeef  %s.zip\n' "$bin" > "$d/packer-plugin-mavericks_v20260927.1.0_SHA256SUMS"
+    run "$REPO/bin/no-apple-bytes.sh" --archives "$d"
+    [ "$status" -eq 0 ]
+}
+
+@test "archive mode catches a Mach-O that is not the plugin binary, inside a zip" {
+    d="$BATS_TEST_TMPDIR/dist"
+    mkdir -p "$d/t/template"
+    printf '\317\372\355\376 tiny' > "$d/t/template/helper"
+    (cd "$d/t" && zip -q ../t_template.zip template/helper)
+    rm -rf "$d/t"
+    run "$REPO/bin/no-apple-bytes.sh" --archives "$d"
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"template/helper"* ]]
+    [[ "$output" == *"Mach-O"* ]]
+}
+
+@test "archive mode catches a large member by size, whatever its name and bytes" {
+    d="$BATS_TEST_TMPDIR/dist"
+    mkdir -p "$d/t/template"
+    head -c 3000000 /dev/zero > "$d/t/template/notes.txt"
+    (cd "$d/t" && zip -q ../t_template.zip template/notes.txt)
+    rm -rf "$d/t"
+    run "$REPO/bin/no-apple-bytes.sh" --archives "$d"
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"template/notes.txt"* ]]
+    [[ "$output" == *"3000000 bytes"* ]]
+}
+
+@test "archive mode catches a loose disk image beside the zips" {
+    d="$BATS_TEST_TMPDIR/dist"
+    mkdir -p "$d"
+    printf 'x' > "$d/mavericks.qcow2"
+    run "$REPO/bin/no-apple-bytes.sh" --archives "$d"
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"mavericks.qcow2"* ]]
+}
+
+@test "archive mode: a zip it cannot read, an empty directory or a missing one is a failure" {
+    d="$BATS_TEST_TMPDIR/dist"
+    mkdir -p "$d"
+    printf 'not a zip\n' > "$d/broken.zip"
+    run "$REPO/bin/no-apple-bytes.sh" --archives "$d"
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"broken.zip"* ]]
+
+    mkdir -p "$BATS_TEST_TMPDIR/empty"
+    run "$REPO/bin/no-apple-bytes.sh" --archives "$BATS_TEST_TMPDIR/empty"
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"cannot verify"* ]]
+
+    run "$REPO/bin/no-apple-bytes.sh" --archives "$BATS_TEST_TMPDIR/absent"
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"cannot verify"* ]]
+}
+
+@test "a build's own outputs are git-ignored, the manifest among them" {
+    run git -C "$REPO" check-ignore -q template/packer-manifest.json
+    [ "$status" -eq 0 ]
+    run git -C "$REPO" check-ignore -q template/output/x.box
+    [ "$status" -eq 0 ]
+    run git -C "$REPO" check-ignore -q template/output-mavericks/mavericks.qcow2
+    [ "$status" -eq 0 ]
+}
+
 # --- the family wiring -----------------------------------------------------
 
 @test "build/msc.sh is shipyard's template and carries the do-not-edit note" {
@@ -415,6 +569,11 @@ print('ok')
 }
 
 # --- the README as product documentation ----------------------------------
+#
+# The README's own promises, held here: what the plugin is, how to install
+# it before its first release (template/'s required_plugins cannot name
+# the mavericks plugin until there is a release for `packer init` to
+# resolve), the quickstart, and the never-publish rule above the fold.
 
 @test "the README leads with what the tool does, not with the host it was built on" {
     run head -12 "$REPO/README.md"
@@ -423,10 +582,76 @@ print('ok')
     [[ "$output" != *"Linux Mint"* ]]
 }
 
+@test "the README installs the plugin from a checkout before its first release" {
+    # No release yet means no tag `packer init` can resolve for the
+    # mavericks source (MEASURED 2026-09-27, offline: see the comment in
+    # template/mavericks.pkr.hcl); bin/dev-install.sh is the step that
+    # stands in for it, and it must appear before `packer init` is ever
+    # run -- line numbers
+    # compared directly rather than a multiline regex, which bash's `=~`
+    # does not reliably anchor across newlines.
+    dev_install_line=$(grep -n 'bin/dev-install\.sh' "$REPO/README.md" | head -1 | cut -d: -f1)
+    packer_init_line=$(grep -n 'packer init \.' "$REPO/README.md" | head -1 | cut -d: -f1)
+    [ -n "$dev_install_line" ]
+    [ -n "$packer_init_line" ]
+    [ "$dev_install_line" -lt "$packer_init_line" ]
+}
+
+@test "the README shows the quickstart commands, honestly" {
+    # The forms measured on 2026-09-27 (docs/test-hosts.md): a rebuild needs
+    # -force (the qemu builder refuses an existing output-mavericks/),
+    # the box is added from template/'s own output/, and a plain
+    # `vagrant up` would pick whatever default provider is installed.
+    run head -100 "$REPO/README.md"
+    [[ "$output" == *"packer init"* ]]
+    [[ "$output" == *"packer build"* ]]
+    [[ "$output" == *"packer build -force"* ]]
+    [[ "$output" == *"vagrant box add --name mavericks output/mavericks-10.9.5-libvirt.box"* ]]
+    [[ "$output" == *"vagrant up --provider qemu"* ]]
+    [[ "$output" == *"vagrant ssh"* ]]
+}
+
+@test "the README names the host prerequisites before the first build command" {
+    prereq_line=$(grep -n 'Host prerequisites' "$REPO/README.md" | head -1 | cut -d: -f1)
+    build_line=$(grep -n 'packer build' "$REPO/README.md" | head -1 | cut -d: -f1)
+    [ -n "$prereq_line" ]
+    [ -n "$build_line" ]
+    [ "$prereq_line" -lt "$build_line" ]
+    run grep -A6 'Host prerequisites' "$REPO/README.md"
+    for tool in /dev/kvm qemu-system-x86_64 dmg2img mkfs.hfsplus gcc vagrant-qemu; do
+        [[ "$output" == *"$tool"* ]]
+    done
+}
+
+@test "the README never teaches a plain vagrant up" {
+    # Every `vagrant up` it shows says --provider qemu; the prose that
+    # explains why is not a command.
+    [ "$(grep -cE '^ *(MAVERICKS_DISPLAY=[a-z]+ )?vagrant up' "$REPO/README.md")" -ge 2 ]
+    run grep -nE '^ *(MAVERICKS_DISPLAY=[a-z]+ )?vagrant up *$' "$REPO/README.md"
+    [ "$status" -ne 0 ]
+}
+
+@test "the README says the box's Vagrantfile carries the build's settings" {
+    # template/box.Vagrantfile.pkrtpl is rendered with the build's own
+    # variables; a README that still says it is fixed at the defaults
+    # would send someone to override what already matches.
+    run grep -c "carries the build's own settings" "$REPO/README.md"
+    [ "$output" -ge 1 ]
+    run grep -c "fixed at the template's defaults" "$REPO/README.md" || true
+    [ "$output" = "0" ]
+}
+
 @test "the README states the never-publish rule above the fold" {
     run head -90 "$REPO/README.md"
     [[ "$output" == *"Never publish either one"* ]]
     [[ "$output" == *"Apple"* ]]
+}
+
+@test "the README documents the headful escape hatch" {
+    # template/box.Vagrantfile.pkrtpl reads MAVERICKS_DISPLAY to trade the
+    # headless default for a real window; undocumented, nobody finds it.
+    run grep -c 'MAVERICKS_DISPLAY' "$REPO/README.md"
+    [ "$output" -ge 1 ]
 }
 
 @test "the README carries no unread-by-a-human marker" {

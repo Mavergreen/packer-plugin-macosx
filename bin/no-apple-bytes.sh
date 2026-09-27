@@ -37,6 +37,35 @@
 # failed) is flagged rather than silently skipped -- see check 0 below.
 #
 #   usage: bin/no-apple-bytes.sh [ref]     (default: the working tree's index)
+#          bin/no-apple-bytes.sh --archives DIR
+#
+# ARCHIVE MODE (--archives DIR)
+#
+# The tree a release is built from is only half of it. What gets uploaded
+# is goreleaser's dist/, which git never sees: a glob in .goreleaser.yml,
+# in a checkout that has run `packer build`, would zip the git-ignored
+# template/output/*.box -- Apple's whole OS -- into the template archive,
+# and no check of the tree could ever notice. (So .goreleaser.yml names
+# the template's files one by one.)
+# Archive mode reads what is actually about to be uploaded: every file
+# under DIR, and every member of every .zip there. It flags
+#
+#   - a name that is a disk image, a VM disk or box, an installer package
+#     or a kext (*.box, *.qcow2, *.img, *.dmg, *.iso, *.vmdk, *.pkg, ...);
+#   - anything larger than MQG_MAX_TRACKED_BYTES (the same limit as the
+#     tree's, 2 MiB by default);
+#   - the magic numbers section 2 below knows.
+#
+# The one exemption is the plugin binary itself, named
+# packer-plugin-mavericks_v<version>_x5.0_<os>_<arch> (.goreleaser.yml's
+# NAMING comment): it is tens of MB, a Mach-O for darwin, and the one large
+# thing a release exists to carry. A .zip is judged by its members, not
+# its own size. An archive this cannot list, or a DIR with nothing in it,
+# is a failure: cannot-verify is never a pass, here as in the tree modes.
+#
+# Run it on dist/ after `goreleaser release --clean` and before uploading
+# anything (.goreleaser.yml's RELEASING comment); goreleaser's open-source
+# edition has no after-hook to run it from.
 set -euo pipefail
 
 MQG_REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -47,6 +76,146 @@ MQG_REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 MQG_LOG_PREFIX=no-apple-bytes
 
 MAX_TRACKED_BYTES=${MQG_MAX_TRACKED_BYTES:-2097152}
+
+# --- archive mode -----------------------------------------------------------
+
+arch_flags=0
+arch_flag() {  # $1 = what, $2... = why
+    printf 'APPLE-DERIVED  %s\n' "$1" >&2
+    shift
+    printf '               %s\n' "$*" >&2
+    arch_flags=$((arch_flags + 1))
+}
+
+# The plugin binary's own name, and nothing else: no directory part, no
+# extension (its .zip is not it).
+arch_is_plugin_binary() {  # $1 = a path
+    case $1 in
+        */*|*.zip) return 1 ;;
+        packer-plugin-mavericks_v*_x5.0_*_*) return 0 ;;
+    esac
+    return 1
+}
+
+arch_check_name() {  # $1 = what to call it, $2 = the path to judge
+    case $2 in
+        *.box|*.qcow2|*.img|*.IMG|*.dmg|*.DMG|*.iso|*.cdr|*.raw|*.vmdk|*.vdi|*.sparseimage|*.sparsebundle|*.sparsebundle/*)
+            arch_flag "$1" "a disk image, VM disk or box -- a build's output holds Apple's OS and never ships" ;;
+        *.pkg|*.mpkg)
+            arch_flag "$1" "an installer package" ;;
+        *.kext|*.kext/*)
+            arch_flag "$1" "a kernel extension bundle" ;;
+        *InstallESD*|*BaseSystem*|*OSInstall.mpkg*)
+            arch_flag "$1" "named after part of Apple's installer" ;;
+    esac
+}
+
+arch_check_size() {  # $1 = what, $2 = its base name, $3 = its size in bytes
+    arch_is_plugin_binary "$2" && return 0
+    if [ "$3" -gt "$MAX_TRACKED_BYTES" ]; then
+        arch_flag "$1" "$3 bytes -- nothing but the plugin binary is that large" \
+            "in a release; if it is genuinely ours, raise MQG_MAX_TRACKED_BYTES with a reason"
+    fi
+}
+
+arch_check_bytes() {  # $1 = what, $2 = its base name, $3 = a local copy
+    local head4
+    head4=$(set +o pipefail; head -c 4 "$3" | od -An -tx1 | tr -d ' \n')
+    case $head4 in
+        78617221) arch_flag "$1" "starts with xar! -- a flat installer package" ;;
+        482b0004|48580005) arch_flag "$1" "starts with an HFS+ volume signature" ;;
+        6b6f6c79) arch_flag "$1" "starts with koly -- a UDIF disk image trailer" ;;
+        cafebabe|cffaedfe|cefaedfe)
+            arch_is_plugin_binary "$2" \
+                || arch_flag "$1" "is a Mach-O binary, and not the plugin's own" ;;
+    esac
+}
+
+# One .zip: every member's name and listed size, then -- only when
+# nothing is already wrong, so a 7 GB box is never unpacked to be looked
+# at -- every member's first bytes, from a scratch extraction.
+arch_check_zip() {  # $1 = the zip, $2 = scratch dir
+    local zip=$1 scratch=$2 listing want n=0 bad=0 before size tm name
+    if ! listing=$(unzip -Zs "$zip" 2>&1); then
+        arch_flag "$zip" "unzip cannot list it -- cannot verify is a failure, never a pass"
+        return
+    fi
+    want=$(printf '%s\n' "$listing" | sed -n -e 's/.*number of entries: *\([0-9][0-9]*\).*/\1/p')
+    while IFS= read -r line; do
+        # unzip -Zs: permissions, version, OS, SIZE, type, method, date,
+        # TIME, then the name -- which may hold spaces, so it is last.
+        read -r _ _ _ size _ _ _ tm name <<EOF
+$line
+EOF
+        case $size in ''|*[!0-9]*) continue ;; esac
+        case $tm in [0-9][0-9]:[0-9][0-9]) : ;; *) continue ;; esac
+        [ -n "$name" ] || continue
+        n=$((n + 1))
+        before=$arch_flags
+        arch_check_name "$zip: $name" "$name"
+        case $name in
+            */) : ;;
+            *) arch_check_size "$zip: $name" "$name" "$size" ;;
+        esac
+        [ "$arch_flags" -eq "$before" ] || bad=1
+    done <<EOF
+$listing
+EOF
+    if [ -z "$want" ] || [ "$n" -ne "$want" ]; then
+        arch_flag "$zip" "listed ${n} member(s) of ${want:-an unknown number} -- cannot verify is a failure, never a pass"
+        return
+    fi
+    [ "$bad" -eq 0 ] || return 0
+
+    local out="$scratch/unzipped"
+    rm -rf "$out"
+    mkdir -p "$out"
+    if ! unzip -qq -o "$zip" -d "$out" >/dev/null 2>&1; then
+        arch_flag "$zip" "unzip cannot extract it -- cannot verify is a failure, never a pass"
+        return
+    fi
+    while IFS= read -r -d '' f; do
+        arch_check_bytes "$zip: ${f#"$out"/}" "${f#"$out"/}" "$f"
+    done < <(find "$out" -type f -print0)
+    rm -rf "$out"
+}
+
+check_archives() {  # $1 = the directory a release is uploaded from
+    local dir=$1 scratch base nfiles=0
+    [ -d "$dir" ] || die "no such directory: $dir -- cannot verify a release" \
+        "that is not there, which is a failure, never a pass"
+    require_cmd unzip od head find
+    scratch=$(mktemp -d) || die "cannot create a scratch directory"
+    # shellcheck disable=SC2064  # expand $scratch now, while it is set
+    trap "rm -rf '$scratch'" EXIT
+    while IFS= read -r -d '' f; do
+        nfiles=$((nfiles + 1))
+        base=${f##*/}
+        arch_check_name "$f" "$base"
+        case $f in
+            *.zip) arch_check_zip "$f" "$scratch" ;;
+            *)
+                arch_check_size "$f" "$base" "$(wc -c < "$f" | tr -d ' ')"
+                arch_check_bytes "$f" "$base" "$f"
+                ;;
+        esac
+    done < <(find "$dir" -type f -print0)
+    [ "$nfiles" -gt 0 ] \
+        || die "no files under $dir -- cannot verify, which is a failure, never a pass"
+    if [ "$arch_flags" -eq 0 ]; then
+        log "no Apple-derived bytes in $dir ($nfiles files)"
+    else
+        die "$dir carries Apple-derived bytes, or cannot be verified: upload" \
+            "none of it. A release carries the plugin binaries, the template" \
+            "and their checksums only -- see README.md's ground rules."
+    fi
+    exit 0
+}
+
+if [ "${1:-}" = "--archives" ]; then
+    [ $# -eq 2 ] || die "usage: bin/no-apple-bytes.sh --archives DIR"
+    check_archives "$2"
+fi
 
 cd "$MQG_REPO_ROOT"
 

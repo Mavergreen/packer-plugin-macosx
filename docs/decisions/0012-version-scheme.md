@@ -38,6 +38,16 @@ counts every release cut on it, ingredient-only ones included:
 `20260922.4` can mean "the fourth release of the `20260922` line", cut in
 November because Renovate moved the OpenCore pin.
 
+## Packer wants semver, and the tag reconciles the two
+
+`packer init` resolves a plugin by a three-component semver tag, and the
+SDK's `version.NewPluginVersion` wants the same. So a release tag is
+**`v<UPSTREAM_VERSION>.<N>.0`**: `v20260927.1.0` for the family's
+`20260927.1`, with a literal `.0` patch component that never moves.
+`.goreleaser.yml` reads `{{ .Version }}` off that tag, without the `v`, and
+writes it into `version.Version` with `-ldflags`. A development build says
+`0.0.0-dev`.
+
 ## Why not the family's shared scripts
 
 The family's `scripts/version.sh` and `resolve-version.sh` both hardcode
@@ -53,3 +63,5 @@ instead, because inline YAML cannot be tested and this repository tests it
   plugin's own globs (`cmd/packer-plugin-mavericks/*`, `datasource/*`,
   `internal/*`, `version/*`) so that a deviation on one cannot quietly
   license the rest.
+- **Releases are cut by hand**, with `goreleaser release --clean` from a
+  tag. No workflow publishes them, and there has been no release yet.

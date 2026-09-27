@@ -42,6 +42,13 @@ output holds, and the tests hold it to the digest of that code's expected
 outputs, so a newer plugin never reuses an output an older one built
 differently.
 
+A listing that matches reuses the stored output in seconds; one that does
+not builds a new one beside it. The stored directory keeps its listing as
+`inputs`, so what an output was made of can be read back while the cache
+holds it. MEASURED 2026-09-27 on the primary host: a second `packer build`
+with nothing changed found all three data sources' outputs "already built"
+within its first second.
+
 ## What is deterministic, and what is not
 
 | Output | Deterministic? | Why |

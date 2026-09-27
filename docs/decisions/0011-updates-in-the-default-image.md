@@ -75,6 +75,9 @@ evidence either. What moves, MEASURED 2026-09-22 from the running guest:
 - **the build number**: the update carries `SystemVersion.plist`, so
   `sw_vers -buildVersion` goes **13F34 → 13F1911**.
 
+`template/verify.sh` fails the build, before a box is made, if a guest
+built with `security` or `all` lacks that receipt.
+
 ### 3. The media's free space is not spare room
 
 The media partition is Apple's reference size rounded up to whole MiB plus
@@ -85,6 +88,30 @@ failed as a short write inside a 7 GB image. So `mavericks-media` enlarges
 the partition by the packages' size plus 64 MiB for their catalog entries;
 with nothing to carry it adds nothing, and the partition stays 6759 MiB
 (7,087,325,184 bytes). The `security` media came out with 548.0 MiB free.
+
+## Built and measured
+
+MEASURED 2026-09-22 on the primary host, both values end to end, both
+guests installed unattended, booted with no installer media attached and
+answered SSH:
+
+| | `none` | `security` | difference |
+|---|---|---|---|
+| media build | 108 s | 119 s | **+11 s** |
+| install, until SSH | 819 s | 963 s | **+144 s** (+18%) |
+| of which, the update itself | — | 92 s (from the guest's own log) | |
+| media partition | 7,087,325,184 B | 7,525,629,952 B | +418 MiB |
+| free on the media | 483.8 MiB | 548.0 MiB | |
+| files on the media | 39,415 | 39,416 | +1 |
+| finished qcow2 | 8,960,737,280 B | 10,685,710,336 B | **+1.61 GiB** |
+
+Plus a one-time 354 MB download. The 144 s is more than the 92 s the
+`installer` run took; the rest is the first boot replacing 6,891 files and
+rebuilding the kernel and dyld caches.
+
+MEASURED 2026-09-27 with the plugin and template: a default (`security`)
+build's guest reports `13F1911` and the 2016-004 receipt
+(`docs/test-hosts.md`).
 
 ## What `none` keeps
 

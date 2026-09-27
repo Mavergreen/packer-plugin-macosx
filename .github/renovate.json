@@ -42,6 +42,29 @@
       "autoReplaceStringTemplate": "https://github.com/acidanthera/VirtualSMC/releases/download/{{{newValue}}}/VirtualSMC-{{{newValue}}}-RELEASE.zip",
       "depNameTemplate": "acidanthera/VirtualSMC",
       "datasourceTemplate": "github-releases"
+    },
+    {
+      "customType": "regex",
+      "description": "The Packer that CI's `template` job sets up (hashicorp/setup-packer) and validates template/mavericks.pkr.hcl against. A CI tool, not an ingredient: nothing a user builds depends on it. That job is its own test, so a bump that breaks the template shows up red on the PR.",
+      "managerFilePatterns": ["/^\\.github/workflows/ci\\.yml$/"],
+      "matchStrings": [
+        "hashicorp/setup-packer@[^\\s]+\\s*\\n\\s*with:\\s*\\n\\s*version:\\s*\"(?<currentValue>[0-9][^\"]*)\""
+      ],
+      "depNameTemplate": "hashicorp/packer",
+      "datasourceTemplate": "github-releases",
+      "extractVersionTemplate": "^v(?<version>.*)$"
+    },
+    {
+      "customType": "regex",
+      "description": "The template's own required_plugins (template/mavericks.pkr.hcl): each entry's `source` names a GitHub owner and a plugin's short name -- Packer's own resolution (hashicorp/packer's plugin-getter/github, GithubPlugin.RealRelativePath) maps github.com/hashicorp/qemu to the actual release repo hashicorp/packer-plugin-qemu by inserting the packer-plugin- prefix, stripping it first if the source already spelled it out. `version` is the constraint packer init resolves against, in the same `~> N` shape Terraform providers use. As with the boot-stack pins above, Renovate opening one of these does not mean it merges unattended -- the `template` CI job is the test that a bump did not break something.",
+      "managerFilePatterns": ["/^template/.*\\.pkr\\.hcl$/"],
+      "matchStrings": [
+        "source\\s*=\\s*\"github\\.com/(?<owner>[^/\"]+)/(?:packer-plugin-)?(?<name>[^\"]+)\"\\s*\\n\\s*version\\s*=\\s*\"(?<currentValue>[^\"]+)\""
+      ],
+      "depNameTemplate": "{{{owner}}}/packer-plugin-{{{name}}}",
+      "datasourceTemplate": "github-releases",
+      "versioningTemplate": "hashicorp",
+      "extractVersionTemplate": "^v(?<version>.*)$"
     }
   ],
   "packageRules": [

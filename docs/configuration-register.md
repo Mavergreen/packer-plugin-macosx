@@ -44,6 +44,29 @@ IDE; `usb-net`; `SystemProductName` `MacPro5,1`; `FakeSMC-32`, `Lilu` and
 
 ---
 
+## 1. Host state
+
+| Knob | Value | Why, and on whose word | How we know | What would change it |
+|---|---|---|---|---|
+| `kvm.ignore_msrs` | **not needed; do not set it** | **INHERITED and misread.** Guides cite "Somlo and OSX-KVM". Read on 2026-09-21 (`docs/prior-art.md`), Somlo's claim was about MSR `0x199` on **Yosemite 10.10**, on **kernels older than 4.7**, fixed upstream in Linux 4.7 (2016-07-24). OSX-KVM has never given a reason. | **MEASURED**: guests installed and answered SSH on `squirrel-zapper` and `ap-juicer`, both with `ignore_msrs=N` (G21). On the primary host, where it was set, `report_ignored_msrs=Y` logged every MSR it swallowed for a macOS guest across 2.5 days: `0xe7 0xe8 0x300 0x3f8 0x3f9 0x3fa 0x60d 0x61d 0x621 0x690 0x6b0`, all power and energy telemetry, read after the system is up. `0x199` never appears; nothing in the machine-check range does. | A named MSR in `dmesg` with `report_ignored_msrs=1`, and a guest that misbehaves without it. |
+| `kvm.report_ignored_msrs` | `Y`, the kernel's default | Nobody chose it. | It is the only reason the row above could be answered with data. | Leave it on. Upstream KVM (Bonzini, 2024-12-19) calls `ignore_msrs=1` with `report_ignored_msrs=0` "not a supported configuration". |
+
+---
+
+## 2. Accelerator, machine and CPU
+
+| Knob | Value | Why, and on whose word | How we know | What would change it |
+|---|---|---|---|---|
+| `accelerator` | `kvm` | **REASONED**: the host is x86 with VT-x (G2). The variable also accepts tcg, hvf, whpx, xen, hax, nvmm and none. | Every build. | Only `kvm` has built a guest. Another value is a value plus a measurement (`docs/decisions/0005`). |
+| machine | `q35,vmport=off` | **INHERITED** from the UTM bundle, and from Somlo's page (`-machine q35` from his 2014-05-16 revision). | **MEASURED, sideways**: `ide-hd` on q35's `ide.N` presents to the guest as SATA/AHCI (G16, confirmed on three QEMUs); on `pc` it would be legacy IDE. | `pc` has never been booted. It would need a full install. Low cost of being wrong. |
+| `vmport=off` | off | **INHERITED** from the bundle. | **Nothing.** Never tested with it on. | It hides VMware's backdoor I/O port, and 10.9 has no VMware tools, so REASONED: no difference either way. One boot would tell; nobody has run it. |
+| `cpu` | `Penryn,+ssse3,+sse4.1,+sse4.2` | **INHERITED** from the bundle; **since MEASURED** (`docs/decisions/0009`). Not from Somlo, whose `Penryn` is dated on his page "as of Sierra" (10.12). | **MEASURED**: complete installs on two hosts and two QEMUs. `+ssse3` and `+sse4.1` are redundant with `Penryn`; `+sse4.2` is not; **10.9 does not need SSE4.1**: `Conroe` installed on `ap-juicer` on 2026-09-21. | A second `Conroe` install on another host. See G3, G25. |
+| `cpus` | `2` | **INHERITED** from the original bring-up brief. Its stated reason, "Somlo reports 10.9's first boot after install fails without SMP", has no source: the archaeology found no such claim on his page in any revision (he runs `-smp 4,cores=2`, from 2017, for Sierra). | **MEASURED 2026-09-21**: an installed guest boots at **1** CPU, answers SSH (in 40 s against 20 s at 2) and computes the right SHA-256 over 64 MiB. | **A full install at `cpus = 1`**, about 20 minutes. The first-boot-after-install claim is untested either way. |
+| `memory` | `4096` | **INHERITED** from the bring-up brief; corroborated by Kostarelas's observation (8 GB assigned, ~2.9 GB used at idle), not a measurement. | **MEASURED 2026-09-21**: an installed guest boots and passes the same checks at **2048** and at **1024** MB (SSH at 40 s). | **An install at less.** The installer unpacks into a ramdisk, so the install is where memory is used. The cheapest untested row with the most leverage for a small CI runner. |
+| `disk_size` | `60G` | **REASONED**: a round number that holds a ~9–11 GB install with room. | Every guest is 8.9–10.7 GB of qcow2, and qcow2 is sparse, so the headroom costs nothing on disk. | A filesystem without sparse files, or a budget where the virtual size matters. 10.9's installer choosing its target does not depend on the size beyond the 16 GiB floor in `autoinstall.sh`. |
+
+---
+
 ## 3. SMBIOS
 
 | Knob | Value | Why, and on whose word | How we know | What would change it |
@@ -65,6 +88,30 @@ IDE; `usb-net`; `SystemProductName` `MacPro5,1`; `FakeSMC-32`, `Lilu` and
 | `Kernel > Add` | `Lilu.kext` 1.7.2, then `VirtualSMC.kext` 1.3.7 | **MEASURED** (order: `VirtualSMC` declares a dependency on Lilu ≥ 1.2.0) and **REASONED** (necessity). | **MEASURED**: `DSMOS has arrived` with OpenCore-injected kexts and **no `isa-applesmc`**, so this project needs no OSK string. | The kexts dropping 10.9. Checked by reading their `Info.plist`s: both declare `com.apple.kpi.* = 10.0.0` (Darwin 10); 10.9 is Darwin 13. |
 | `FakeSMC-32.kext` | **not shipped**, though the bundle had it | **MEASURED 2026-09-17**: the guest boots without it. | The boot that works. | Nothing. |
 | `Kernel > Block` | **empty** | **MEASURED, negatively**: the bundle's disabled block for `AppleTyMCEDriver`, enabled, changed nothing. | The panic that did not go away. | The community's remedy for that symptom is a personality-override kext, not a bundle-id block (`docs/decisions/0010`). Untried. |
+
+---
+
+## 5. Devices
+
+| Knob | Value | Why, and on whose word | How we know | What would change it |
+|---|---|---|---|---|
+| USB controllers | `ich9-usb-ehci1` and three `ich9-usb-uhci` companions at `0x1d.*` | **MEASURED 2026-09-17**: 10.9's `AppleUSBXHCI` cannot drive QEMU's XHCI at all; keyboard and mouse were both dead on it, while OVMF drove it fine. All three companions are needed: EHCI speaks only high speed. | **CONFIRMED** under QEMU 8.2.2, 11.0.2 and 11.1.1 (G13). Portable. | A QEMU whose XHCI 10.9 can drive. |
+| input | `usb-kbd` and `usb-mouse` on the EHCI bus | **MEASURED**: both work on EHCI. `usb-tablet` was once believed not to work on 10.9 (INHERITED from a 2016 kext README); MEASURED 2026-09-17, `usb-tablet` on EHCI tracks the host pointer on a guest that never had the kext, because the kext's own author fixed QEMU in 2017 (`docs/prior-art.md`). | The installs that work. | `usb-tablet` would give absolute pointing without a grab. It has not been tried in the template; one boot would tell. |
+| `nic` | `e1000-82545em` | **MEASURED 2026-09-21** (`docs/decisions/0008`): 174 MB/s down and 23.3 MB/s up, against `usb-net`'s 1.24 and 1.27 at `10baseT`. **140x.** `virtio-net-pci` gets no interface in stock 10.9. | The guest names the link speed itself, so the ranking should be portable; the ceiling is this host's slirp. | A QEMU that cannot offer the device. **A NIC is build-time state**: a guest boots only with the NIC it was installed with. |
+| network | user-mode (slirp), `hostfwd` on `127.0.0.1` only | **REASONED**: no root and no host bridge. | Every SSH-answering guest. "DNS needs pointing at 1.1.1.1" (INHERITED) was **refuted**: DNS worked untouched. `ping` from the guest fails on the primary host because `net.ipv4.ping_group_range` is empty there, a host artifact, not a guest fault. | Throughput: a bridge or `passt` would raise the ceiling, and needs privileges this project does not ask for. |
+| display | `VGA,vgamem_mb=64` | **INHERITED** from the bundle's shape, and Kostarelas's observation that ~3 MB of VRAM made video a slideshow. | **MEASURED, partly**: with 64 MB, 10.9 still offered one resolution; the resolution is a firmware setting (§7), not a VRAM one. Nothing has measured what `vgamem_mb` buys. | Nobody has tried the default 16. |
+| `headless` | `true` | **REASONED**: an unattended build needs no window. | Every build. The box boots headless too, and `MAVERICKS_DISPLAY` asks it for a window. | A reason to watch the install. |
+
+---
+
+## 6. Storage attachment
+
+| Knob | Value | Why, and on whose word | How we know | What would change it |
+|---|---|---|---|---|
+| target disk | `ide-hd` on `ide.0` | **INHERITED** shape, **MEASURED** effect. | The guest reports connection bus SATA (G16), on three QEMUs. | A machine type other than q35. |
+| OpenCore image | `usb-storage` on the EHCI bus, `snapshot=on` | **MEASURED**: stock OVMF never enumerated it over USB; our OVMF does, as the reference firmware did. | Every boot. | Nothing. |
+| installer media | `ide-hd` on `ide.1`, **not** `ide-cd`, `snapshot=on` | **MEASURED**: the media is a GPT disk image; attached as a CD, OpenCore classified it ATAPI, which the `ScanPolicy` (§7) correctly excludes: "OCB: System has no boot entries". | The installs. | Nothing. |
+| `snapshot=on` | on the OpenCore image and the installer media | **MEASURED 2026-09-18**: without it every boot rewrote the OpenCore image (four boots, four checksums), and macOS wrote a `.Spotlight-V100` store onto the media. | `docs/decisions/0006`; G20. | Nothing. An input a run modifies is not an input. |
 
 ---
 
@@ -115,11 +162,48 @@ columns 3 and 4 where the answer is interesting.
 
 | Knob | Value | Why, and on whose word | How we know | What would change it |
 |---|---|---|---|---|
+| `user` | `vagrant`, uid 501, gid 20, in `admin` | **REASONED**: Vagrant's convention for a base box's account, in the shape Setup Assistant produced on a hand-driven 10.9.5 install (uid 501, gid 20, group 80). | **MEASURED 2026-09-27**: `verify.sh` found `vagrant` in admin. | A user who wants another name; the variable takes any name sudo can read a `sudoers.d` file for (no dot). |
 | passwordless `sudo` | on, for `user` | **REASONED**: the build's `shutdown_command` and the box's halt trigger both need it without a prompt; the account has no password. | **MEASURED**: `sudo -n true` succeeds, `verify.sh` checks it, and the shutdown took 5 s. | Nothing. |
+| `authorized_key` | Vagrant's insecure RSA key, which Vagrant replaces at the first `vagrant up` | **REASONED**: the box's consumer is Vagrant. RSA, not Ed25519, because a guest built without the family's OpenSSH runs 6.2p2, which cannot parse an Ed25519 line. | **MEASURED 2026-09-27**: `vagrant up` replaced it. | A user's own key: `authorized_key` and `ssh_private_key_file`. |
 | `openssh` | `true`: the family's OpenSSH 10.5p1 replaces 10.9's 6.2p2 at first boot | **MEASURED**: stock 6.2p2 cannot read an Ed25519 `authorized_keys` line (added in 6.5, 2014) and offers only host keys a modern client refuses. | Every build: `OpenSSH_10.5p1, LibreSSL 4.3.2`, and an Ed25519 key authenticating with no client options. | Nothing. SSH is the guest's whole interface. |
+| `updates` | `security` | `docs/decisions/0011`. | **MEASURED 2026-09-27**: build 13F1911 and the 2016-004 receipt. | See the ADR. |
 | hostname | `mavericks` | **REASONED**: Setup Assistant would derive `Maverickss-iMac` from a full name. | The guests report it. | Nothing. |
 | auto-login | on | **INHERITED from Setup Assistant**, which turned it on for a single-user system on a hand-driven install; an unattended boot must not stall at a login window. | The guests boot to a desktop. | Nothing, but note it grants a desktop to anyone who can boot the disk: one more reason it is never published. |
 | sleep, screensaver | off | **REASONED**: a guest that sleeps stops answering SSH; a screensaver spends the CPU. | Nothing measured. | Nothing. |
 | software-update schedule | off | **REASONED**: a guest that reaches out on its own is not reproducible, and 10.9 against 2026 servers may hang. | Nothing measured. | Nothing. |
+
+---
+
+## 10. The build and the box
+
+| Knob | Value | Why, and on whose word | How we know | What would change it |
+|---|---|---|---|---|
+| no `boot_command` | none at all | **MEASURED**: Apple's installer reads `rc.cdrom.local`, `minstallconfig.xml` and `OSInstall.collection` off the media, so the install runs with nobody typing. | Every build. | Nothing. |
+| `install_timeout` | `1h` | **REASONED** from the measured installs: 13–23 minutes on the primary host, 22 on a 2-core Broadwell, 28 on a 2006 Xeon. | Every build has answered SSH inside it. | A slower host, or TCG. |
+| first-boot wait | up to 300 s for the payload's `.done` marker, never fatal | **MEASURED**: SSH answering is not the first boot being finished; with a modern sshd answering at once, the window before the payload finishes shrank to about a second. | `verify.sh` then fails the build if the marker is missing. | Nothing. |
+| `verify.sh` | fails the build unless 10.9.5, first boot finished, passwordless sudo, and the 2016-004 receipt when updates were asked for | **REASONED**: a broken guest must not become a box. | **MEASURED 2026-09-27**: "verify: ok". | Nothing. |
+| `shutdown_command` | `sudo shutdown -h now` | **MEASURED**: 10.9 ignores the ACPI power button, so a shutdown has to come from inside. | The guest powered off in 5 s. | Nothing. |
+| box halt trigger | `before :halt`: the guest's own `sudo /sbin/shutdown -h now` | **MEASURED 2026-09-27**: without it, `vagrant halt` pressed the power button, waited 60 s and quit QEMU under a running guest (no `SHUTDOWN_TIME` logged). With it: 3–23 s, clean. | `docs/test-hosts.md`. | A vagrant-qemu that shuts a guest down itself. |
+
+---
+
+## 11. One-variable boots
+
+MEASURED 2026-09-21 on the primary host (i7-8700B, QEMU 8.2.2, KVM), each
+a qcow2 overlay on an installed guest (e1000, OpenSSH 10.5p1), booted with
+no installer media, asked over SSH what it is, and discarded:
+
+| Changed | SSH | Guest reported | 64 MiB SHA-256 |
+|---|---|---|---|
+| 1 CPU | 40 s | `hw=iMac14,2 1cpu 4294967296` | correct |
+| 2048 MB | 40 s | `hw=iMac14,2 2cpu 2147483648` | correct |
+| 1024 MB | 40 s | `hw=iMac14,2 2cpu 1073741824` | correct |
+| `-cpu Nehalem` | 40 s | `Intel Core i7 9xx (Nehalem Class Core i7)`, `POPCNT` gained | correct |
+
+All four also reported `diskbus=SATA`, 10.9.5 (13F34), the first-boot
+daemon removed and `OpenSSH_10.5p1`. The correct hash is
+`3b6a07d0…c421351`, so each guest did real work. **None is an install**,
+so none may be written as VERIFIED: a NIC showed that "boots with X" and
+"installs with X" are different claims in this guest.
 
 ---

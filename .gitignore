@@ -17,3 +17,21 @@ __pycache__/
 
 # `bin/dev-install.sh` builds the plugin binary here.
 /packer-plugin-mavericks
+
+# `goreleaser release`/`goreleaser build`'s own output.
+/dist/
+
+# `packer build`/the vagrant post-processor's own output, from
+# template/mavericks.pkr.hcl's output_directory and vagrant
+# post-processor `output`.
+/template/output/
+/template/output-mavericks/
+*.box
+# The manifest post-processor's record of a build.
+/template/packer-manifest.json
+# The same outputs when packer runs from the repository root
+# (`packer build template/`): output_directory, the box and the manifest
+# are relative to the working directory, not the template.
+/output/
+/output-mavericks/
+/packer-manifest.json
