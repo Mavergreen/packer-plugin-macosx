@@ -55,7 +55,8 @@
 # THE SSH KEY. template/ ships as its own release artifact (a build only
 # needs this directory, not a checkout of the whole repository), so
 # nothing here may point outside it. ssh_private_key_file therefore names
-# template/vagrant.key.rsa -- a copy of assets/vagrant/vagrant.key.rsa,
+# template/vagrant-standard-insecure-first-boot-only.key.rsa -- a copy of
+# assets/vagrant/vagrant.key.rsa,
 # held byte-identical to it by this package's own
 # TestVagrantKeyMatchesEmbedded -- rather than reaching out via path.root
 # to assets/ (a template/ shipped alone has no such path to reach), and
@@ -88,15 +89,11 @@
 # sentence rather than a path.
 
 packer {
-  # No mavericks entry yet: `packer init` resolves one by listing the
-  # source's tagged GitHub releases, and before the first release there
-  # are none (MEASURED 2026-09-27, offline: ">= 0.0.0" sends init to
-  # GitHub; ">= 0.0.0-dev" is an "Unsupported prerelease"). Until then
-  # bin/dev-install.sh installs the plugin from a checkout, where
-  # `packer validate` and `packer build` find it. At the first release,
-  # add mavericks = { source = "github.com/mavergreen/mavericks",
-  # version = "..." } and drop this comment.
   required_plugins {
+    mavericks = {
+      source  = "github.com/mavergreen/mavericks"
+      version = ">= 0.0.0"
+    }
     qemu = {
       source  = "github.com/hashicorp/qemu"
       version = "~> 1"
@@ -152,7 +149,7 @@ locals {
     ? var.ssh_private_key_file
     : (
       var.authorized_key == ""
-      ? "${path.root}/vagrant.key.rsa"
+      ? "${path.root}/vagrant-standard-insecure-first-boot-only.key.rsa"
       : file("authorized_key is set: ssh_private_key_file must be set too, naming the private key that matches it")
     )
   )

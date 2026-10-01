@@ -158,7 +158,7 @@ variable "authorized_key" {
 variable "ssh_private_key_file" {
   type        = string
   default     = ""
-  description = "The private half of authorized_key, for the build's own SSH login. Required whenever authorized_key is set; \"\" otherwise means template/vagrant.key.rsa, the matching half of Vagrant's well-known insecure key."
+  description = "The private half of authorized_key, for the build's own SSH login. Required whenever authorized_key is set; \"\" otherwise means template/vagrant-standard-insecure-first-boot-only.key.rsa, the matching half of Vagrant's well-known insecure key, replaced on first boot."
 
   validation {
     condition     = var.ssh_private_key_file == trimspace(var.ssh_private_key_file)

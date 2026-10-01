@@ -8,7 +8,7 @@ Copied byte for byte from the Vagrant 2.4.9 gem, at
 | `vagrant.pub.rsa` | `keys/vagrant.pub.rsa` |
 | `vagrant.pub.ed25519` | `keys/vagrant.pub.ed25519` |
 | `vagrant.key.rsa` | `keys/vagrant.key.rsa` |
-| `vagrant.key.ed25519` | `keys/vagrant.key.ed25519` |
+| `vagrant-standard-insecure-first-boot-only.key.ed25519` | `keys/vagrant.key.ed25519` |
 
 ## What these are
 
@@ -51,7 +51,7 @@ in, which is exactly what this directory does.
   `VagrantDefaults`'s own default (`OpenSSHPkgs` is empty).
 - `payload.VagrantPrivateKey()` returns `vagrant.key.rsa`, the matching
   private half, for the build's own SSH communicator to log in with.
-- `vagrant.pub.ed25519` and `vagrant.key.ed25519` are carried for
+- `vagrant.pub.ed25519` and `vagrant-standard-insecure-first-boot-only.key.ed25519` are carried for
   completeness (Vagrant 2.3.8+ prefers Ed25519 when both halves are on
   offer, per the source `keys/README.md`) and are not yet read by any
   function in this package.

@@ -34,7 +34,7 @@ func TestEmbeddedFilesAreTheFilesOnDisk(t *testing.T) {
 		"assets/vagrant/vagrant.pub.rsa",
 		"assets/vagrant/vagrant.pub.ed25519",
 		"assets/vagrant/vagrant.key.rsa",
-		"assets/vagrant/vagrant.key.ed25519",
+		"assets/vagrant/vagrant-standard-insecure-first-boot-only.key.ed25519",
 	}
 	for _, p := range want {
 		emb, err := fs.ReadFile(Files, p)

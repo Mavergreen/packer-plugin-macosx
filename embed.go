@@ -34,5 +34,5 @@ var UpstreamVersion string
 // binary built from this commit carries the keypair itself, not merely a
 // path to it.
 //
-//go:embed assets/pins/sources.tsv components/openssh/version assets/firmware/config.plist assets/pins/apple-packages.sha256 assets/guest/firstboot.sh assets/guest/postinstall assets/guest/com.mqg.firstboot.plist assets/firmware/patches/*.patch assets/privops/*.sh assets/guest/autoinstall/autoinstall.sh assets/guest/autoinstall/minstallconfig.xml assets/guest/autoinstall/OSInstall.collection assets/vagrant/vagrant.pub.rsa assets/vagrant/vagrant.pub.ed25519 assets/vagrant/vagrant.key.rsa assets/vagrant/vagrant.key.ed25519
+//go:embed assets/pins/sources.tsv components/openssh/version assets/firmware/config.plist assets/pins/apple-packages.sha256 assets/guest/firstboot.sh assets/guest/postinstall assets/guest/com.mqg.firstboot.plist assets/firmware/patches/*.patch assets/privops/*.sh assets/guest/autoinstall/autoinstall.sh assets/guest/autoinstall/minstallconfig.xml assets/guest/autoinstall/OSInstall.collection assets/vagrant/vagrant.pub.rsa assets/vagrant/vagrant.pub.ed25519 assets/vagrant/vagrant.key.rsa assets/vagrant/vagrant-standard-insecure-first-boot-only.key.ed25519
 var Files embed.FS
