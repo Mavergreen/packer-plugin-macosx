@@ -165,8 +165,9 @@ func VagrantPublicKey() []byte {
 }
 
 // VagrantPrivateKey is the private half of the RSA keypair
-// VagrantPublicKey returns (assets/vagrant/vagrant.key.rsa), for the
-// build's own SSH communicator to log in with. Bytes, not a path: there
+// VagrantPublicKey returns, for the build's own SSH communicator to log
+// in with (assets/vagrant/vagrant-standard-insecure-first-boot-only.key.rsa).
+// Bytes, not a path: there
 // is no Config field for a communicator's own key, and the one caller
 // that needs this (the media data source's ssh_private_key_file output)
 // writes it to its own cache path.
@@ -182,9 +183,9 @@ func VagrantPublicKey() []byte {
 // failure here panics rather than adding an error return nothing else in
 // this package needs.
 func VagrantPrivateKey() []byte {
-	key, err := fs.ReadFile(vmguest.Files, "assets/vagrant/vagrant.key.rsa")
+	key, err := fs.ReadFile(vmguest.Files, "assets/vagrant/vagrant-standard-insecure-first-boot-only.key.rsa")
 	if err != nil {
-		panic(fmt.Sprintf("assets/vagrant/vagrant.key.rsa not embedded: %v", err))
+		panic(fmt.Sprintf("assets/vagrant/vagrant-standard-insecure-first-boot-only.key.rsa not embedded: %v", err))
 	}
 	return key
 }

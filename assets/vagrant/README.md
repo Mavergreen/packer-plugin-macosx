@@ -1,4 +1,4 @@
-# Vagrant's insecure keypair
+# Vagrant's insecure RSA keypair
 
 Copied byte for byte from the Vagrant 2.4.9 gem, at
 `/opt/vagrant/embedded/gems/gems/vagrant-2.4.9/keys/`:
@@ -6,14 +6,12 @@ Copied byte for byte from the Vagrant 2.4.9 gem, at
 | File here | Source file |
 |---|---|
 | `vagrant.pub.rsa` | `keys/vagrant.pub.rsa` |
-| `vagrant.pub.ed25519` | `keys/vagrant.pub.ed25519` |
-| `vagrant.key.rsa` | `keys/vagrant.key.rsa` |
-| `vagrant-standard-insecure-first-boot-only.key.ed25519` | `keys/vagrant.key.ed25519` |
+| `vagrant-standard-insecure-first-boot-only.key.rsa` | `keys/vagrant.key.rsa` |
 
 ## What these are
 
-HashiCorp publishes this exact keypair, in both algorithms, for base-box
-creators to embed as a new box's default authorized key. Vagrant's own
+HashiCorp publishes this RSA keypair for base-box creators to embed as a
+new box's default authorized key. Vagrant's own
 `keys/README.md` (same source directory) says so directly: "These keys
 are the 'insecure' public/private keypair we offer to base box creators
 for use in their base boxes so that vagrant installations can
@@ -36,7 +34,7 @@ whose entire point is to be public.
 Vagrant itself (2.4.3 and later) is HashiCorp's Business Source License
 (`/opt/vagrant/embedded/gems/gems/vagrant-2.4.9/LICENSE`), which
 restricts competing hosted offerings of Vagrant, not use of a plugin
-like this one, and says nothing about these four files specifically.
+like this one, and says nothing about these two files specifically.
 The keypair's own accompanying text, quoted above, is what actually
 governs them: an explicit invitation to base-box creators to copy them
 in, which is exactly what this directory does.
@@ -49,9 +47,6 @@ in, which is exactly what this directory does.
   Ed25519 line outright when the guest has no replacement OpenSSH
   installed (stock OS X 10.9's OpenSSH 6.2 cannot parse one), which is
   `VagrantDefaults`'s own default (`OpenSSHPkgs` is empty).
-- `payload.VagrantPrivateKey()` returns `vagrant.key.rsa`, the matching
+- `payload.VagrantPrivateKey()` returns
+  `vagrant-standard-insecure-first-boot-only.key.rsa`, the matching
   private half, for the build's own SSH communicator to log in with.
-- `vagrant.pub.ed25519` and `vagrant-standard-insecure-first-boot-only.key.ed25519` are carried for
-  completeness (Vagrant 2.3.8+ prefers Ed25519 when both halves are on
-  offer, per the source `keys/README.md`) and are not yet read by any
-  function in this package.

@@ -28,11 +28,11 @@ var UpstreamVersion string
 // unattended-install hooks (assets/guest/autoinstall/*) are injected into
 // the installer media it assembles.
 //
-// assets/vagrant/vagrant.{pub,key}.{rsa,ed25519} are Vagrant's own
-// published insecure keypair (assets/vagrant/README.md): payload.VagrantDefaults
-// and payload.VagrantPrivateKey read them from here, not from disk, so a
-// binary built from this commit carries the keypair itself, not merely a
-// path to it.
+// assets/vagrant/vagrant.pub.rsa and
+// assets/vagrant/vagrant-standard-insecure-first-boot-only.key.rsa are
+// Vagrant's own published insecure RSA keypair (assets/vagrant/README.md).
+// payload.VagrantDefaults uses the public key and payload.VagrantPrivateKey
+// reads its matching private key from here, not from disk.
 //
-//go:embed assets/pins/sources.tsv components/openssh/version assets/firmware/config.plist assets/pins/apple-packages.sha256 assets/guest/firstboot.sh assets/guest/postinstall assets/guest/com.mqg.firstboot.plist assets/firmware/patches/*.patch assets/privops/*.sh assets/guest/autoinstall/autoinstall.sh assets/guest/autoinstall/minstallconfig.xml assets/guest/autoinstall/OSInstall.collection assets/vagrant/vagrant.pub.rsa assets/vagrant/vagrant.pub.ed25519 assets/vagrant/vagrant.key.rsa assets/vagrant/vagrant-standard-insecure-first-boot-only.key.ed25519
+//go:embed assets/pins/sources.tsv components/openssh/version assets/firmware/config.plist assets/pins/apple-packages.sha256 assets/guest/firstboot.sh assets/guest/postinstall assets/guest/com.mqg.firstboot.plist assets/firmware/patches/*.patch assets/privops/*.sh assets/guest/autoinstall/autoinstall.sh assets/guest/autoinstall/minstallconfig.xml assets/guest/autoinstall/OSInstall.collection assets/vagrant/vagrant.pub.rsa assets/vagrant/vagrant-standard-insecure-first-boot-only.key.rsa
 var Files embed.FS

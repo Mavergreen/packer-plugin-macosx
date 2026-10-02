@@ -56,7 +56,7 @@
 # needs this directory, not a checkout of the whole repository), so
 # nothing here may point outside it. ssh_private_key_file therefore names
 # template/vagrant-standard-insecure-first-boot-only.key.rsa -- a copy of
-# assets/vagrant/vagrant.key.rsa,
+# assets/vagrant/vagrant-standard-insecure-first-boot-only.key.rsa,
 # held byte-identical to it by this package's own
 # TestVagrantKeyMatchesEmbedded -- rather than reaching out via path.root
 # to assets/ (a template/ shipped alone has no such path to reach), and
