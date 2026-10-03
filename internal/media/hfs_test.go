@@ -264,7 +264,7 @@ func hfsGeometry(t *testing.T, img string, start int64) (string, uint32, uint32)
 // is a 40 MiB disk laid out the way CreateHFSGPT must lay it out, with an
 // HFS+ volume named "OS X Base System". sgdisk judges both images live.
 func TestCreateHFSGPTMatchesItsGolden(t *testing.T) {
-	need(t, "sgdisk")
+	need(t, "sgdisk", "mkfs.hfsplus")
 	dir := t.TempDir()
 	ref, goImg := filepath.Join(dir, "golden.img"), filepath.Join(dir, "go.img")
 	if err := os.WriteFile(ref, golden(t, "hfs-create-gpt.img"), 0o644); err != nil {

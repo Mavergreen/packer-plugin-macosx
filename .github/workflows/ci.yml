@@ -9,9 +9,11 @@ name: ci
 # PACKER_PLUGIN_PATH, so `packer validate` genuinely runs here on every
 # push and PR.
 #
-# What it deliberately does NOT check: that an image builds. That needs
-# nested virtualization, an InstallESD this project must never publish, and
-# half an hour. Building an image is exercised on the host it is for.
+# What it deliberately does NOT check: that an image builds. GitHub's
+# standard Linux runners do expose /dev/kvm (since April 2024), but a build
+# needs Apple's installer, which a cache here must not become a way to
+# publish, more disk than a standard runner has free, and half an hour.
+# Building an image is exercised on the host it is for.
 # `packer validate` never executes a data source (see template/mavericks.pkr.hcl's
 # own comment on ssh_private_key_file), so the `template` job fetches no
 # Apple bytes either -- and must never be changed so that it does.
@@ -92,6 +94,12 @@ jobs:
         with:
           go-version-file: go.mod
 
+      # internal/media lays out real HFS+ and GPT images with mkfs.hfsplus
+      # and sgdisk, and checks them against goldens; without the tools
+      # those tests skip, so install them and let the goldens be checked.
+      - name: Install the disk-image tools the media tests use
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq hfsprogs gdisk
+
       - name: Vet
         run: go vet ./...
 
@@ -115,21 +123,25 @@ jobs:
               GOOS=${target%/*} GOARCH=${target#*/} go build -o /dev/null ./cmd/packer-plugin-mavericks
           done
 
-  # template/mavericks.pkr.hcl against a REAL packer: `packer init`
-  # fetches the qemu and vagrant plugins it required_plugins-pins (network,
-  # same as any `packer init` run by a user), bin/dev-install.sh builds and
-  # installs THIS checkout's own plugin beside them (no network -- it is
-  # already on disk), and `packer validate` then resolves every data
-  # source and post-processor block for real. go test ./template/...
-  # exercises the same path through template/template_test.go's
-  # TestValidate, with PACKER and PACKER_PLUGIN_PATH set so it runs rather
-  # than skips (see that test's own doc comment).
+  # template/mavericks.pkr.hcl against a REAL packer: the qemu and vagrant
+  # plugins it requires are fetched (network, as for any user),
+  # bin/dev-install.sh builds and installs THIS checkout's own plugin
+  # beside them (no network -- it is already on disk), and `packer
+  # validate` then resolves every data source and post-processor block for
+  # real. go test ./template/... exercises the same path through
+  # template/template_test.go's TestValidate, with PACKER and
+  # PACKER_PLUGIN_PATH set so it runs rather than skips (see that test's
+  # own doc comment).
   template:
     runs-on: ubuntu-latest
     env:
       PACKER: packer
-      PACKER_PLUGIN_PATH: ${{ runner.temp }}/packer-plugins
     steps:
+      # The runner context is not available in a job's env:, so the plugin
+      # directory reaches later steps through GITHUB_ENV.
+      - name: Plugin directory
+        run: echo "PACKER_PLUGIN_PATH=$RUNNER_TEMP/packer-plugins" >> "$GITHUB_ENV"
+
       - uses: actions/checkout@v7
 
       - uses: actions/setup-go@v7.0.0
@@ -149,12 +161,17 @@ jobs:
       - name: Install this checkout's own plugin build
         run: ./bin/dev-install.sh
 
-      # required_plugins names only qemu and vagrant (see mavericks.pkr.hcl's
-      # own comment): this plugin has no release yet for `packer init` to
-      # resolve, so it fetches nothing of ours -- bin/dev-install.sh above
-      # is what puts it where validate/build find it.
-      - name: packer init template/ (fetches the qemu and vagrant plugins)
-        run: packer init template/
+      # Not `packer init template/`: required_plugins also names this
+      # plugin, and init would fetch a RELEASE of it -- failing before the
+      # first one exists, and validating the release rather than this
+      # checkout after. bin/dev-install.sh above installs this checkout's
+      # build as 0.0.0-dev, which no version constraint can match. The
+      # constraints repeat required_plugins'; if they drift, validate
+      # below fails naming the plugin it cannot find.
+      - name: Install the qemu and vagrant plugins the template requires
+        run: |
+          packer plugins install github.com/hashicorp/qemu '~> 1'
+          packer plugins install github.com/hashicorp/vagrant '~> 1'
 
       - name: packer validate template/
         run: packer validate template/
