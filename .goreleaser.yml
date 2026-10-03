@@ -118,7 +118,7 @@ archives:
       - src: template/box.Vagrantfile.pkrtpl
       - src: template/firstboot-wait.sh
       - src: template/mavericks.pkr.hcl
-      - src: template/vagrant.key.rsa
+      - src: template/vagrant-standard-insecure-first-boot-only.key.rsa
       - src: template/variables.pkr.hcl
       - src: template/verify.sh
 
