@@ -658,79 +658,50 @@ print('ok')
 
 # --- the README as product documentation ----------------------------------
 #
-# The README's own promises, held here: what the plugin is, how to install
-# it before its first release (template/'s required_plugins cannot name
-# the mavericks plugin until there is a release for `packer init` to
-# resolve), the quickstart, and the never-publish rule above the fold.
+# The README's own promises, held here: what the plugin is, the
+# quickstart, the host it needs, and the never-publish rule above the fold.
 
 @test "the README leads with what the tool does, not with the host it was built on" {
     run head -12 "$REPO/README.md"
-    [[ "$output" == *"packer-plugin-mavericks"* ]]
+    [[ "$output" == *"Packer"* ]]
+    [[ "$output" == *"Mavericks"* ]]
     [[ "$output" != *"Mac mini 2018"* ]]
     [[ "$output" != *"Linux Mint"* ]]
 }
 
-@test "the README installs the plugin from a checkout before its first release" {
-    # No release yet means no tag `packer init` can resolve for the
-    # mavericks source (MEASURED 2026-09-27, offline: see the comment in
-    # template/mavericks.pkr.hcl); bin/dev-install.sh is the step that
-    # stands in for it, and it must appear before `packer init` is ever
-    # run -- line numbers
-    # compared directly rather than a multiline regex, which bash's `=~`
-    # does not reliably anchor across newlines.
-    dev_install_line=$(grep -n 'bin/dev-install\.sh' "$REPO/README.md" | head -1 | cut -d: -f1)
-    packer_init_line=$(grep -n 'packer init \.' "$REPO/README.md" | head -1 | cut -d: -f1)
-    [ -n "$dev_install_line" ]
-    [ -n "$packer_init_line" ]
-    [ "$dev_install_line" -lt "$packer_init_line" ]
-}
-
 @test "the README shows the quickstart commands, honestly" {
-    # The forms measured on 2026-09-27 (docs/test-hosts.md): a rebuild needs
-    # -force (the qemu builder refuses an existing output-mavericks/),
-    # the box is added from template/'s own output/, and a plain
-    # `vagrant up` would pick whatever default provider is installed.
+    # The forms measured on 2026-09-27 (docs/test-hosts.md): the box is
+    # added from the build's own output/, and a plain `vagrant up` would
+    # pick whatever default provider is installed.
     run head -100 "$REPO/README.md"
     [[ "$output" == *"packer init"* ]]
     [[ "$output" == *"packer build"* ]]
-    [[ "$output" == *"packer build -force"* ]]
+    [[ "$output" == *"vagrant plugin install vagrant-qemu"* ]]
     [[ "$output" == *"vagrant box add --name mavericks output/mavericks-10.9.5-libvirt.box"* ]]
     [[ "$output" == *"vagrant up --provider qemu"* ]]
     [[ "$output" == *"vagrant ssh"* ]]
 }
 
-@test "the README names the host prerequisites before the first build command" {
-    prereq_line=$(grep -n 'Host prerequisites' "$REPO/README.md" | head -1 | cut -d: -f1)
+@test "the README names the host and its prerequisites before the first build command" {
+    # internal/hostcheck refuses a host without these, but only once
+    # `packer build` has started.
     build_line=$(grep -n 'packer build' "$REPO/README.md" | head -1 | cut -d: -f1)
-    [ -n "$prereq_line" ]
     [ -n "$build_line" ]
-    [ "$prereq_line" -lt "$build_line" ]
-    run grep -A6 'Host prerequisites' "$REPO/README.md"
-    for tool in /dev/kvm qemu-system-x86_64 dmg2img mkfs.hfsplus gcc vagrant-qemu; do
-        [[ "$output" == *"$tool"* ]]
+    run head -n "$build_line" "$REPO/README.md"
+    for tool in /dev/kvm Intel VT-x AMD qemu-system-x86_64 dmg2img mkfs.hfsplus "gcc\` 13 through 16"; do
+        [[ "$output" == *"$tool"* ]] || { echo "missing before packer build: $tool"; false; }
     done
 }
 
 @test "the README never teaches a plain vagrant up" {
-    # Every `vagrant up` it shows says --provider qemu; the prose that
-    # explains why is not a command.
+    # Every `vagrant up` it shows says --provider qemu.
     [ "$(grep -cE '^ *(MAVERICKS_DISPLAY=[a-z]+ )?vagrant up' "$REPO/README.md")" -ge 2 ]
     run grep -nE '^ *(MAVERICKS_DISPLAY=[a-z]+ )?vagrant up *$' "$REPO/README.md"
     [ "$status" -ne 0 ]
 }
 
-@test "the README says the box's Vagrantfile carries the build's settings" {
-    # template/box.Vagrantfile.pkrtpl is rendered with the build's own
-    # variables; a README that still says it is fixed at the defaults
-    # would send someone to override what already matches.
-    run grep -c "carries the build's own settings" "$REPO/README.md"
-    [ "$output" -ge 1 ]
-    run grep -c "fixed at the template's defaults" "$REPO/README.md" || true
-    [ "$output" = "0" ]
-}
-
 @test "the README states the never-publish rule above the fold" {
-    run head -90 "$REPO/README.md"
+    run head -12 "$REPO/README.md"
     [[ "$output" == *"Never publish either one"* ]]
     [[ "$output" == *"Apple"* ]]
 }
@@ -738,7 +709,7 @@ print('ok')
 @test "the README documents the headful escape hatch" {
     # template/box.Vagrantfile.pkrtpl reads MAVERICKS_DISPLAY to trade the
     # headless default for a real window; undocumented, nobody finds it.
-    run grep -c 'MAVERICKS_DISPLAY' "$REPO/README.md"
+    run grep -c 'MAVERICKS_DISPLAY=[a-z]* vagrant up --provider qemu' "$REPO/README.md"
     [ "$output" -ge 1 ]
 }
 
