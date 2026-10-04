@@ -157,6 +157,45 @@ a problem with the automated installation" and wrote nothing.
 It is also a Packer template that produces Vagrant boxes, the same shape
 this project has.
 
+## Other ways to build a macOS image with Packer
+
+Searched 2026-10-04, before the first release, to ask whether this
+project duplicates one that already exists. None does: no Packer
+plugin installs a pre-Big Sur OS X unattended, and nothing found does it
+from a Linux host with no Mac anywhere in the pipeline. A search cannot
+prove a negative; these are the near misses, and why each is not this.
+Each entry's claims are INHERITED from its own documentation, unverified
+here.
+
+### Templates for old OS X: osx-vm-templates and its forks
+
+`timsutton/osx-vm-templates` (above) and forks such as
+`dwtj/osx-vmware-builder` and `improbable-io/osx-vm-templates` are Packer
+*templates*, not a plugin. They cover 10.7 through 10.12, and their media
+step, `prepare_iso.sh`, runs on a Mac (it needs `hdiutil` and
+`pkgbuild`; for 10.6, a Mac with Xcode 3.2.6 for `pkgbuild`). They build
+for VMware, VirtualBox and Parallels, not QEMU, and are unmaintained.
+
+### Plugins for modern macOS: Tart, Anka, Parallels, IPSW
+
+`cirruslabs/packer-plugin-tart`, `veertuinc/packer-plugin-veertu-anka`
+and the Parallels plugin's `ipsw` builder are real Packer plugins that
+build macOS images, and `torarnv/ipsw` is a data source that finds Apple's
+IPSW firmware for them. All of them install macOS 11 or later from an
+IPSW, on an Apple Silicon Mac (Anka also on Intel Macs): Apple's
+virtualization framework, not an installer this project could drive,
+and a host this project does not run on.
+
+### macOS on Linux KVM: OSX-KVM and its descendants
+
+`kholia/OSX-KVM` (above), `Coopydood/ultimate-macOS-KVM` and the
+one-command `macOS-kvm` scripts run macOS on a Linux host, like this
+project. What they automate is the setup -- fetching a recovery image,
+the firmware, the disk -- and the install itself is still clicked
+through by hand. OSX-KVM lists automating it (with OpenCV) as an idea.
+None is a Packer plugin, and none reaches back to 10.9 or earlier with
+offline media.
+
 ## Performance
 
 - **pmj/virtio-net-osx 0.9.4**: <https://github.com/pmj/virtio-net-osx>.
