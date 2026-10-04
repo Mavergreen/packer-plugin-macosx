@@ -337,7 +337,17 @@ say "updates: build before: $(sw_vers -buildVersion 2>&1)"
 if [ -n "$MQG_FB_UPDATE_PKGS" ]; then
     _upd_count=0
     _upd_missing=0
+    _upd_n=0
     for _u in $MQG_FB_UPDATE_PKGS; do
+        _upd_n=$((_upd_n + 1))
+        # MQG_FB_UPDATE_IF_<n>: a path that must exist for update n to go
+        # in, the check Apple's own distribution makes before a package
+        # that updates an optional component (10.6.8's X11, say).
+        eval "_upd_if=\${MQG_FB_UPDATE_IF_$_upd_n:-}"
+        if [ -n "$_upd_if" ] && [ ! -e "$_upd_if" ]; then
+            say "updates: not installing $_u: $_upd_if is not on this system"
+            continue
+        fi
         if [ -f "$CONF_DIR/updates/$_u" ]; then
             _upd_count=$((_upd_count + 1))
             # 3600s: 2016-004 is 354 MB of package over 6891 files, and it

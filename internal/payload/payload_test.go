@@ -1448,3 +1448,85 @@ func TestVagrantPrivateKeyMatchesVagrantPublicKey(t *testing.T) {
 		t.Fatal("VagrantPrivateKey() is not the private half of VagrantPublicKey()")
 	}
 }
+
+// --- Snow Leopard ---------------------------------------------------------
+
+func TestASnowLeopardConfNamesItsRelease(t *testing.T) {
+	c := DefaultConfig()
+	c.Release = "snowleopard"
+	conf, err := Conf(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(conf), "\nMQG_FB_RELEASE=snowleopard\n") {
+		t.Fatalf("conf does not name its release:\n%s", conf)
+	}
+}
+
+// TestAMavericksConfNamesNoRelease: a conf for 10.9 says nothing about a
+// release, so the three Mavericks goldens stay byte for byte.
+func TestAMavericksConfNamesNoRelease(t *testing.T) {
+	for _, rel := range []string{"", "mavericks"} {
+		c := DefaultConfig()
+		c.Release = rel
+		conf, err := Conf(c)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(conf), "MQG_FB_RELEASE") {
+			t.Fatalf("release %q: conf names a release:\n%s", rel, conf)
+		}
+	}
+}
+
+func TestASnowLeopardConfRefusesOpenSSH(t *testing.T) {
+	dir := t.TempDir()
+	c := DefaultConfig()
+	c.Release = "snowleopard"
+	c.OpenSSHPkgs = []string{fakePkg(t, dir, "openssh-10.5p1.pkg")}
+	c.OpenSSHTag = "10.5p1-mavericks.2"
+	if _, err := Conf(c); err == nil || !strings.Contains(err.Error(), "OpenSSH") {
+		t.Fatalf("err = %v; want OpenSSH refused for 10.6", err)
+	}
+}
+
+func TestAnUnknownReleaseIsRefused(t *testing.T) {
+	c := DefaultConfig()
+	c.Release = "tiger"
+	if _, err := Conf(c); err == nil || !strings.Contains(err.Error(), "tiger") {
+		t.Fatalf("err = %v; want the release named", err)
+	}
+}
+
+// TestTheConfCarriesAnUpdatesCondition: an update with If installs only
+// where that path exists on the guest -- Apple's 10.6.8 combo product
+// checks /usr/bin/quartz-wm before its X11 package, say -- and the conf
+// says so by the update's position.
+func TestTheConfCarriesAnUpdatesCondition(t *testing.T) {
+	dir := t.TempDir()
+	c := DefaultConfig()
+	c.UpdatePkgs = []MediaFile{
+		{Path: fakePkg(t, dir, "a.pkg"), Name: "mqg-update-01-a.pkg"},
+		{Path: fakePkg(t, dir, "b.pkg"), Name: "mqg-update-02-b.pkg", If: "/Applications/Utilities/QuickTime Player 7.app"},
+	}
+	c.Updates = "security"
+	conf, err := Conf(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(conf), "\nMQG_FB_UPDATE_IF_2=/Applications/Utilities/QuickTime\\ Player\\ 7.app\n") {
+		t.Fatalf("conf does not carry the second update's condition:\n%s", conf)
+	}
+	if strings.Contains(string(conf), "MQG_FB_UPDATE_IF_1") {
+		t.Fatalf("conf carries a condition for an unconditional update:\n%s", conf)
+	}
+}
+
+func TestFirstbootShHonoursAnUpdatesCondition(t *testing.T) {
+	sh := firstbootSh(t)
+	for _, want := range []string{`MQG_FB_UPDATE_IF_`, `not installing`} {
+		if !strings.Contains(string(sh), want) {
+			t.Errorf("firstboot.sh never mentions %q: an update's condition is not checked", want)
+		}
+	}
+}

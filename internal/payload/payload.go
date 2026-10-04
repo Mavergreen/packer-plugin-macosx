@@ -70,6 +70,11 @@ type Config struct {
 	// cache path, which is Apple's own name.
 	UpdatePkgs []MediaFile
 	Updates    string
+
+	// Release is the OS the payload is for: "" or "mavericks" for 10.9,
+	// "snowleopard" for 10.6, which firstboot.sh reads as MQG_FB_RELEASE.
+	// A 10.9 conf says nothing about it, so it is what it always was.
+	Release string
 }
 
 // MediaFile is a package the installer media carries. Path is the file
@@ -79,7 +84,13 @@ type Config struct {
 // name). Name must be a plain base name. For an update it is
 // fetch.Update.Staged, not filepath.Base(Path): the two differ, and a
 // conf naming the wrong one leaves the guest without the package.
-type MediaFile struct{ Path, Name string }
+type MediaFile struct {
+	Path, Name string
+	// If, when set, is a path on the guest that must exist for the
+	// package to be installed: the check Apple's own distribution makes
+	// before a package that updates an optional component (X11, say).
+	If string
+}
 
 // DefaultConfig is the first-boot defaults: user mavsuser, uid 501, gid
 // 20 (staff), realname "Mavericks User", hostname mavericks, shell
@@ -249,6 +260,15 @@ func fieldErrorf(field, format string, a ...any) error {
 // OpenSSH block, the updates block (only when there are packages to
 // name), and the password (only when set). Every value is bashQuote'd.
 func Conf(c Config) ([]byte, error) {
+	switch c.Release {
+	case "", "mavericks", "snowleopard":
+	default:
+		return nil, fieldErrorf("Release", "unknown %q: choose mavericks or snowleopard", c.Release)
+	}
+	if c.Release == "snowleopard" && len(c.OpenSSHPkgs) > 0 {
+		return nil, fieldErrorf("OpenSSHPkgs", "the family's OpenSSH targets 10.9, not 10.6")
+	}
+
 	var b bytes.Buffer
 	b.WriteString(confHeader)
 
@@ -307,6 +327,18 @@ func Conf(c Config) ([]byte, error) {
 		if err := line(kv{"UpdatePkgs", "MQG_FB_UPDATE_PKGS", spaceNames(c.UpdatePkgs)}); err != nil {
 			return nil, err
 		}
+		for i, u := range c.UpdatePkgs {
+			if u.If == "" {
+				continue
+			}
+			if err := line(kv{"UpdatePkgs", "MQG_FB_UPDATE_IF_" + strconv.Itoa(i+1), u.If}); err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	if c.Release == "snowleopard" {
+		b.WriteString("MQG_FB_RELEASE=snowleopard\n")
 	}
 
 	if c.Password != "" {
@@ -532,8 +564,8 @@ func validateConfig(c Config, log func(string, ...any)) ([]byte, error) {
 	if err := validateMediaFiles("UpdatePkgs", c.UpdatePkgs); err != nil {
 		return nil, err
 	}
-	if !slices.Contains(config.UpdateChoices, c.Updates) {
-		return nil, fieldErrorf("Updates", "unknown %q: choose one of %s", c.Updates, strings.Join(config.UpdateChoices, ", "))
+	if choices := config.UpdateChoicesFor(c.Release); !slices.Contains(choices, c.Updates) {
+		return nil, fieldErrorf("Updates", "unknown %q: choose one of %s", c.Updates, strings.Join(choices, ", "))
 	}
 	if len(c.UpdatePkgs) > 0 && c.Updates == "none" {
 		return nil, fieldErrorf("UpdatePkgs", "given but Updates is \"none\"; "+
