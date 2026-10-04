@@ -248,7 +248,53 @@ fi
 # is loud and non-fatal: the account keeps whatever sudo rule it already
 # had, which is worse than passwordless sudo but not worse than a guest
 # that can no longer sudo at all.
-if [ "$MQG_FB_SUDO" = "1" ]; then
+#
+# OLDER SUDO READS NO SUDOERS.D AT ALL
+#
+# #includedir arrived in sudo 1.7.2. 10.6's sudo is 1.7.0 (MEASURED
+# 2026-10-04): its visudo passes the include line as a comment, and the
+# fragment then does nothing. So where sudo predates 1.7.2, the rule goes
+# at the end of /etc/sudoers itself -- last, so it wins over the admin
+# group's password rule above it -- through the same copy, visudo -cf of
+# the whole candidate, and install as the include line.
+sudo_reads_includedir() {
+    _sv_maj=$(printf '%s\n' "$1" | sed -n 's/^\([0-9][0-9]*\)\..*/\1/p')
+    _sv_min=$(printf '%s\n' "$1" | sed -n 's/^[0-9][0-9]*\.\([0-9][0-9]*\).*/\1/p')
+    _sv_pat=$(printf '%s\n' "$1" | sed -n 's/^[0-9][0-9]*\.[0-9][0-9]*\.\([0-9][0-9]*\).*/\1/p')
+    if [ -z "$_sv_maj" ] || [ -z "$_sv_min" ]; then
+        return 1
+    fi
+    if [ "$_sv_maj" -ne 1 ]; then
+        [ "$_sv_maj" -gt 1 ]
+        return
+    fi
+    if [ "$_sv_min" -ne 7 ]; then
+        [ "$_sv_min" -gt 7 ]
+        return
+    fi
+    [ "${_sv_pat:-0}" -ge 2 ]
+}
+
+SUDO_VERSION=$(sudo -V 2>/dev/null | sed -n '1s/^Sudo version //p')
+if [ "$MQG_FB_SUDO" = "1" ] && ! sudo_reads_includedir "$SUDO_VERSION"; then
+    SUDOERS_MAIN=/private/etc/sudoers
+    SUDOERS_RULE="$MQG_FB_USER ALL=(ALL) NOPASSWD: ALL"
+    if grep -qxF "$SUDOERS_RULE" "$SUDOERS_MAIN" 2>/dev/null; then
+        say "sudoers: $SUDOERS_MAIN already has '$SUDOERS_RULE'"
+    else
+        SUDOERS_MAIN_CANDIDATE=$(mktemp "${TMPDIR:-/tmp}/mqg-sudoers-main.XXXXXX")
+        cp "$SUDOERS_MAIN" "$SUDOERS_MAIN_CANDIDATE"
+        echo "$SUDOERS_RULE" >> "$SUDOERS_MAIN_CANDIDATE"
+        if visudo -cf "$SUDOERS_MAIN_CANDIDATE" >> "$LOG" 2>&1; then
+            install -m 0440 -o root -g wheel "$SUDOERS_MAIN_CANDIDATE" "$SUDOERS_MAIN"
+            say "sudoers: sudo $SUDO_VERSION reads no sudoers.d; appended '$SUDOERS_RULE' to $SUDOERS_MAIN"
+        else
+            say "sudoers: $SUDOERS_MAIN plus '$SUDOERS_RULE' does not pass visudo -cf;" \
+                "NOT touching $SUDOERS_MAIN (see $LOG for its complaint)"
+        fi
+        rm -f "$SUDOERS_MAIN_CANDIDATE"
+    fi
+elif [ "$MQG_FB_SUDO" = "1" ]; then
     SUDOERS_MAIN=/private/etc/sudoers
     SUDOERS_DIR=/private/etc/sudoers.d
     SUDOERS_INCLUDE="#includedir $SUDOERS_DIR"

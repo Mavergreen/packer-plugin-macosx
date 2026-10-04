@@ -938,12 +938,12 @@ func TestFirstbootShRemovesItsOwnLaunchDaemon(t *testing.T) {
 }
 
 var (
-	sudoersGuardRe  = regexp.MustCompile(`^\s*if \[ "\$MQG_FB_SUDO" = "1" \]; then\s*$`)
+	sudoersGuardRe  = regexp.MustCompile(`^\s*(el)?if \[ "\$MQG_FB_SUDO" = "1" \]; then\s*$`)
 	sudoersVisudoRe = regexp.MustCompile(`visudo -cf "\$SUDOERS_CANDIDATE"`)
 	sudoersWriteRe  = regexp.MustCompile(`^\s*install -m 0440 -o root -g wheel "\$SUDOERS_CANDIDATE" "\$SUDOERS_FILE"\s*$`)
 
 	sudoersMainCopyRe    = regexp.MustCompile(`^\s*cp "\$SUDOERS_MAIN" "\$SUDOERS_MAIN_CANDIDATE"\s*$`)
-	sudoersMainAppendRe  = regexp.MustCompile(`^\s*echo "\$SUDOERS_INCLUDE" >> "\$SUDOERS_MAIN_CANDIDATE"\s*$`)
+	sudoersMainAppendRe  = regexp.MustCompile(`^\s*echo "\$SUDOERS_(INCLUDE|RULE)" >> "\$SUDOERS_MAIN_CANDIDATE"\s*$`)
 	sudoersMainVisudoRe  = regexp.MustCompile(`visudo -cf "\$SUDOERS_MAIN_CANDIDATE"`)
 	sudoersMainInstallRe = regexp.MustCompile(`^\s*install -m 0440 -o root -g wheel "\$SUDOERS_MAIN_CANDIDATE" "\$SUDOERS_MAIN"\s*$`)
 )
@@ -985,21 +985,52 @@ func TestFirstbootShInstallsSudoersFilesInOneStep(t *testing.T) {
 }
 
 // "firstboot checks the WHOLE candidate /etc/sudoers -- not just the
-// line it added -- before ever installing it": copy the live file aside,
-// append the include line to the copy, run visudo -cf over the copy in
-// full, and only then install it back over /etc/sudoers, in that order.
+// line it added -- before ever installing it": for each line it appends
+// -- the include line where sudo reads sudoers.d, the rule itself where
+// it does not (10.6) -- copy the live file aside, append to the copy,
+// run visudo -cf over the copy in full, and only then install it back
+// over /etc/sudoers, in that order.
 func TestFirstbootShChecksTheWholeSudoersFileBeforeInstallingIt(t *testing.T) {
 	b := firstbootSh(t)
-	cp := lineOf(b, sudoersMainCopyRe)
-	appendLine := lineOf(b, sudoersMainAppendRe)
-	visudo := lineOf(b, sudoersMainVisudoRe)
-	install := lineOf(b, sudoersMainInstallRe)
-	if cp < 0 || appendLine < 0 || visudo < 0 || install < 0 {
-		t.Fatalf("copy at line %d, append at line %d, visudo -cf at line %d, install at line %d; want all four", cp+1, appendLine+1, visudo+1, install+1)
+	appends := linesOf(b, sudoersMainAppendRe)
+	if len(appends) != 2 {
+		t.Fatalf("%d appends to the /etc/sudoers candidate; want two, the include line and the rule", len(appends))
 	}
-	if !(cp < appendLine && appendLine < visudo && visudo < install) {
-		t.Fatalf("want copy (line %d) before append (line %d) before visudo -cf the WHOLE candidate (line %d) before install (line %d)", cp+1, appendLine+1, visudo+1, install+1)
+	for _, a := range appends {
+		// Each append's own block runs up to the next copy, if any.
+		cp, visudo, install, end := -1, -1, -1, len(strings.Split(string(b), "\n"))
+		for _, l := range linesOf(b, sudoersMainCopyRe) {
+			if l < a {
+				cp = l
+			} else if l < end {
+				end = l
+			}
+		}
+		for _, l := range linesOf(b, sudoersMainVisudoRe) {
+			if l > a && l < end && visudo < 0 {
+				visudo = l
+			}
+		}
+		for _, l := range linesOf(b, sudoersMainInstallRe) {
+			if visudo >= 0 && l > visudo && l < end && install < 0 {
+				install = l
+			}
+		}
+		if cp < 0 || visudo < 0 || install < 0 {
+			t.Fatalf("for the append at line %d: copy at line %d, visudo -cf at line %d, install at line %d; want copy before, then visudo -cf, then install", a+1, cp+1, visudo+1, install+1)
+		}
 	}
+}
+
+// linesOf is every line of b that re matches, by index.
+func linesOf(b []byte, re *regexp.Regexp) []int {
+	var out []int
+	for i, line := range strings.Split(string(b), "\n") {
+		if re.MatchString(line) {
+			out = append(out, i)
+		}
+	}
+	return out
 }
 
 // "the fragment is only ever written to a directory /etc/sudoers is
