@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/config"
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/pins"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/config"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/pins"
 )
 
 // updateSources is each updates selection's packages, in install order.

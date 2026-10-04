@@ -16,8 +16,8 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/diskimg"
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/proc"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/diskimg"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/proc"
 )
 
 // golden reads and gunzips a golden image from testdata/golden/<name>.gz

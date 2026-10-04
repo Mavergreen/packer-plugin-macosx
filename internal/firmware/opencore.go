@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/proc"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/proc"
 )
 
 const buildOCPatch = "0001-build_oc-source-pinned-efibuild.patch"

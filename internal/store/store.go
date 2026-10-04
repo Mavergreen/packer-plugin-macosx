@@ -14,8 +14,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/lock"
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/pins"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/lock"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/pins"
 )
 
 // completeMarker is the file whose presence alone says a store directory

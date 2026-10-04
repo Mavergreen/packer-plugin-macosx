@@ -9,10 +9,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	vmguest "github.com/Mavergreen/packer-plugin-mavericks"
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/config"
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/fetch"
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/privops"
+	"github.com/Mavergreen/packer-plugin-macosx"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/config"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/fetch"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/privops"
 )
 
 // A Digest is what is ON an image, as one checksum: the sha256 of a
@@ -77,7 +77,7 @@ func (b *Builder) ContentDigest(ctx context.Context, img string, listing io.Writ
 	if err := truncateNew(list, 256<<20); err != nil {
 		return Digest{}, err
 	}
-	payload, err := fs.ReadFile(vmguest.Files, "assets/privops/content-digest.sh")
+	payload, err := fs.ReadFile(macosx.Files, "assets/privops/content-digest.sh")
 	if err != nil {
 		return Digest{}, err
 	}

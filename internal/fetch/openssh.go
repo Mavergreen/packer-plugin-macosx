@@ -12,8 +12,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	vmguest "github.com/Mavergreen/packer-plugin-mavericks"
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/pins"
+	"github.com/Mavergreen/packer-plugin-macosx"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/pins"
 )
 
 const DefaultOpenSSHReleases = "https://github.com/Mavergreen/openssh/releases/download"
@@ -39,7 +39,7 @@ type OpenSSHRelease struct {
 // OpenSSHTag is the release components/openssh/version pins (Renovate
 // bumps it; the -mavericks.N suffix is the family's).
 func OpenSSHTag() (string, error) {
-	b, err := fs.ReadFile(vmguest.Files, "components/openssh/version")
+	b, err := fs.ReadFile(macosx.Files, "components/openssh/version")
 	if err != nil {
 		return "", err
 	}

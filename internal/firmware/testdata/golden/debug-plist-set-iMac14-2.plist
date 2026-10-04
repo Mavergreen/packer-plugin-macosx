@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>#Comment</key>
-	<string>packer-plugin-mavericks: OpenCore 1.0.7 for OS X 10.9.5 under QEMU/KVM. Derived from 1.0.7's Docs/Sample.plist. Every setting that differs from that sample is explained in assets/firmware/README.md.</string>
+	<string>packer-plugin-macosx: OpenCore 1.0.7 for OS X 10.9.5 under QEMU/KVM. Derived from 1.0.7's Docs/Sample.plist. Every setting that differs from that sample is explained in assets/firmware/README.md.</string>
 	<key>ACPI</key>
 	<dict>
 		<key>Add</key>

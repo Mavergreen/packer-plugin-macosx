@@ -12,10 +12,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	vmguest "github.com/Mavergreen/packer-plugin-mavericks"
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/diskimg"
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/fetch"
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/proc"
+	"github.com/Mavergreen/packer-plugin-macosx"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/diskimg"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/fetch"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/proc"
 )
 
 // configDir is where a derived config.plist goes: build/config.
@@ -199,7 +199,7 @@ func (b *Builder) EFIImage(ctx context.Context, model string, debug bool) (strin
 // config is the config.plist to ship for model and debug: the
 // repository's, verbatim, or a derived copy, validated.
 func (b *Builder) config(ctx context.Context, model string, debug bool) ([]byte, error) {
-	base, err := fs.ReadFile(vmguest.Files, "assets/firmware/config.plist")
+	base, err := fs.ReadFile(macosx.Files, "assets/firmware/config.plist")
 	if err != nil {
 		return nil, err
 	}

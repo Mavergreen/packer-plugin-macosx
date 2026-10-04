@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/proc"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/proc"
 )
 
 // goldenLines is golden(t, name) split into lines: each of these files

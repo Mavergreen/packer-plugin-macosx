@@ -1,4 +1,4 @@
-module github.com/Mavergreen/packer-plugin-mavericks
+module github.com/Mavergreen/packer-plugin-macosx
 
 go 1.26.8
 

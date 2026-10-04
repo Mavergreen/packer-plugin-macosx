@@ -1,7 +1,7 @@
-// Package vmguest is the repository root. It exists to carry files into
+// Package macosx is the repository root. It exists to carry files into
 // the plugin's binary with go:embed, which cannot reach outside the
 // directory of the package that uses it.
-package vmguest
+package macosx
 
 import "embed"
 

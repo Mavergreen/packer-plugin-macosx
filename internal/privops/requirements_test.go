@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/proc"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/proc"
 )
 
 const testKVer = "6.1.0-test"

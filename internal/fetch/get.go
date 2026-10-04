@@ -23,7 +23,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/config"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/config"
 )
 
 type Getter struct {

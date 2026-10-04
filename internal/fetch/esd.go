@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/pins"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/pins"
 )
 
 const (

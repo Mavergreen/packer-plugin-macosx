@@ -16,7 +16,7 @@ import (
 // would. This is the plugin's outermost seam: it fails until main.go
 // exists and registers all three stub data sources.
 func TestDescribeListsAllThreeDatasources(t *testing.T) {
-	bin := filepath.Join(t.TempDir(), "packer-plugin-mavericks")
+	bin := filepath.Join(t.TempDir(), "packer-plugin-macosx")
 	build := exec.Command("go", "build", "-o", bin, ".")
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("go build: %v\n%s", err, out)
@@ -34,7 +34,7 @@ func TestDescribeListsAllThreeDatasources(t *testing.T) {
 
 	got := append([]string(nil), desc.Datasources...)
 	sort.Strings(got)
-	want := []string{"firmware", "installesd", "media"}
+	want := []string{"mavericks-firmware", "mavericks-installesd", "mavericks-media"}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("datasources = %v; want %v", got, want)
 	}

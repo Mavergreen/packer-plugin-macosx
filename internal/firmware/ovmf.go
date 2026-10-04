@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/proc"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/proc"
 )
 
 // ovmfBuild is EDK II's own way to build: edksetup.sh (not written for

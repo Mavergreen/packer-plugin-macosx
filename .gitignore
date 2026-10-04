@@ -16,7 +16,7 @@ __pycache__/
 /VERSION
 
 # `bin/dev-install.sh` builds the plugin binary here.
-/packer-plugin-mavericks
+/packer-plugin-macosx
 
 # `goreleaser release`/`goreleaser build`'s own output.
 /dist/

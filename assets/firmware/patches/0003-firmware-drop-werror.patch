@@ -81,7 +81,7 @@ warning.
 +  # We are a downstream consumer pinning a commit we cannot patch, so a
 +  # warning we cannot act on must not stop our build. Still printed,
 +  # just no longer fatal. See the patch header for the whole argument.
-+  # packer-plugin-mavericks: assets/firmware/patches/0003-firmware-drop-werror.patch
++  # packer-plugin-macosx: assets/firmware/patches/0003-firmware-drop-werror.patch
 +  #
 +  GCC:*_*_*_CC_FLAGS = -Wno-error
 +

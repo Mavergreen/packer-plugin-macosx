@@ -14,10 +14,10 @@ import (
 	"sort"
 	"strings"
 
-	vmguest "github.com/Mavergreen/packer-plugin-mavericks"
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/fetch"
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/firmware"
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/pins"
+	"github.com/Mavergreen/packer-plugin-macosx"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/fetch"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/firmware"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/pins"
 )
 
 // Row is one "key<TAB>value" line of an input listing.
@@ -190,7 +190,7 @@ func findSource(reg *pins.Registry, name string) (sha, url string, ok bool) {
 
 // treeRows is one "prefix:<path relative to dir>" row per embedded file
 // directly inside dir (not its subdirectories), with its sha256. dir is a
-// directory inside vmguest.Files, which carries only the files this
+// directory inside macosx.Files, which carries only the files this
 // binary actually embeds -- so this yields only the files it builds
 // from, never whatever else a checkout holds. Not
 // recursing matters for assets/guest: it holds payload's three files
@@ -198,7 +198,7 @@ func findSource(reg *pins.Registry, name string) (sha, url string, ok bool) {
 // the two must not bleed into each other's listing.
 func treeRows(prefix, dir string) ([]Row, error) {
 	var rows []Row
-	err := fs.WalkDir(vmguest.Files, dir, func(path string, d fs.DirEntry, err error) error {
+	err := fs.WalkDir(macosx.Files, dir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -225,7 +225,7 @@ func treeRows(prefix, dir string) ([]Row, error) {
 }
 
 func embeddedSHA256(path string) (string, error) {
-	data, err := fs.ReadFile(vmguest.Files, path)
+	data, err := fs.ReadFile(macosx.Files, path)
 	if err != nil {
 		return "", err
 	}

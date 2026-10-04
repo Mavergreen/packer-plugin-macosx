@@ -57,7 +57,7 @@
 #   - the magic numbers section 2 below knows.
 #
 # The one exemption is the plugin binary itself, named
-# packer-plugin-mavericks_v<version>_x5.0_<os>_<arch> (.goreleaser.yml's
+# packer-plugin-macosx_v<version>_x5.0_<os>_<arch> (.goreleaser.yml's
 # NAMING comment): it is tens of MB, a Mach-O for darwin, and the one large
 # thing a release exists to carry. A .zip is judged by its members, not
 # its own size. An archive this cannot list, or a DIR with nothing in it,
@@ -92,7 +92,7 @@ arch_flag() {  # $1 = what, $2... = why
 arch_is_plugin_binary() {  # $1 = a path
     case $1 in
         */*|*.zip) return 1 ;;
-        packer-plugin-mavericks_v*_x5.0_*_*) return 0 ;;
+        packer-plugin-macosx_v*_x5.0_*_*) return 0 ;;
     esac
     return 1
 }

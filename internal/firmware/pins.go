@@ -14,7 +14,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/pins"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/pins"
 )
 
 // The pinned build. These are what "reproducible" means for the firmware

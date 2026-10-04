@@ -6,7 +6,7 @@
 #
 # NAMING. `packer init` resolves a GitHub-source plugin by fetching, for
 # each OS/arch, a zip named
-#   packer-plugin-mavericks_v<version>_x5.0_<os>_<arch>.zip
+#   packer-plugin-macosx_v<version>_x5.0_<os>_<arch>.zip
 # containing exactly one file, the binary, named the same way minus
 # ".zip" (hashicorp/packer@v1.16.1's packer/plugin-getter/plugins.go,
 # comment above the Getter interface's Get method, and
@@ -38,7 +38,7 @@
 # ~line 632, through the checksum.Checksummer.Checksum call past line 830)
 # never verifies a GPG signature, only the sha256 in that plain file.
 # Official releases on releases.hashicorp.com are signed separately, but
-# that is HashiCorp's own registry, not the github.com/mavergreen/mavericks
+# that is HashiCorp's own registry, not the github.com/mavergreen/macosx
 # source this plugin ships under -- so no `signs:` step here. REASONED,
 # not run: goreleaser is not installed in this sandbox, so this file has
 # not been through `goreleaser check`.
@@ -59,22 +59,22 @@ version: 2
 # resolves to this from go.mod's module path) -- named here so every
 # `{{ .ProjectName }}` template below doesn't depend on a reader knowing
 # that fallback exists.
-project_name: packer-plugin-mavericks
+project_name: packer-plugin-macosx
 
 before:
   hooks:
     - go mod tidy
 
 builds:
-  - id: packer-plugin-mavericks
-    main: ./cmd/packer-plugin-mavericks
+  - id: packer-plugin-macosx
+    main: ./cmd/packer-plugin-macosx
     mod_timestamp: "{{ .CommitTimestamp }}"
     flags:
       - -trimpath
     ldflags:
       - -s -w
-      - -X github.com/Mavergreen/packer-plugin-mavericks/version.Version={{ .Version }}
-      - -X github.com/Mavergreen/packer-plugin-mavericks/version.VersionPrerelease=
+      - -X github.com/Mavergreen/packer-plugin-macosx/version.Version={{ .Version }}
+      - -X github.com/Mavergreen/packer-plugin-macosx/version.VersionPrerelease=
     goos:
       - linux
       - darwin
@@ -85,8 +85,8 @@ builds:
     binary: "{{ .ProjectName }}_v{{ .Version }}_x5.0_{{ .Os }}_{{ .Arch }}"
 
 archives:
-  - id: packer-plugin-mavericks
-    ids: [packer-plugin-mavericks]
+  - id: packer-plugin-macosx
+    ids: [packer-plugin-macosx]
     format: zip
     name_template: "{{ .Binary }}"
     # The zip packer init fetches carries the one binary file and nothing
@@ -113,7 +113,7 @@ archives:
   - id: template
     meta: true
     format: zip
-    name_template: "packer-plugin-mavericks_v{{ .Version }}_template"
+    name_template: "packer-plugin-macosx_v{{ .Version }}_template"
     files:
       - src: template/box.Vagrantfile.pkrtpl
       - src: template/firstboot-wait.sh

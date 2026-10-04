@@ -19,8 +19,8 @@ import (
 	"testing"
 	"time"
 
-	vmguest "github.com/Mavergreen/packer-plugin-mavericks"
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/proc"
+	"github.com/Mavergreen/packer-plugin-macosx"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/proc"
 )
 
 // logRecorder collects what a Backend logs.
@@ -145,7 +145,7 @@ func TestInitramfsHoldsWhatTheGuestNeeds(t *testing.T) {
 	es := readNewc(t, gz)
 	m := byName(es)
 	bb, _ := os.ReadFile(fx.bb)
-	initScript, _ := fs.ReadFile(vmguest.Files, "assets/privops/init.sh")
+	initScript, _ := fs.ReadFile(macosx.Files, "assets/privops/init.sh")
 	for name, want := range map[string]struct {
 		mode uint32
 		data []byte

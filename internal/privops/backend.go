@@ -18,7 +18,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/proc"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/proc"
 )
 
 // DefaultModules are loaded in the guest, with their dependencies:

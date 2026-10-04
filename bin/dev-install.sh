@@ -5,7 +5,7 @@
 # PACKER_PLUGIN_PATH without going through a registry: it copies the
 # binary in, named and versioned the way `packer init`'s multi-plugin
 # discovery expects. This script is that one step, for anyone (a
-# developer, CI, a host measuring a real build) who has a `packer-plugin-mavericks`
+# developer, CI, a host measuring a real build) who has a `packer-plugin-macosx`
 # checkout and wants `packer` to see it.
 #
 #   usage: bin/dev-install.sh
@@ -26,8 +26,8 @@ cd "$MQG_REPO_ROOT"
 PACKER=${PACKER:-packer}
 require_cmd go "$PACKER"
 
-log "building ./packer-plugin-mavericks"
-go build -o packer-plugin-mavericks ./cmd/packer-plugin-mavericks
+log "building ./packer-plugin-macosx"
+go build -o packer-plugin-macosx ./cmd/packer-plugin-macosx
 
 log "installing with $PACKER plugins install"
-"$PACKER" plugins install --path ./packer-plugin-mavericks github.com/mavergreen/mavericks
+"$PACKER" plugins install --path ./packer-plugin-macosx github.com/mavergreen/macosx

@@ -18,13 +18,13 @@ guest, on a Linux host.
 
 ## Decision 1 — what a release carries
 
-A release of `packer-plugin-mavericks` carries exactly three kinds of
+A release of `packer-plugin-macosx` carries exactly three kinds of
 file, and nothing else:
 
-1. **The plugin binaries**, `packer-plugin-mavericks_v<ver>_x5.0_<os>_<arch>`,
+1. **The plugin binaries**, `packer-plugin-macosx_v<ver>_x5.0_<os>_<arch>`,
    zipped, for linux, darwin and netbsd on amd64 and arm64: the names
    `packer init` expects for the plugin source
-   `github.com/mavergreen/mavericks`.
+   `github.com/mavergreen/macosx`.
 2. **The template**, `template/` as one zip: `mavericks.pkr.hcl`,
    `variables.pkr.hcl`, the box's Vagrantfile template, the two guest-side
    scripts the build runs, and Vagrant's insecure private key. A build
@@ -114,16 +114,29 @@ globs:
 | Version scheme is not `<upstream>-mavericks.N` | This product is its own upstream: it takes the family's self-upstream `YYYYMMDD.N` shape (`docs/decisions/0012`). |
 | No Sparkle updater for the plugin | Sparkle is a macOS framework, and the plugin runs on the build host, whose primary OS is Linux. Packer installs and updates plugins itself (`packer init`). The guest payload, a 10.9 `.pkg`, is a different product and takes the family's shape unchanged. |
 
-## A future want, recorded and deliberately not designed for
+## Later guests: named for, not designed for
 
 A later version of this product will also want to build Snow Leopard and
-Tiger guests (noted 2026-09-22 by the user). **Nothing here adds a 10.6 or
-10.4 branch until there is a 10.6 or 10.4 guest to test it against.** A
-parameter with one value is honest; a parameter with one value and a
-second branch nobody has run is a claim nobody can support.
+Tiger guests (noted 2026-09-22 by the user). So the plugin is named for
+Mac OS X, not for one release of it (decided 2026-10-04, before the first
+release, while renaming cost nothing): `packer-plugin-macosx`, source
+`github.com/mavergreen/macosx`. Each release gets its own data sources,
+named for it -- today `mavericks-installesd`, `mavericks-firmware` and
+`mavericks-media`, which a template names as `macosx-mavericks-*` -- so a
+later guest is new data sources beside these, never an OS-version
+parameter on them.
 
-What will help, at no cost now: tables with evidence per row (the SMBIOS
-table, the compiler range), and a template whose machine is variables.
-What will not transfer: both releases predate the EFI and SMBIOS
-assumptions this boot stack is built on. That is a different bring-up, not
-a parameter.
+**Nothing here adds a 10.6 or 10.4 data source until there is a 10.6 or
+10.4 guest to test it against.** A parameter with one value is honest; a
+parameter with one value and a second branch nobody has run is a claim
+nobody can support.
+
+What is expected to transfer, and is not measured: for 10.6, the Intel,
+EFI, OpenCore and KVM boot stack and the minstallconfig.xml unattended
+install (both exist from 10.5 on). What will not: 10.6 has no
+osrecovery download -- it shipped on DVD, so its installer would be
+supplied by the user and pinned by checksum -- and its DVD is not an
+InstallESD.dmg, so its media is built differently. Tiger is a different
+bring-up, not a variation: Intel Tiger shipped only on machine-specific
+discs and needs 32-bit EFI, and PowerPC Tiger needs qemu-system-ppc and
+OpenBIOS, with no OVMF, no OpenCore and no KVM.

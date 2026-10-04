@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/pins"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/pins"
 )
 
 func TestSelectionsNest(t *testing.T) {

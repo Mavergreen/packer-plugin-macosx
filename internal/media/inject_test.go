@@ -15,14 +15,14 @@ import (
 	"testing"
 	"time"
 
-	vmguest "github.com/Mavergreen/packer-plugin-mavericks"
+	"github.com/Mavergreen/packer-plugin-macosx"
 )
 
 const firstbootEntry = "/System/Installation/Packages/mqg-firstboot.pkg"
 
 func embedded(t *testing.T, name string) []byte {
 	t.Helper()
-	b, err := fs.ReadFile(vmguest.Files, name)
+	b, err := fs.ReadFile(macosx.Files, name)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	vmguest "github.com/Mavergreen/packer-plugin-mavericks"
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/proc"
+	"github.com/Mavergreen/packer-plugin-macosx"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/proc"
 )
 
 func (f *fixture) ovmf() ([]string, error) { return f.b.OVMF(context.Background()) }
@@ -87,7 +87,7 @@ func TestOVMFAppliesBothPatchesAndChecksThem(t *testing.T) {
 	}
 	var want [][]byte
 	for _, p := range []string{"0002-ovmf-pin-the-c-dialect.patch", "0003-firmware-drop-werror.patch"} {
-		b, err := fs.ReadFile(vmguest.Files, "assets/firmware/patches/"+p)
+		b, err := fs.ReadFile(macosx.Files, "assets/firmware/patches/"+p)
 		if err != nil {
 			t.Fatal(err)
 		}

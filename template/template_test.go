@@ -23,7 +23,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/payload"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/payload"
 )
 
 // repoRoot is this file's own location, walked up past template/: robust

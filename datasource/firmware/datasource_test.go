@@ -15,10 +15,10 @@ import (
 
 	"github.com/zclconf/go-cty/cty"
 
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/fetch"
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/firmware"
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/lock"
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/pins"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/fetch"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/firmware"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/lock"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/pins"
 )
 
 func decodeOutput(t *testing.T, v cty.Value) DatasourceOutput {

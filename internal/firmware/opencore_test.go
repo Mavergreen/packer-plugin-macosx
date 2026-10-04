@@ -12,8 +12,8 @@ import (
 	"strings"
 	"testing"
 
-	vmguest "github.com/Mavergreen/packer-plugin-mavericks"
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/proc"
+	"github.com/Mavergreen/packer-plugin-macosx"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/proc"
 )
 
 func (f *fixture) openCore() ([]string, error) {
@@ -159,7 +159,7 @@ func TestOpenCorePatchesBuildOCToolAndChecksIt(t *testing.T) {
 	f := newFixture(t)
 	f.mustOpenCore()
 	src := filepath.Join(f.home, "build", "OpenCorePkg-1.0.7")
-	want, err := fs.ReadFile(vmguest.Files, "assets/firmware/patches/0001-build_oc-source-pinned-efibuild.patch")
+	want, err := fs.ReadFile(macosx.Files, "assets/firmware/patches/0001-build_oc-source-pinned-efibuild.patch")
 	if err != nil {
 		t.Fatal(err)
 	}

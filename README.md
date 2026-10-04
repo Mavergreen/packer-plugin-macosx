@@ -1,4 +1,4 @@
-# Mavericks plugin for Packer
+# Mac OS X plugin for Packer
 
 Build a VM image of Mac OS X 10.9 Mavericks. Unattended.
 
@@ -25,7 +25,7 @@ OS X are not yet supported.)
 - `gcc` 13 through 16
 
 Download and extract
-[the template](https://github.com/Mavergreen/packer-plugin-mavericks/releases/latest).
+[the template](https://github.com/Mavergreen/packer-plugin-macosx/releases/latest).
 
 `cd` into it.
 

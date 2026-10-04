@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/pins"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/pins"
 )
 
 // recipeGoldens is where the goldens that pin OVMF, the EFI image and its FAT layout live, relative to

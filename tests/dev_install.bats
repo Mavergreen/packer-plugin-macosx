@@ -18,16 +18,16 @@ STUB
 }
 
 teardown() {
-    rm -f "$REPO/packer-plugin-mavericks"
+    rm -f "$REPO/packer-plugin-macosx"
 }
 
 @test "dev-install builds the plugin and installs it with the stub packer" {
     run env PACKER="$STUB_DIR/packer" "$REPO/bin/dev-install.sh"
     [ "$status" -eq 0 ]
-    [ -x "$REPO/packer-plugin-mavericks" ]
+    [ -x "$REPO/packer-plugin-macosx" ]
     [ -f "$RECORD" ]
     run cat "$RECORD"
-    [ "$output" = "plugins install --path ./packer-plugin-mavericks github.com/mavergreen/mavericks" ]
+    [ "$output" = "plugins install --path ./packer-plugin-macosx github.com/mavergreen/macosx" ]
 }
 
 @test "dev-install uses PACKER, not a hardcoded name" {

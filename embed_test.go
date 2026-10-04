@@ -1,4 +1,4 @@
-package vmguest
+package macosx
 
 import (
 	"bytes"

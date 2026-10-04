@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	vmguest "github.com/Mavergreen/packer-plugin-mavericks"
+	"github.com/Mavergreen/packer-plugin-macosx"
 )
 
 // RequiredFiles is what an install cannot proceed without: the
@@ -54,7 +54,7 @@ func parseSums(b []byte, comments bool) map[string]string {
 // package that is missing or wrong, sorted, and an error when there are
 // any.
 func CheckAppleSums(sums []byte) ([]string, error) {
-	pinned, err := fs.ReadFile(vmguest.Files, "assets/pins/apple-packages.sha256")
+	pinned, err := fs.ReadFile(macosx.Files, "assets/pins/apple-packages.sha256")
 	if err != nil {
 		return nil, err
 	}

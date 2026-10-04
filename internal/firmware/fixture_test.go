@@ -12,9 +12,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/config"
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/pins"
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/proc"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/config"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/pins"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/proc"
 )
 
 // buildOCToolFetch is the line in OpenCorePkg 1.0.7's build_oc.tool that

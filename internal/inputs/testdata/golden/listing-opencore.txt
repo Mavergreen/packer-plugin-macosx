@@ -1,8 +1,8 @@
 build-options	-std=gnu17 -Wno-error
 compiler	gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0 (x86_64-linux-gnu) -std=gnu17
 patch:0001-build_oc-source-pinned-efibuild.patch	f76eec2f0dd2c2a41bad7428f92cff280faa7ee25e924eeea85b129ba8fef7e9
-patch:0002-ovmf-pin-the-c-dialect.patch	bf7c3c7140af45831664e195084635f771cb3857006c94a1ce38f950ceb2df1c
-patch:0003-firmware-drop-werror.patch	9ac41830ba1b95540494f60b79b8107c794e4afca3379077960e02a216ecb0f8
+patch:0002-ovmf-pin-the-c-dialect.patch	bf145f7b9f2578636a66b573a23965fb20b206d8b15dae91f13bebfa86136e1b
+patch:0003-firmware-drop-werror.patch	14260008345b9806154523a751f18a66e341ef0633a35e2f9765500e85a14ba2
 source:audk-brotli	a9ba3940267de5dd73581a47c2e81b3eb1e1df6a704138c599020d66f3677a92
 source:audk-cmocka	59cd4b81abafae35d94ac5d91cf4ae5b05122e688713cd6db51e5e4cef471d8f
 source:audk-googletest	3c3095488b936b14538dca64d7e68bcde09a8a18d2a32a47b59877eff0340403

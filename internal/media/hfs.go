@@ -17,8 +17,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/diskimg"
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/proc"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/diskimg"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/proc"
 )
 
 // CreateHFS makes img a bare HFS+ volume of mib MiB: a sparse file,

@@ -19,8 +19,8 @@ import (
 	"strings"
 	"testing"
 
-	vmguest "github.com/Mavergreen/packer-plugin-mavericks"
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/proc"
+	"github.com/Mavergreen/packer-plugin-macosx"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/proc"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -695,7 +695,7 @@ func TestTheBuiltPostinstallInstallsThePayloadOnATargetOffline(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantSh, err := fs.ReadFile(vmguest.Files, "assets/guest/firstboot.sh")
+	wantSh, err := fs.ReadFile(macosx.Files, "assets/guest/firstboot.sh")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -726,7 +726,7 @@ func TestTheBuiltPostinstallInstallsThePayloadOnATargetOffline(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantPlist, err := fs.ReadFile(vmguest.Files, "assets/guest/com.mqg.firstboot.plist")
+	wantPlist, err := fs.ReadFile(macosx.Files, "assets/guest/com.mqg.firstboot.plist")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -853,7 +853,7 @@ func TestTheConfNamesUpdatesAsTheMediaPresentsThem(t *testing.T) {
 // siblings above and below read their own embedded files.
 func firstbootSh(t *testing.T) []byte {
 	t.Helper()
-	b, err := fs.ReadFile(vmguest.Files, "assets/guest/firstboot.sh")
+	b, err := fs.ReadFile(macosx.Files, "assets/guest/firstboot.sh")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1029,7 +1029,7 @@ func TestFirstbootShWritesTheFragmentOnlyIfSudoersIncludesTheDirectory(t *testin
 // VagrantPublicKey/VagrantPrivateKey are what the rest of this file's
 // guarantee is protecting everything else from becoming.
 func TestNoEmbeddedAssetCarriesAPublicKey(t *testing.T) {
-	err := fs.WalkDir(vmguest.Files, ".", func(path string, d fs.DirEntry, err error) error {
+	err := fs.WalkDir(macosx.Files, ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -1039,7 +1039,7 @@ func TestNoEmbeddedAssetCarriesAPublicKey(t *testing.T) {
 		if strings.HasPrefix(path, "assets/vagrant/") {
 			return nil
 		}
-		b, err := fs.ReadFile(vmguest.Files, path)
+		b, err := fs.ReadFile(macosx.Files, path)
 		if err != nil {
 			return err
 		}
@@ -1064,7 +1064,7 @@ func TestNoEmbeddedAssetCarriesAPublicKey(t *testing.T) {
 // not implied by that -- postinstall reads $3, the target volume, which a
 // test driving it with a fixed argument list would not catch regressing.
 func TestPostinstallReadsTheTargetVolumeArgument(t *testing.T) {
-	b, err := fs.ReadFile(vmguest.Files, "assets/guest/postinstall")
+	b, err := fs.ReadFile(macosx.Files, "assets/guest/postinstall")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1078,7 +1078,7 @@ func TestPostinstallReadsTheTargetVolumeArgument(t *testing.T) {
 
 // "the firstboot LaunchDaemon plist is valid and runs at load"
 func TestTheFirstbootLaunchDaemonPlistRunsAtLoad(t *testing.T) {
-	b, err := fs.ReadFile(vmguest.Files, "assets/guest/com.mqg.firstboot.plist")
+	b, err := fs.ReadFile(macosx.Files, "assets/guest/com.mqg.firstboot.plist")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1102,7 +1102,7 @@ func TestTheFirstbootLaunchDaemonPlistRunsAtLoad(t *testing.T) {
 // postinstallSh is assets/guest/postinstall, as the binary carries it.
 func postinstallSh(t *testing.T) []byte {
 	t.Helper()
-	b, err := fs.ReadFile(vmguest.Files, "assets/guest/postinstall")
+	b, err := fs.ReadFile(macosx.Files, "assets/guest/postinstall")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1248,7 +1248,7 @@ func TestFirstbootShRecordsAReceiptAndABuildNumber(t *testing.T) {
 // TestNothingInTheTreeRunsSoftwareupdate at the repository root.
 func TestNoGuestScriptAsksSoftwareupdateForAnything(t *testing.T) {
 	scripts := 0
-	err := fs.WalkDir(vmguest.Files, ".", func(path string, d fs.DirEntry, err error) error {
+	err := fs.WalkDir(macosx.Files, ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return err
 		}
@@ -1256,7 +1256,7 @@ func TestNoGuestScriptAsksSoftwareupdateForAnything(t *testing.T) {
 			return nil
 		}
 		scripts++
-		b, err := fs.ReadFile(vmguest.Files, path)
+		b, err := fs.ReadFile(macosx.Files, path)
 		if err != nil {
 			return err
 		}

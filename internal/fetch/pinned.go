@@ -3,7 +3,7 @@ package fetch
 import (
 	"context"
 
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/pins"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/pins"
 )
 
 // Pinned fetches the registry's source name into the cache and returns

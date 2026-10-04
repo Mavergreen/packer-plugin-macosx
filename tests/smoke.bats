@@ -13,7 +13,7 @@ setup() {
 }
 
 @test "source files are not ignored" {
-    for f in lib/common.sh cmd/packer-plugin-mavericks/main.go internal/config/config.go; do
+    for f in lib/common.sh cmd/packer-plugin-macosx/main.go internal/config/config.go; do
         run git -C "$REPO" check-ignore -q "$f"
         [ "$status" -eq 0 ] && { echo "wrongly ignored: $f"; return 1; }
     done

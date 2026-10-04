@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/config"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/config"
 )
 
 // DebugPathLimit is the longest debug-symbol path audk's ImageTool will

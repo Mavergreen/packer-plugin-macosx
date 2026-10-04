@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	vmguest "github.com/Mavergreen/packer-plugin-mavericks"
+	"github.com/Mavergreen/packer-plugin-macosx"
 )
 
 // TestRequiredFilesMatchTheirGolden: the files installer media must hold,
@@ -32,7 +32,7 @@ func TestRequiredFilesMatchTheirGolden(t *testing.T) {
 // pinned is the embedded apple-packages.sha256's non-comment lines.
 func pinned(t *testing.T) []string {
 	t.Helper()
-	b, err := fs.ReadFile(vmguest.Files, "assets/pins/apple-packages.sha256")
+	b, err := fs.ReadFile(macosx.Files, "assets/pins/apple-packages.sha256")
 	if err != nil {
 		t.Fatal(err)
 	}

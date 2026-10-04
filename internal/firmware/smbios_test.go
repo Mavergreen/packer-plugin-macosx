@@ -5,12 +5,12 @@ import (
 	"strings"
 	"testing"
 
-	vmguest "github.com/Mavergreen/packer-plugin-mavericks"
+	"github.com/Mavergreen/packer-plugin-macosx"
 )
 
 func embeddedConfig(t *testing.T) []byte {
 	t.Helper()
-	b, err := fs.ReadFile(vmguest.Files, "assets/firmware/config.plist")
+	b, err := fs.ReadFile(macosx.Files, "assets/firmware/config.plist")
 	if err != nil {
 		t.Fatal(err)
 	}

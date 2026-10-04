@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/payload"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/payload"
 )
 
 // TestVagrantKeyMatchesEmbedded guards

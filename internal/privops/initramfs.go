@@ -13,8 +13,8 @@ import (
 	"strings"
 	"sync"
 
-	vmguest "github.com/Mavergreen/packer-plugin-mavericks"
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/proc"
+	"github.com/Mavergreen/packer-plugin-macosx"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/proc"
 )
 
 // newc is a cpio "newc" archive being written: what the kernel unpacks as
@@ -68,7 +68,7 @@ func (b Backend) buildInitramfs(ctx context.Context, payload []byte, roles []str
 	if err != nil {
 		return nil, fmt.Errorf("cannot stage busybox: %w", err)
 	}
-	initScript, err := fs.ReadFile(vmguest.Files, "assets/privops/init.sh")
+	initScript, err := fs.ReadFile(macosx.Files, "assets/privops/init.sh")
 	if err != nil {
 		return nil, err
 	}

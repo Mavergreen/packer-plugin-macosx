@@ -11,9 +11,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/config"
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/privops"
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/proc"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/config"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/privops"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/proc"
 )
 
 const digestListing = "" +

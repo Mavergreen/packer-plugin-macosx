@@ -15,7 +15,7 @@ import (
 	"sort"
 	"strings"
 
-	vmguest "github.com/Mavergreen/packer-plugin-mavericks"
+	"github.com/Mavergreen/packer-plugin-macosx"
 )
 
 type Source struct{ Name, URL, SHA256 string }
@@ -53,7 +53,7 @@ func Parse(r io.Reader) (*Registry, error) {
 
 // Embedded is the registry this binary was built with.
 func Embedded() (*Registry, error) {
-	f, err := vmguest.Files.Open("assets/pins/sources.tsv")
+	f, err := macosx.Files.Open("assets/pins/sources.tsv")
 	if err != nil {
 		return nil, err
 	}
@@ -118,19 +118,19 @@ func Ingredients() ([]string, error) {
 			rows = append(rows, s.Name+"\t"+s.SHA256)
 		}
 	}
-	versions, err := fs.Glob(vmguest.Files, "components/*/version")
+	versions, err := fs.Glob(macosx.Files, "components/*/version")
 	if err != nil {
 		return nil, err
 	}
 	for _, v := range versions {
-		data, err := fs.ReadFile(vmguest.Files, v)
+		data, err := fs.ReadFile(macosx.Files, v)
 		if err != nil {
 			return nil, err
 		}
 		name := strings.TrimSuffix(strings.TrimPrefix(v, "components/"), "/version")
 		rows = append(rows, name+"\t"+ComponentVersion(data))
 	}
-	plist, err := fs.ReadFile(vmguest.Files, "assets/firmware/config.plist")
+	plist, err := fs.ReadFile(macosx.Files, "assets/firmware/config.plist")
 	if err != nil {
 		return nil, err
 	}

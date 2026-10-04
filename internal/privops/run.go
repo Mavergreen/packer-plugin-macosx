@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/config"
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/proc"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/config"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/proc"
 )
 
 // DefaultTimeout bounds one microVM pass when a Backend names no bound of

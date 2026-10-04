@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	vmguest "github.com/Mavergreen/packer-plugin-mavericks"
+	"github.com/Mavergreen/packer-plugin-macosx"
 )
 
 // FirstbootPkgName is the first-boot payload's name on the media -- fixed,
@@ -101,7 +101,7 @@ func (in Injectables) WriteTar(w io.Writer, log func(string, ...any)) error {
 		return nil
 	}
 	for _, f := range AutoinstallFiles {
-		data, err := fs.ReadFile(vmguest.Files, "assets/guest/autoinstall/"+f.Source)
+		data, err := fs.ReadFile(macosx.Files, "assets/guest/autoinstall/"+f.Source)
 		if err != nil {
 			return err
 		}

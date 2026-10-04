@@ -53,7 +53,7 @@ func equalLabels(got, want []string) bool {
 }
 
 // traversalString renders an absolute traversal as the dotted path it
-// reads in source, e.g. "data.mavericks-firmware.fw.ovmf_code".
+// reads in source, e.g. "data.macosx-mavericks-firmware.fw.ovmf_code".
 func traversalString(t hcl.Traversal) string {
 	var parts []string
 	for _, step := range t {
@@ -240,9 +240,9 @@ func TestVagrantPostProcessorBlock(t *testing.T) {
 		got = append(got, traversalString(trav))
 	}
 	want := []string{
-		"data.mavericks-firmware.fw.ovmf_code",
-		"data.mavericks-firmware.fw.ovmf_vars",
-		"data.mavericks-firmware.fw.opencore_image",
+		"data.macosx-mavericks-firmware.fw.ovmf_code",
+		"data.macosx-mavericks-firmware.fw.ovmf_vars",
+		"data.macosx-mavericks-firmware.fw.opencore_image",
 	}
 	if len(got) != len(want) {
 		t.Fatalf("include = %v, want %v", got, want)

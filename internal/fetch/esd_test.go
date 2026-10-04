@@ -17,7 +17,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/pins"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/pins"
 )
 
 // Known answer, computed 2026-09-25 with an openssl/xxd/od pipeline on

@@ -40,7 +40,7 @@ EDK II tree its OpenCore build assembles from the pinned audk tarball.
    #
 +  # The C dialect is an input to the build, so it is stated rather than
 +  # inherited from whatever the host compiler defaults to this year.
-+  # packer-plugin-mavericks: assets/firmware/patches/0002-ovmf-pin-the-c-dialect.patch
++  # packer-plugin-macosx: assets/firmware/patches/0002-ovmf-pin-the-c-dialect.patch
 +  #
 +  GCC:*_*_*_CC_FLAGS = -std=gnu17
 +

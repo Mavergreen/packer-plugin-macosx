@@ -24,14 +24,14 @@ import (
 	"github.com/zclconf/go-cty/cty"
 	"golang.org/x/crypto/ssh"
 
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/config"
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/fetch"
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/lock"
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/media"
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/payload"
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/pins"
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/privops"
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/proc"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/config"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/fetch"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/lock"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/media"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/payload"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/pins"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/privops"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/proc"
 )
 
 func decodeOutput(t *testing.T, v cty.Value) DatasourceOutput {

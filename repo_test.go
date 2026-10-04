@@ -1,4 +1,4 @@
-package vmguest_test
+package macosx_test
 
 import (
 	"encoding/json"
@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/pins"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/pins"
 )
 
 // Two tests that encode a mistake the family has already made once. The pin lives in a

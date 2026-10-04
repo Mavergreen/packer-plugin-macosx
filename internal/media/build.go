@@ -13,12 +13,12 @@ import (
 	"strings"
 	"time"
 
-	vmguest "github.com/Mavergreen/packer-plugin-mavericks"
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/config"
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/fetch"
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/lock"
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/privops"
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/proc"
+	"github.com/Mavergreen/packer-plugin-macosx"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/config"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/fetch"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/lock"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/privops"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/proc"
 )
 
 const (
@@ -513,7 +513,7 @@ func (b *Builder) build(ctx context.Context, esd string, o Options, work, buildi
 // pass runs one embedded payload in the microVM, keeping its console in
 // the work area for whoever has to find out what went wrong.
 func (b *Builder) pass(ctx context.Context, n int, name, target, work string, disks ...privops.Disk) ([]byte, error) {
-	payload, err := fs.ReadFile(vmguest.Files, "assets/privops/"+name+".sh")
+	payload, err := fs.ReadFile(macosx.Files, "assets/privops/"+name+".sh")
 	if err != nil {
 		return nil, err
 	}

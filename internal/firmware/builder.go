@@ -12,11 +12,11 @@ import (
 	"slices"
 	"strings"
 
-	vmguest "github.com/Mavergreen/packer-plugin-mavericks"
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/config"
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/fetch"
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/pins"
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/proc"
+	"github.com/Mavergreen/packer-plugin-macosx"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/config"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/fetch"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/pins"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/proc"
 )
 
 // Builder builds the firmware under one cache directory. Every external
@@ -232,7 +232,7 @@ func (b *Builder) runLogged(ctx context.Context, c proc.Cmd, logPath string) err
 // applyPatch applies one of the patches the binary carries (assets/firmware/patches/
 // in the repository) in dir with `git apply -p1`, reading it from stdin.
 func (b *Builder) applyPatch(ctx context.Context, dir, name string) error {
-	patch, err := fs.ReadFile(vmguest.Files, "assets/firmware/patches/"+name)
+	patch, err := fs.ReadFile(macosx.Files, "assets/firmware/patches/"+name)
 	if err != nil {
 		return err
 	}

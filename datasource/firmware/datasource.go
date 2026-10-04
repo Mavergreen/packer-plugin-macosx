@@ -23,14 +23,14 @@ import (
 	configHelper "github.com/hashicorp/packer-plugin-sdk/template/config"
 	"github.com/zclconf/go-cty/cty"
 
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/config"
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/fetch"
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/firmware"
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/inputs"
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/lock"
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/pins"
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/proc"
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/store"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/config"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/fetch"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/firmware"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/inputs"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/lock"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/pins"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/proc"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/store"
 )
 
 // Config is mavericks-firmware's HCL configuration.
@@ -78,7 +78,7 @@ type DatasourceOutput struct {
 // The goldens part is the digest of that code's goldens (recipe_test.go's
 // recipeGoldens), and TestRecipePinsTheGoldens fails when they change
 // and this does not.
-const recipe = "1 goldens:2fc9fb39af54abc0"
+const recipe = "1 goldens:956c273101856ce4"
 
 // Datasource is mavericks-firmware.
 type Datasource struct {

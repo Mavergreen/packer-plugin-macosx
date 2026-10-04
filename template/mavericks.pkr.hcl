@@ -60,7 +60,7 @@
 # held byte-identical to it by this package's own
 # TestVagrantKeyMatchesEmbedded -- rather than reaching out via path.root
 # to assets/ (a template/ shipped alone has no such path to reach), and
-# rather than data.mavericks-media.media.ssh_private_key_file, even
+# rather than data.macosx-mavericks-media.media.ssh_private_key_file, even
 # though that data source output is the very same bytes for the default
 # authorized_key (internal/payload's VagrantPrivateKey reads this exact
 # file). MEASURED: packer-plugin-sdk's communicator config stats
@@ -90,8 +90,8 @@
 
 packer {
   required_plugins {
-    mavericks = {
-      source  = "github.com/mavergreen/mavericks"
+    macosx = {
+      source  = "github.com/mavergreen/macosx"
       version = ">= 0.0.0"
     }
     qemu = {
@@ -105,15 +105,15 @@ packer {
   }
 }
 
-data "mavericks-installesd" "esd" {}
+data "macosx-mavericks-installesd" "esd" {}
 
-data "mavericks-firmware" "fw" {
+data "macosx-mavericks-firmware" "fw" {
   smbios = var.smbios
   debug  = var.debug
 }
 
-data "mavericks-media" "media" {
-  installesd     = data.mavericks-installesd.esd.path
+data "macosx-mavericks-media" "media" {
+  installesd     = data.macosx-mavericks-installesd.esd.path
   user           = var.user
   authorized_key = var.authorized_key
   openssh        = var.openssh
@@ -156,7 +156,7 @@ locals {
 }
 
 source "qemu" "mavericks" {
-  iso_url      = data.mavericks-media.media.path
+  iso_url      = data.macosx-mavericks-media.media.path
   iso_checksum = "none"
   disk_image   = false
   disk_size    = var.disk_size
@@ -175,8 +175,8 @@ source "qemu" "mavericks" {
   boot_wait    = "0s"
 
   efi_boot          = true
-  efi_firmware_code = data.mavericks-firmware.fw.ovmf_code
-  efi_firmware_vars = data.mavericks-firmware.fw.ovmf_vars
+  efi_firmware_code = data.macosx-mavericks-firmware.fw.ovmf_code
+  efi_firmware_vars = data.macosx-mavericks-firmware.fw.ovmf_vars
 
   communicator         = "ssh"
   ssh_username         = var.user
@@ -186,17 +186,17 @@ source "qemu" "mavericks" {
   shutdown_command = "sudo shutdown -h now"
 
   qemuargs = [
-    ["-drive", "if=pflash,format=raw,unit=0,readonly=on,file=${data.mavericks-firmware.fw.ovmf_code}"],
+    ["-drive", "if=pflash,format=raw,unit=0,readonly=on,file=${data.macosx-mavericks-firmware.fw.ovmf_code}"],
     ["-drive", "if=pflash,format=raw,unit=1,file={{ .OutputDir }}/efivars.fd"],
     ["-device", "ich9-usb-ehci1,id=usb,bus=pcie.0,addr=0x1d.7,multifunction=on"],
     ["-device", "ich9-usb-uhci1,masterbus=usb.0,firstport=0,bus=pcie.0,addr=0x1d.0,multifunction=on"],
     ["-device", "ich9-usb-uhci2,masterbus=usb.0,firstport=2,bus=pcie.0,addr=0x1d.1"],
     ["-device", "ich9-usb-uhci3,masterbus=usb.0,firstport=4,bus=pcie.0,addr=0x1d.2"],
-    ["-drive", "id=opencore,if=none,format=raw,snapshot=on,file=${data.mavericks-firmware.fw.opencore_image}"],
+    ["-drive", "id=opencore,if=none,format=raw,snapshot=on,file=${data.macosx-mavericks-firmware.fw.opencore_image}"],
     ["-device", "usb-storage,bus=usb.0,drive=opencore"],
     ["-drive", "id=target,if=none,format=qcow2,file={{ .OutputDir }}/{{ .Name }}"],
     ["-device", "ide-hd,bus=ide.0,drive=target"],
-    ["-drive", "id=installer,if=none,format=raw,snapshot=on,file=${data.mavericks-media.media.path}"],
+    ["-drive", "id=installer,if=none,format=raw,snapshot=on,file=${data.macosx-mavericks-media.media.path}"],
     ["-device", "ide-hd,bus=ide.1,drive=installer"],
     ["-netdev", "user,id=net0,hostfwd=tcp:127.0.0.1:{{ .SSHHostPort }}-:22"],
     # The PCI NICs need no bus.
@@ -262,9 +262,9 @@ build {
   post-processor "vagrant" {
     output = "output/mavericks-10.9.5-{{ .Provider }}.box"
     include = [
-      data.mavericks-firmware.fw.ovmf_code,
-      data.mavericks-firmware.fw.ovmf_vars,
-      data.mavericks-firmware.fw.opencore_image,
+      data.macosx-mavericks-firmware.fw.ovmf_code,
+      data.macosx-mavericks-firmware.fw.ovmf_vars,
+      data.macosx-mavericks-firmware.fw.opencore_image,
     ]
     vagrantfile_template           = "${local.output_directory}/Vagrantfile"
     vagrantfile_template_generated = true

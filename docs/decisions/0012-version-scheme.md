@@ -60,7 +60,7 @@ instead, because inline YAML cannot be tested and this repository tests it
 
 - **`INGREDIENTS.md`'s `version-scheme:` deviations** name the shape
   taken, the self-upstream branch, and point here. They are scoped to the
-  plugin's own globs (`cmd/packer-plugin-mavericks/*`, `datasource/*`,
+  plugin's own globs (`cmd/packer-plugin-macosx/*`, `datasource/*`,
   `internal/*`, `version/*`) so that a deviation on one cannot quietly
   license the rest.
 - **A release is a declared state, not an event.** `INGREDIENTS.md`'s

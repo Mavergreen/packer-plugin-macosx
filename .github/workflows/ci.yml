@@ -120,7 +120,7 @@ jobs:
         run: |
           set -eu
           for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 netbsd/amd64 netbsd/arm64; do
-              GOOS=${target%/*} GOARCH=${target#*/} go build -o /dev/null ./cmd/packer-plugin-mavericks
+              GOOS=${target%/*} GOARCH=${target#*/} go build -o /dev/null ./cmd/packer-plugin-macosx
           done
 
   # template/mavericks.pkr.hcl against a REAL packer: the qemu and vagrant

@@ -35,23 +35,23 @@ import (
 	"github.com/zclconf/go-cty/cty"
 	"golang.org/x/crypto/ssh"
 
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/config"
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/fetch"
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/hostcheck"
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/inputs"
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/lock"
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/media"
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/payload"
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/pins"
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/privops"
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/proc"
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/store"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/config"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/fetch"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/hostcheck"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/inputs"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/lock"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/media"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/payload"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/pins"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/privops"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/proc"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/store"
 )
 
 // Config is mavericks-media's HCL configuration.
 type Config struct {
 	// InstallESD is the path of Apple's InstallESD.dmg -- the template
-	// passes data.mavericks-installesd.esd.path. Required. It is checked
+	// passes data.macosx-mavericks-installesd.esd.path. Required. It is checked
 	// against the repository's pinned sha256 before a build uses it.
 	InstallESD string `mapstructure:"installesd"`
 	// User is the guest account the first-boot payload creates, with
@@ -108,7 +108,7 @@ type DatasourceOutput struct {
 // The goldens part is the digest of that code's goldens (recipe_test.go's
 // recipeGoldens), and TestRecipePinsTheGoldens fails when they change and
 // this does not.
-const recipe = "1 goldens:a96816670760dc4a"
+const recipe = "2 goldens:fa942c6bc515295b"
 
 // Datasource is mavericks-media.
 type Datasource struct {
@@ -163,7 +163,7 @@ func (d *Datasource) Configure(raws ...interface{}) error {
 
 	var errs []error
 	if c.InstallESD == "" {
-		errs = append(errs, errors.New("installesd is required: the path of InstallESD.dmg (data.mavericks-installesd.<name>.path)"))
+		errs = append(errs, errors.New("installesd is required: the path of InstallESD.dmg (data.macosx-mavericks-installesd.<name>.path)"))
 	}
 	if !userName.MatchString(c.User) {
 		errs = append(errs, fmt.Errorf("user %q is not a usable account name (letters, digits, underscore, dash; not starting with a digit or dash; no dot, since sudo ignores a sudoers.d file named with one)", c.User))

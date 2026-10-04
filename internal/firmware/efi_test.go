@@ -17,8 +17,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/diskimg"
-	"github.com/Mavergreen/packer-plugin-mavericks/internal/proc"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/diskimg"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/proc"
 )
 
 // writeOVMF writes OVMF_CODE.fd and OVMF_VARS.fd to dir with the given
@@ -326,7 +326,7 @@ func TestEFIImageLayout(t *testing.T) {
 // (a known answer). It moves only with a deliberate change to the
 // image's format or to assets/firmware/config.plist; say which in the
 // commit.
-const goldenEFIImage = "fa24df21bdde91f8f3f4149fc7d5a0525cb3b6e9881244111a9431b692c8124e"
+const goldenEFIImage = "3056088d56ce9cf53030b98e6d9888c67bec8feaa94306af3fb1dc5cb64198b4"
 
 func TestEFIImageIsDeterministic(t *testing.T) {
 	f := newFixture(t)
