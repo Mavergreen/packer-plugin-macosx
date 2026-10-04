@@ -12,9 +12,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 
+	macosx "github.com/Mavergreen/packer-plugin-macosx"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/privops"
 	"github.com/Mavergreen/packer-plugin-macosx/internal/proc"
 )
 
@@ -171,4 +176,103 @@ func openSized(path string) (*os.File, int64, error) {
 		return nil, 0, err
 	}
 	return f, st.Size(), nil
+}
+
+// VM runs a payload as uid 0 in the privops microVM, target mounted and
+// disks attached after it, and returns its console. privops.Backend is
+// one.
+type VM interface {
+	Run(ctx context.Context, target string, payload []byte, disks []privops.Disk) ([]byte, error)
+}
+
+// Known is one retail disc this plugin recognizes: its build, and the
+// sha256 of every file in its Packages directory.
+type Known struct {
+	Build string
+	Sums  map[string]string
+}
+
+// KnownDiscs parses assets/pins/snowleopard-packages.sha256: a
+// "# build <build>" line opens each disc's section, "<sha256>  <name>"
+// lines fill it, and every other "#" line is commentary.
+func KnownDiscs() ([]Known, error) {
+	b, err := fs.ReadFile(macosx.Files, "assets/pins/snowleopard-packages.sha256")
+	if err != nil {
+		return nil, err
+	}
+	var known []Known
+	for _, line := range strings.Split(string(b), "\n") {
+		if build, ok := strings.CutPrefix(line, "# build "); ok && !strings.Contains(build, " ") {
+			known = append(known, Known{Build: build, Sums: map[string]string{}})
+			continue
+		}
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		sum, name, ok := strings.Cut(line, "  ")
+		if !ok || len(known) == 0 {
+			return nil, fmt.Errorf("snowleopard-packages.sha256: %q is not \"<sha256>  <name>\" under a \"# build\" line", line)
+		}
+		known[len(known)-1].Sums[name] = sum
+	}
+	return known, nil
+}
+
+// Verify reads the volume's build and package sums in the microVM --
+// volume attached read-only, never as the target, which is scratch, an
+// HFS+ image the caller made for the backend to mount -- and holds them
+// to the known disc of that build. It returns the build.
+func Verify(ctx context.Context, vm VM, scratch, volume string) (string, error) {
+	payload, err := fs.ReadFile(macosx.Files, "assets/privops/disc/verify-disc.sh")
+	if err != nil {
+		return "", err
+	}
+	console, err := vm.Run(ctx, scratch, payload, []privops.Disk{{Role: "ro", Path: volume}})
+	if err != nil {
+		return "", fmt.Errorf("reading the disc in the microVM: %w", err)
+	}
+	build, ok := privops.Marker(console, "MQG-DISC-BUILD")
+	if !ok || build == "" {
+		return "", errors.New("the microVM did not report the disc's build: is it a Mac OS X install disc?")
+	}
+	known, err := KnownDiscs()
+	if err != nil {
+		return "", err
+	}
+	var k *Known
+	var builds []string
+	for i := range known {
+		builds = append(builds, known[i].Build)
+		if known[i].Build == build {
+			k = &known[i]
+		}
+	}
+	if k == nil {
+		return "", fmt.Errorf("build %s is not a disc this plugin knows (it knows %s)", build, strings.Join(builds, ", "))
+	}
+	got := map[string]string{}
+	for _, m := range privops.Markers(console, "MQG-SUM-DISC") {
+		if sum, name, ok := strings.Cut(m, "  "); ok {
+			got[name] = sum
+		}
+	}
+	var problems []string
+	for name, want := range k.Sums {
+		switch g, ok := got[name]; {
+		case !ok:
+			problems = append(problems, name+": missing from the disc")
+		case g != want:
+			problems = append(problems, fmt.Sprintf("%s: sha256 %s is not the pinned %s", name, g, want))
+		}
+	}
+	for name := range got {
+		if _, ok := k.Sums[name]; !ok {
+			problems = append(problems, name+": on the disc but not pinned")
+		}
+	}
+	if len(problems) > 0 {
+		sort.Strings(problems)
+		return "", fmt.Errorf("the disc is not build %s as it shipped: %s", build, strings.Join(problems, "; "))
+	}
+	return build, nil
 }

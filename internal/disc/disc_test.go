@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Mavergreen/packer-plugin-macosx/internal/privops"
 	"github.com/Mavergreen/packer-plugin-macosx/internal/proc"
 )
 
@@ -190,5 +191,124 @@ func TestExtractLeavesNothingOnFailure(t *testing.T) {
 	}
 	if entries, _ := os.ReadDir(dir); len(entries) != 0 {
 		t.Fatalf("left %v behind", entries)
+	}
+}
+
+// fakeVM answers Run with console and records what it was handed.
+type fakeVM struct {
+	console string
+	target  string
+	disks   []privops.Disk
+	payload []byte
+}
+
+func (f *fakeVM) Run(_ context.Context, target string, payload []byte, disks []privops.Disk) ([]byte, error) {
+	f.target, f.payload, f.disks = target, payload, disks
+	return []byte(f.console), nil
+}
+
+func (f *fakeVM) Missing() []string { return nil }
+
+// knownConsole is what verify-disc.sh prints for a faithful copy of the
+// first known disc: its build, then every pinned package's sum.
+func knownConsole(t *testing.T, mutate func(sums map[string]string)) (string, Known) {
+	t.Helper()
+	known, err := KnownDiscs()
+	if err != nil || len(known) == 0 {
+		t.Fatalf("KnownDiscs = %v, %v", known, err)
+	}
+	k := known[0]
+	sums := map[string]string{}
+	for n, s := range k.Sums {
+		sums[n] = s
+	}
+	if mutate != nil {
+		mutate(sums)
+	}
+	var b strings.Builder
+	b.WriteString("noise before\nMQG-DISC-BUILD " + k.Build + "\n")
+	for n, s := range sums {
+		b.WriteString("MQG-SUM-DISC " + s + "  " + n + "\n")
+	}
+	b.WriteString("MQG-PRIVOPS-OK rc=0\n")
+	return b.String(), k
+}
+
+func TestKnownDiscsIs10A432(t *testing.T) {
+	known, err := KnownDiscs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(known) != 1 || known[0].Build != "10A432" || len(known[0].Sums) < 50 {
+		t.Fatalf("KnownDiscs = %d discs, first %q with %d sums; want 10A432 alone, with its packages", len(known), known[0].Build, len(known[0].Sums))
+	}
+}
+
+func TestVerifyAcceptsTheKnownDisc(t *testing.T) {
+	console, k := knownConsole(t, nil)
+	build, err := Verify(context.Background(), &fakeVM{console: console}, "/s.img", "/v.hfs")
+	if err != nil || build != k.Build {
+		t.Fatalf("Verify = %q, %v; want %q", build, err, k.Build)
+	}
+}
+
+func TestVerifyRefusesAnotherBuild(t *testing.T) {
+	console, _ := knownConsole(t, nil)
+	console = strings.Replace(console, "MQG-DISC-BUILD 10A432", "MQG-DISC-BUILD 10D573", 1)
+	_, err := Verify(context.Background(), &fakeVM{console: console}, "/s.img", "/v.hfs")
+	want := "build 10D573 is not a disc this plugin knows (it knows 10A432)"
+	if err == nil || err.Error() != want {
+		t.Fatalf("err = %v; want %q", err, want)
+	}
+}
+
+func TestVerifyNamesTheFirstMismatch(t *testing.T) {
+	const bad = "0000000000000000000000000000000000000000000000000000000000000000"
+	console, k := knownConsole(t, func(s map[string]string) { s["BSD.pkg"] = bad })
+	_, err := Verify(context.Background(), &fakeVM{console: console}, "/s.img", "/v.hfs")
+	want := "BSD.pkg: sha256 " + bad + " is not the pinned " + k.Sums["BSD.pkg"]
+	if err == nil || !strings.Contains(err.Error(), want) {
+		t.Fatalf("err = %v; want it to contain %q", err, want)
+	}
+}
+
+func TestVerifyRefusesAMissingPackage(t *testing.T) {
+	console, _ := knownConsole(t, func(s map[string]string) { delete(s, "BaseSystem.pkg") })
+	_, err := Verify(context.Background(), &fakeVM{console: console}, "/s.img", "/v.hfs")
+	if err == nil || !strings.Contains(err.Error(), "BaseSystem.pkg: missing from the disc") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestVerifyRefusesAnExtraPackage(t *testing.T) {
+	console, _ := knownConsole(t, func(s map[string]string) {
+		s["Extra.pkg"] = "1111111111111111111111111111111111111111111111111111111111111111"
+	})
+	_, err := Verify(context.Background(), &fakeVM{console: console}, "/s.img", "/v.hfs")
+	if err == nil || !strings.Contains(err.Error(), "Extra.pkg: on the disc but not pinned") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestVerifyAttachesTheVolumeReadOnly(t *testing.T) {
+	console, _ := knownConsole(t, nil)
+	vm := &fakeVM{console: console}
+	if _, err := Verify(context.Background(), vm, "/s.img", "/v.hfs"); err != nil {
+		t.Fatal(err)
+	}
+	if vm.target != "/s.img" {
+		t.Fatalf("target = %q; want the scratch image, never the volume", vm.target)
+	}
+	if len(vm.disks) != 1 || vm.disks[0] != (privops.Disk{Role: "ro", Path: "/v.hfs"}) {
+		t.Fatalf("disks = %v; want the volume alone, read-only", vm.disks)
+	}
+	if !bytes.Contains(vm.payload, []byte("MQG-DISC-BUILD")) {
+		t.Fatal("the payload is not verify-disc.sh")
+	}
+}
+
+func TestVerifyFailsOnAnEmptyConsole(t *testing.T) {
+	if _, err := Verify(context.Background(), &fakeVM{console: "MQG-PRIVOPS-OK rc=0\n"}, "/s.img", "/v.hfs"); err == nil {
+		t.Fatal("Verify passed a console that reported nothing")
 	}
 }
