@@ -129,3 +129,19 @@ func TestEverySnowLeopardUpdateIsPinnedWithARealChecksum(t *testing.T) {
 		}
 	}
 }
+
+// TestSnowLeopardOptionalUpdatesCarryTheirCondition: the combo's Rosetta,
+// QuickTime 7 and X11 packages go in only where Apple's distribution
+// would put them, the guest already having the component.
+func TestSnowLeopardOptionalUpdatesCarryTheirCondition(t *testing.T) {
+	want := map[string]string{
+		"apple-rosetta-combo-10.6.8": "/usr/libexec/oah/translate",
+		"apple-qt7-combo-10.6.8":     "/Applications/Utilities/QuickTime Player 7.app",
+		"apple-x11-combo-10.6.8":     "/usr/bin/quartz-wm",
+	}
+	for _, n := range snowLeopardSecurity {
+		if got := UpdateIf(n); got != want[n] {
+			t.Errorf("UpdateIf(%s) = %q; want %q", n, got, want[n])
+		}
+	}
+}

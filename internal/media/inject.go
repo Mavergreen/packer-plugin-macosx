@@ -38,8 +38,25 @@ var AutoinstallFiles = []AutoinstallFile{
 	{"OSInstall.collection", "System/Installation/Packages/OSInstall.collection", 0o644},
 }
 
+// AutoinstallFilesFor is a release's hooks: Mavericks' AutoinstallFiles,
+// or for "snowleopard" the same three with minstallconfig.xml in /etc,
+// where 10A432's /etc/rc.install looks for it (MEASURED 2026-10-04).
+func AutoinstallFilesFor(release string) []AutoinstallFile {
+	if release != "snowleopard" {
+		return AutoinstallFiles
+	}
+	files := append([]AutoinstallFile(nil), AutoinstallFiles...)
+	for i := range files {
+		if files[i].Source == "minstallconfig.xml" {
+			files[i].Dest = "private/etc/minstallconfig.xml"
+		}
+	}
+	return files
+}
+
 // Injectables is what a build adds to the media beyond Apple's files.
 type Injectables struct {
+	Release      string // "" or "mavericks", or "snowleopard": where the hooks go
 	Autoinstall  bool
 	FirstbootPkg string   // installed by the OS installer, listed in OSInstall.collection
 	ExtraPkgs    []string // carried beside it, NOT listed: firstboot.sh installs them
@@ -100,7 +117,7 @@ func (in Injectables) WriteTar(w io.Writer, log func(string, ...any)) error {
 		}
 		return nil
 	}
-	for _, f := range AutoinstallFiles {
+	for _, f := range AutoinstallFilesFor(in.Release) {
 		data, err := fs.ReadFile(macosx.Files, "assets/guest/autoinstall/"+f.Source)
 		if err != nil {
 			return err

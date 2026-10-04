@@ -62,7 +62,20 @@ func UpdateNamesFor(release, selection string) ([]string, error) {
 // media presents it under (StagedName) -- and so the name firstboot.conf
 // must carry: payload.MediaFile{Path: u.Path, Name: u.Staged}, never the
 // base of Path.
-type Update struct{ Name, Path, Staged string }
+type Update struct{ Name, Path, Staged, If string }
+
+// updateIf is the guest path each conditional update's install waits on:
+// the checks Apple's 10.6.8 combo distribution (catalogue product
+// 041-98121) makes before its optional packages.
+var updateIf = map[string]string{
+	"apple-rosetta-combo-10.6.8": "/usr/libexec/oah/translate",
+	"apple-qt7-combo-10.6.8":     "/Applications/Utilities/QuickTime Player 7.app",
+	"apple-x11-combo-10.6.8":     "/usr/bin/quartz-wm",
+}
+
+// UpdateIf is the path on the guest that update name needs to exist
+// before it installs, or "" when it always installs.
+func UpdateIf(name string) string { return updateIf[name] }
 
 // StagedName is how the installer media presents the n-th update
 // (1-based): the install order is legible in the name, and the prefix
@@ -75,7 +88,12 @@ func StagedName(n int, path string) string {
 // order the guest must install them. "none" fetches nothing. Each
 // Update's Path is read-only (see Get); never open it for writing.
 func (g *Getter) Updates(ctx context.Context, reg *pins.Registry, selection string) ([]Update, error) {
-	names, err := UpdateNames(selection)
+	return g.UpdatesFor(ctx, reg, "mavericks", selection)
+}
+
+// UpdatesFor is Updates for a release's selection.
+func (g *Getter) UpdatesFor(ctx context.Context, reg *pins.Registry, release, selection string) ([]Update, error) {
+	names, err := UpdateNamesFor(release, selection)
 	if err != nil {
 		return nil, err
 	}
@@ -96,7 +114,7 @@ func (g *Getter) Updates(ctx context.Context, reg *pins.Registry, selection stri
 		if !ok {
 			return nil, fmt.Errorf("%s is not a flat package (no xar magic)", path)
 		}
-		out = append(out, Update{Name: n, Path: path, Staged: StagedName(i+1, path)})
+		out = append(out, Update{Name: n, Path: path, Staged: StagedName(i+1, path), If: UpdateIf(n)})
 	}
 	return out, nil
 }

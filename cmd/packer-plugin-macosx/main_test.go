@@ -34,7 +34,7 @@ func TestDescribeListsEveryDatasource(t *testing.T) {
 
 	got := append([]string(nil), desc.Datasources...)
 	sort.Strings(got)
-	want := []string{"mavericks-firmware", "mavericks-installesd", "mavericks-media", "snowleopard-firmware", "snowleopard-installer"}
+	want := []string{"mavericks-firmware", "mavericks-installesd", "mavericks-media", "snowleopard-firmware", "snowleopard-installer", "snowleopard-media"}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("datasources = %v; want %v", got, want)
 	}

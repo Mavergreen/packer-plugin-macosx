@@ -26,6 +26,7 @@ import (
 
 	"github.com/Mavergreen/packer-plugin-macosx/internal/config"
 	"github.com/Mavergreen/packer-plugin-macosx/internal/fetch"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/inputs"
 	"github.com/Mavergreen/packer-plugin-macosx/internal/lock"
 	"github.com/Mavergreen/packer-plugin-macosx/internal/media"
 	"github.com/Mavergreen/packer-plugin-macosx/internal/payload"
@@ -180,7 +181,11 @@ func newWorld(t *testing.T) *world {
 		fmt.Fprintf(&sums, "%s  %s\n", sum(b), n)
 	}
 	content["/openssh/TAG/SHA256SUMS"] = []byte(sums.String())
-	for i, n := range updateNames {
+	slNames, serr := fetch.UpdateNamesFor("snowleopard", "security")
+	if serr != nil {
+		t.Fatal(serr)
+	}
+	for i, n := range append(append([]string(nil), updateNames...), slNames...) {
 		b := []byte("xar!" + n)
 		path := fmt.Sprintf("/apple/Update%d-%s.pkg", i+1, n)
 		content[path] = b
@@ -254,7 +259,14 @@ type fakeMedia struct {
 	builds       int32
 	built        media.Options
 	esd          string
+	volume       string
+	release      string
 	digestOf     string
+}
+
+func (f *fakeMedia) BuildFromVolume(ctx context.Context, volume, release string, o media.Options) (string, error) {
+	f.volume, f.release = volume, release
+	return f.Build(ctx, "", o)
 }
 
 func (f *fakeMedia) Validate(o media.Options) error {
@@ -789,5 +801,106 @@ func TestTheListingCarriesTheRecipe(t *testing.T) {
 		if !strings.Contains(string(b), row) {
 			t.Errorf("the listing does not carry %q:\n%s", row, b)
 		}
+	}
+}
+
+// --- Snow Leopard ---------------------------------------------------------
+
+// slVolume is a verified installer volume where snowleopard-installer
+// files one: <cache>/snowleopard-installer/<digest>/snowleopard.hfs.
+func slVolume(t *testing.T) string {
+	t.Helper()
+	dir := filepath.Join(t.TempDir(), "snowleopard-installer", "0123abcd")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(dir, "snowleopard.hfs")
+	if err := os.WriteFile(p, []byte("H+ volume"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+func slSettings(w *world, vol, updates string) SnowLeopard {
+	return SnowLeopard{Installer: vol, User: "vagrant", Updates: updates, PrivopsTimeout: 15 * time.Minute, CacheDir: w.cacheDir}
+}
+
+func TestSnowLeopardMediaBuildsFromTheVolume(t *testing.T) {
+	w := newWorld(t)
+	vol := slVolume(t)
+	v, err := ExecuteSnowLeopard(slSettings(w, vol, "security"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w.mb.volume != vol || w.mb.release != "snowleopard" {
+		t.Fatalf("BuildFromVolume(%q, %q); want %q, snowleopard", w.mb.volume, w.mb.release, vol)
+	}
+	if w.mb.built.Injectables.Release != "snowleopard" {
+		t.Fatalf("injectables for %q; want snowleopard's", w.mb.built.Injectables.Release)
+	}
+	if w.payloadCfg.Release != "snowleopard" || len(w.payloadCfg.OpenSSHPkgs) != 0 {
+		t.Fatalf("payload release %q with %d OpenSSH packages; want snowleopard, none", w.payloadCfg.Release, len(w.payloadCfg.OpenSSHPkgs))
+	}
+	var ifs []string
+	for _, u := range w.payloadCfg.UpdatePkgs {
+		ifs = append(ifs, u.If)
+	}
+	if len(ifs) != 6 || ifs[4] != "/usr/bin/quartz-wm" || ifs[1] != "" {
+		t.Fatalf("update conditions %q; want the combo's, X11's fifth", ifs)
+	}
+	if p := v.GetAttr("path").AsString(); !strings.Contains(p, string(filepath.Separator)+"snowleopard-media"+string(filepath.Separator)) {
+		t.Fatalf("path %s is not in the snowleopard-media store", p)
+	}
+	if w.sshReqs != 0 {
+		t.Fatalf("%d requests for OpenSSH; 10.6 has none", w.sshReqs)
+	}
+}
+
+func TestSnowLeopardMediaRefusesAMissingVolume(t *testing.T) {
+	w := newWorld(t)
+	vol := filepath.Join(t.TempDir(), "snowleopard-installer", "x", "snowleopard.hfs")
+	if _, err := ExecuteSnowLeopard(slSettings(w, vol, "none")); err == nil || !strings.Contains(err.Error(), vol) {
+		t.Fatalf("err = %v; want the missing volume named", err)
+	}
+}
+
+// TestTheTwoReleasesNeverShareMedia: the listings differ in the release,
+// the disc and the hooks' destinations, and the two builds file under
+// different store kinds besides.
+func TestTheTwoReleasesNeverShareMedia(t *testing.T) {
+	w := newWorld(t)
+	reg, _ := loadRegistry()
+	key := payload.VagrantPublicKey()
+	mav, err := w.configure(map[string]interface{}{"updates": "none", "openssh": false}).listing(reg, key, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sl := &Datasource{release: "snowleopard", config: Config{InstallESD: slVolume(t), User: "vagrant", Updates: "none"}}
+	slRows, err := sl.listing(reg, key, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inputs.Digest(mav) == inputs.Digest(slRows) {
+		t.Fatal("the 10.9 and 10.6 media listings are the same")
+	}
+	if !slices.Contains(slRows, "release\tsnowleopard") || !slices.Contains(slRows, "installer\t0123abcd") {
+		t.Fatalf("the 10.6 listing names neither its release nor its disc: %v", slRows)
+	}
+	for _, r := range mav {
+		if strings.HasPrefix(r, "release\t") || strings.HasPrefix(r, "installer\t") {
+			t.Fatalf("the 10.9 listing gained %q", r)
+		}
+	}
+}
+
+// TestASnowLeopardGuestIsNamedForItsRelease: the hostname default is
+// 10.9's, "mavericks"; a 10.6 guest is "snowleopard".
+func TestASnowLeopardGuestIsNamedForItsRelease(t *testing.T) {
+	w := newWorld(t)
+	if _, err := ExecuteSnowLeopard(slSettings(w, slVolume(t), "none")); err != nil {
+		t.Fatal(err)
+	}
+	if w.payloadCfg.Hostname != "snowleopard" {
+		t.Fatalf("hostname %q; want snowleopard", w.payloadCfg.Hostname)
 	}
 }

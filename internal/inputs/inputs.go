@@ -28,7 +28,7 @@ func (r Row) line() string { return r.Key + "\t" + r.Value }
 // repoParts is the parts a data source builds that have repository-side
 // inputs to declare: installesd lists esd; firmware lists opencore, ovmf
 // and efi; media lists payload and media.
-var repoParts = []string{"esd", "opencore", "ovmf", "efi", "efi-snowleopard", "payload", "media"}
+var repoParts = []string{"esd", "opencore", "ovmf", "efi", "efi-snowleopard", "payload", "media", "media-snowleopard"}
 
 // RepoRows is the part's repository-side inputs: the pins, patches and
 // embedded files it builds from (the payload's are the three files it
@@ -59,6 +59,8 @@ func RepoRows(reg *pins.Registry, part, compiler string) ([]Row, error) {
 		return payloadRows()
 	case "media":
 		return mediaRows(reg)
+	case "media-snowleopard":
+		return discMediaRows()
 	default:
 		return nil, fmt.Errorf("no such part %q; parts are: %s", part, strings.Join(repoParts, " "))
 	}
@@ -154,6 +156,26 @@ func mediaRows(reg *pins.Registry) ([]Row, error) {
 		return nil, err
 	}
 	return append(rows, Row{"component:openssh", tag}), nil
+}
+
+// discMediaRows is a disc-based media build's own inputs: the same
+// autoinstall hooks and privops scripts as mediaRows, the disc-only
+// scripts of assets/privops/disc/, and no ESD or OpenSSH -- the disc is
+// named by the snowleopard-installer entry it came from.
+func discMediaRows() ([]Row, error) {
+	var rows []Row
+	for _, t := range []struct{ prefix, dir string }{
+		{"autoinstall", "assets/guest/autoinstall"},
+		{"privops", "assets/privops"},
+		{"privops-disc", "assets/privops/disc"},
+	} {
+		r, err := treeRows(t.prefix, t.dir)
+		if err != nil {
+			return nil, err
+		}
+		rows = append(rows, r...)
+	}
+	return rows, nil
 }
 
 // sourcePin is source:<name> with the registry row's sha256, or ABSENT

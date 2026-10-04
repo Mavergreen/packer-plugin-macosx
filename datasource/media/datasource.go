@@ -113,6 +113,43 @@ const recipe = "3 goldens:2850b5fe303d62c0"
 // Datasource is mavericks-media.
 type Datasource struct {
 	config Config
+	// release is "" for 10.9, mavericks-media; "snowleopard" for 10.6,
+	// whose build ExecuteSnowLeopard starts, with config.InstallESD
+	// naming snowleopard-installer's verified volume instead.
+	release string
+}
+
+// SnowLeopard is snowleopard-media's settings: 10.9's, with the verified
+// installer volume in place of InstallESD and no OpenSSH, which the
+// family builds for 10.9 only.
+type SnowLeopard struct {
+	Installer      string
+	User           string
+	AuthorizedKey  string
+	Updates        string
+	ExtraSpaceMiB  int
+	PrivopsTimeout time.Duration
+	CacheDir       string
+}
+
+// ExecuteSnowLeopard is snowleopard-media's Execute: the same store,
+// listing, payload, updates and outputs as mavericks-media, from a retail
+// disc's volume (media.Builder.BuildFromVolume) rather than an ESD.
+func ExecuteSnowLeopard(s SnowLeopard) (cty.Value, error) {
+	d := &Datasource{release: "snowleopard", config: Config{
+		InstallESD: s.Installer, User: s.User, AuthorizedKey: s.AuthorizedKey,
+		OpenSSH: configHelper.TriFalse, Updates: s.Updates, ExtraSpaceMiB: s.ExtraSpaceMiB,
+		PrivopsTimeout: s.PrivopsTimeout, CacheDir: s.CacheDir,
+	}}
+	return d.Execute()
+}
+
+// rel is the release this build is for, as internal packages name it.
+func (d *Datasource) rel() string {
+	if d.release == "" {
+		return "mavericks"
+	}
+	return d.release
 }
 
 var _ packersdk.Datasource = new(Datasource)
@@ -135,6 +172,14 @@ const (
 // a dot in it, so "first.last" would get a fragment sudo never reads: no
 // passwordless sudo, and a build that hangs at its shutdown_command.
 var userName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_-]*$`)
+
+// UserProblem is why user is not a usable account name, or "".
+func UserProblem(user string) string {
+	if userName.MatchString(user) {
+		return ""
+	}
+	return fmt.Sprintf("user %q is not a usable account name (letters, digits, underscore, dash; not starting with a digit or dash; no dot, since sudo ignores a sudoers.d file named with one)", user)
+}
 
 func (d *Datasource) ConfigSpec() hcldec.ObjectSpec {
 	return d.config.FlatMapstructure().HCL2Spec()
@@ -165,8 +210,8 @@ func (d *Datasource) Configure(raws ...interface{}) error {
 	if c.InstallESD == "" {
 		errs = append(errs, errors.New("installesd is required: the path of InstallESD.dmg (data.macosx-mavericks-installesd.<name>.path)"))
 	}
-	if !userName.MatchString(c.User) {
-		errs = append(errs, fmt.Errorf("user %q is not a usable account name (letters, digits, underscore, dash; not starting with a digit or dash; no dot, since sudo ignores a sudoers.d file named with one)", c.User))
+	if p := UserProblem(c.User); p != "" {
+		errs = append(errs, errors.New(p))
 	}
 	if !slices.Contains(config.UpdateChoices, c.Updates) {
 		errs = append(errs, fmt.Errorf("updates %q: choose one of %s", c.Updates, strings.Join(config.UpdateChoices, ", ")))
@@ -190,6 +235,7 @@ type mediaBuilder interface {
 	Validate(o media.Options) error
 	Preflight() error
 	Build(ctx context.Context, esd string, o media.Options) (string, error)
+	BuildFromVolume(ctx context.Context, volume, release string, o media.Options) (string, error)
 	ContentDigest(ctx context.Context, img string, listing io.Writer) (media.Digest, error)
 }
 
@@ -268,7 +314,11 @@ func (d *Datasource) Execute() (cty.Value, error) {
 
 	// 3. The store.
 	st := store.Store{Root: cacheDir, Log: logf}
-	dir, _, err := st.Get(ctx, "media", listing, func(ctx context.Context, dir string) error {
+	kind := "media"
+	if d.rel() != "mavericks" {
+		kind = d.rel() + "-media"
+	}
+	dir, _, err := st.Get(ctx, kind, listing, func(ctx context.Context, dir string) error {
 		return d.make(ctx, g, reg, key, osh, dir)
 	})
 	if err != nil {
@@ -357,7 +407,11 @@ func (d *Datasource) listing(reg *pins.Registry, key []byte, osh *fetch.OpenSSHR
 	if err != nil {
 		return nil, err
 	}
-	med, err := inputs.RepoRows(reg, "media", "")
+	part := "media"
+	if d.rel() != "mavericks" {
+		part = "media-" + d.rel()
+	}
+	med, err := inputs.RepoRows(reg, part, "")
 	if err != nil {
 		return nil, err
 	}
@@ -380,7 +434,14 @@ func (d *Datasource) listing(reg *pins.Registry, key []byte, osh *fetch.OpenSSHR
 			extras = append(extras, inputs.Row{Key: "openssh:" + a.Name, Value: a.SHA256})
 		}
 	}
-	stamp, err := inputs.UpdatesStamp(reg, c.Updates)
+	if d.rel() != "mavericks" {
+		// The installer volume's store entry is named by the digest of
+		// the disc image's sha256 and its recipe: that names this input.
+		extras = append(extras,
+			inputs.Row{Key: "release", Value: d.rel()},
+			inputs.Row{Key: "installer", Value: filepath.Base(filepath.Dir(c.InstallESD))})
+	}
+	stamp, err := inputs.UpdatesStampFor(reg, d.rel(), c.Updates)
 	if err != nil {
 		return nil, err
 	}
@@ -461,8 +522,12 @@ func (d *Datasource) make(ctx context.Context, g *fetch.Getter, reg *pins.Regist
 		return err
 	}
 
-	if err := checkESD(reg, c.InstallESD); err != nil {
-		return err
+	if d.rel() == "mavericks" {
+		if err := checkESD(reg, c.InstallESD); err != nil {
+			return err
+		}
+	} else if !config.RegularFile(c.InstallESD) {
+		return fmt.Errorf("installer: no verified installer volume at %s", c.InstallESD)
 	}
 
 	// The key the payload authorizes is a file payload.Build reads: the
@@ -482,7 +547,7 @@ func (d *Datasource) make(ctx context.Context, g *fetch.Getter, reg *pins.Regist
 			return err
 		}
 	}
-	ups, err := g.Updates(ctx, reg, c.Updates)
+	ups, err := g.UpdatesFor(ctx, reg, d.rel(), c.Updates)
 	if err != nil {
 		return err
 	}
@@ -498,9 +563,14 @@ func (d *Datasource) make(ctx context.Context, g *fetch.Getter, reg *pins.Regist
 		pc.OpenSSHTag = pkgs.Tag
 	}
 	pc.Updates = c.Updates
+	if d.rel() != "mavericks" {
+		pc.Release = d.rel()
+		// The default hostname is 10.9's; a guest is named for its release.
+		pc.Hostname = d.rel()
+	}
 	var updatePaths []string
 	for _, u := range ups {
-		pc.UpdatePkgs = append(pc.UpdatePkgs, payload.MediaFile{Path: u.Path, Name: u.Staged})
+		pc.UpdatePkgs = append(pc.UpdatePkgs, payload.MediaFile{Path: u.Path, Name: u.Staged, If: u.If})
 		updatePaths = append(updatePaths, u.Path)
 	}
 	pkg := filepath.Join(dir, payloadName)
@@ -520,12 +590,17 @@ func (d *Datasource) make(ctx context.Context, g *fetch.Getter, reg *pins.Regist
 		return err
 	}
 	o := media.Options{
-		Injectables:   media.Injectables{Autoinstall: true, FirstbootPkg: pkg, ExtraPkgs: extra},
+		Injectables:   media.Injectables{Release: d.release, Autoinstall: true, FirstbootPkg: pkg, ExtraPkgs: extra},
 		ExtraSpaceMiB: mib + c.ExtraSpaceMiB,
 		Force:         true,
 	}
 	// Build asks Validate and Preflight again, now with the packages.
-	built, err := mb.Build(ctx, c.InstallESD, o)
+	var built string
+	if d.rel() == "mavericks" {
+		built, err = mb.Build(ctx, c.InstallESD, o)
+	} else {
+		built, err = mb.BuildFromVolume(ctx, c.InstallESD, d.rel(), o)
+	}
 	if err != nil {
 		return err
 	}

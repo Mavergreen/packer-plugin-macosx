@@ -3,18 +3,21 @@ package media
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/Mavergreen/packer-plugin-macosx"
 	"github.com/Mavergreen/packer-plugin-macosx/internal/config"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/disc"
 	"github.com/Mavergreen/packer-plugin-macosx/internal/fetch"
 	"github.com/Mavergreen/packer-plugin-macosx/internal/lock"
 	"github.com/Mavergreen/packer-plugin-macosx/internal/privops"
@@ -249,6 +252,39 @@ func (b *Builder) Preflight() error {
 // InstallerMedia()+".building" and renamed into place only once it is
 // verified, so a killed build never leaves media that looks finished.
 func (b *Builder) Build(ctx context.Context, esd string, o Options) (_ string, err error) {
+	return b.buildWith(o, func() error {
+		if !config.RegularFile(esd) {
+			return fmt.Errorf("no InstallESD.dmg at %s -- fetch it first", esd)
+		}
+		return nil
+	}, func(work, building string) (string, error) {
+		return b.build(ctx, esd, o, work, building)
+	})
+}
+
+// BuildFromVolume builds installer media from a retail disc's verified
+// HFS+ volume (internal/disc): a fresh volume as large as the disc's
+// used space, MarginMiB and o.ExtraSpaceMiB, the disc copied onto it
+// whole, the release's injectables unpacked over it, root ownership
+// restored, and the copy read back in a microVM of its own against the
+// known disc's pinned packages. The volume is only ever attached
+// read-only.
+func (b *Builder) BuildFromVolume(ctx context.Context, volume, release string, o Options) (string, error) {
+	o.Release = release
+	return b.buildWith(o, func() error {
+		if !config.RegularFile(volume) {
+			return fmt.Errorf("no installer volume at %s", volume)
+		}
+		return nil
+	}, func(work, building string) (string, error) {
+		return b.buildFromVolume(ctx, volume, o, work, building)
+	})
+}
+
+// buildWith is what every media build shares around its build proper:
+// the checks, the one-builder lock, the scratch swept before and after,
+// the sidecar, and the rename into place. check runs before the lock.
+func (b *Builder) buildWith(o Options, check func() error, build func(work, building string) (string, error)) (_ string, err error) {
 	started := time.Now()
 	out := b.Paths.InstallerMedia()
 	// Packages are checked now, not when they are copied: a missing one
@@ -259,8 +295,8 @@ func (b *Builder) Build(ctx context.Context, esd string, o Options) (_ string, e
 	if err := b.Preflight(); err != nil {
 		return "", err
 	}
-	if !config.RegularFile(esd) {
-		return "", fmt.Errorf("no InstallESD.dmg at %s -- fetch it first", esd)
+	if err := check(); err != nil {
+		return "", err
 	}
 
 	// ONE BUILDER PER IMAGE FILE. Two builders writing one image each
@@ -324,7 +360,7 @@ func (b *Builder) Build(ctx context.Context, esd string, o Options) (_ string, e
 		}
 	}()
 
-	sum, err := b.build(ctx, esd, o, work, building)
+	sum, err := build(work, building)
 	if err != nil {
 		return "", err
 	}
@@ -508,6 +544,108 @@ func (b *Builder) build(ctx context.Context, esd string, o Options, work, buildi
 	// and mounting HFS+ rewrites its header.
 	b.logf("checksumming %s", building)
 	return fetch.SHA256File(building)
+}
+
+// buildFromVolume is BuildFromVolume's build proper, into building.
+func (b *Builder) buildFromVolume(ctx context.Context, volume string, o Options, work, building string) (string, error) {
+	used, err := hfsUsedBytes(volume)
+	if err != nil {
+		return "", err
+	}
+	part := int((used+1<<20-1)>>20) + MarginMiB + o.ExtraSpaceMiB
+	b.logf("the disc's volume uses %d bytes; creating %s: GPT, one AF00 partition, %d MiB, %q", used, building, part, DiscVolumeName)
+	if err := CreateHFSGPT(ctx, b.Runner, building, part, DiscVolumeName); err != nil {
+		return "", err
+	}
+
+	disks := []privops.Disk{{Role: "ro", Path: volume}}
+	if o.Enabled() {
+		tarPath := filepath.Join(work, workTar)
+		if err := b.stageInjectables(o.Injectables, tarPath); err != nil {
+			return "", err
+		}
+		disks = append(disks, privops.Disk{Role: "raw", Path: tarPath})
+	}
+	b.logf("copying the disc onto the media inside the microVM (pass 1 of 3)")
+	if _, err := b.pass(ctx, 1, "disc/assemble-disc", building, work, disks...); err != nil {
+		return "", err
+	}
+	if err := syncFile(building); err != nil {
+		return "", err
+	}
+	b.logf("restoring root ownership (microVM pass 2 of 3)")
+	if _, err := b.pass(ctx, 2, "fix-ownership", building, work); err != nil {
+		return "", err
+	}
+	b.logf("reading the finished media back in a microVM of its own (pass 3 of 3)")
+	console, err := b.pass(ctx, 3, "verify-packages", building, work)
+	if err != nil {
+		return "", err
+	}
+	if err := checkDiscSums(console); err != nil {
+		return "", err
+	}
+	b.logf("checksumming %s", building)
+	return fetch.SHA256File(building)
+}
+
+// DiscVolumeName is the 10.6 media's volume name, the retail disc's own.
+const DiscVolumeName = "Mac OS X Install DVD"
+
+// hfsUsedBytes is how much of a bare HFS+ volume is in use, read from its
+// volume header: block size at 40, total blocks at 44, free at 48.
+func hfsUsedBytes(volume string) (int64, error) {
+	f, err := os.Open(volume)
+	if err != nil {
+		return 0, err
+	}
+	defer f.Close()
+	h := make([]byte, 52)
+	if _, err := f.ReadAt(h, 1024); err != nil {
+		return 0, fmt.Errorf("reading %s's volume header: %w", volume, err)
+	}
+	if string(h[:2]) != "H+" {
+		return 0, fmt.Errorf("%s is not an HFS+ volume", volume)
+	}
+	bs := int64(binary.BigEndian.Uint32(h[40:44]))
+	total := int64(binary.BigEndian.Uint32(h[44:48]))
+	free := int64(binary.BigEndian.Uint32(h[48:52]))
+	return (total - free) * bs, nil
+}
+
+// checkDiscSums holds the finished media's packages to the known disc
+// they came from: every pinned package present and as shipped. The media
+// carries more than the disc did -- the first-boot payload, the updates
+// -- and those are not the disc's to vouch for.
+func checkDiscSums(console []byte) error {
+	got := map[string]string{}
+	for _, m := range privops.Markers(console, "MQG-SUM-MEDIA") {
+		if sum, name, ok := strings.Cut(m, "  "); ok {
+			got[name] = sum
+		}
+	}
+	known, err := disc.KnownDiscs()
+	if err != nil {
+		return err
+	}
+	var last []string
+	for _, k := range known {
+		var problems []string
+		for name, want := range k.Sums {
+			switch g, ok := got[name]; {
+			case !ok:
+				problems = append(problems, name+": missing from the media")
+			case g != want:
+				problems = append(problems, fmt.Sprintf("%s: sha256 %s is not the pinned %s", name, g, want))
+			}
+		}
+		if len(problems) == 0 {
+			return nil
+		}
+		sort.Strings(problems)
+		last = problems
+	}
+	return fmt.Errorf("the media does not hold the disc as it shipped -- build it again: %s", strings.Join(last, "; "))
 }
 
 // pass runs one embedded payload in the microVM, keeping its console in
