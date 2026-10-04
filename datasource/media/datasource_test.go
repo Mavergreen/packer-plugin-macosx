@@ -188,6 +188,10 @@ func newWorld(t *testing.T) *world {
 	for i, n := range append(append([]string(nil), updateNames...), slNames...) {
 		b := []byte("xar!" + n)
 		path := fmt.Sprintf("/apple/Update%d-%s.pkg", i+1, n)
+		if strings.HasSuffix(n, "-dist") {
+			b = []byte("<installer-gui-script>" + n + "</installer-gui-script>")
+			path = fmt.Sprintf("/apple/Update%d-%s.English.dist", i+1, n)
+		}
 		content[path] = b
 		rows = append(rows, n+"\t"+srv.URL+path+"\t"+sum(b))
 	}
@@ -280,6 +284,9 @@ func (f *fakeMedia) Build(_ context.Context, esd string, o media.Options) (strin
 	atomic.AddInt32(&f.builds, 1)
 	f.built, f.esd = o, esd
 	for _, p := range append([]string{o.FirstbootPkg}, o.ExtraPkgs...) {
+		if strings.HasSuffix(p, ".dist") {
+			continue
+		}
 		if ok, err := fetch.HasXarMagic(p); err != nil || !ok {
 			f.t.Errorf("Build given %s, not a flat package (%v)", p, err)
 		}
@@ -841,12 +848,20 @@ func TestSnowLeopardMediaBuildsFromTheVolume(t *testing.T) {
 	if w.payloadCfg.Release != "snowleopard" || len(w.payloadCfg.OpenSSHPkgs) != 0 {
 		t.Fatalf("payload release %q with %d OpenSSH packages; want snowleopard, none", w.payloadCfg.Release, len(w.payloadCfg.OpenSSHPkgs))
 	}
-	var ifs []string
+	// The combo's 18 packages are carried as members, and installed by
+	// its distribution; the distribution and the security update are
+	// what firstboot installs.
+	var installs []string
+	members := 0
 	for _, u := range w.payloadCfg.UpdatePkgs {
-		ifs = append(ifs, u.If)
+		if u.Member {
+			members++
+		} else {
+			installs = append(installs, u.Name)
+		}
 	}
-	if len(ifs) != 6 || ifs[4] != "/usr/bin/quartz-wm" || ifs[1] != "" {
-		t.Fatalf("update conditions %q; want the combo's, X11's fifth", ifs)
+	if members != 18 || len(installs) != 2 || !strings.HasSuffix(installs[0], ".dist") {
+		t.Fatalf("%d members and installs %q; want 18, the combo's distribution then the security update", members, installs)
 	}
 	if p := v.GetAttr("path").AsString(); !strings.Contains(p, string(filepath.Separator)+"snowleopard-media"+string(filepath.Separator)) {
 		t.Fatalf("path %s is not in the snowleopard-media store", p)

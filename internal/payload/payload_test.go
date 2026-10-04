@@ -1529,35 +1529,233 @@ func TestAnUnknownReleaseIsRefused(t *testing.T) {
 	}
 }
 
-// TestTheConfCarriesAnUpdatesCondition: an update with If installs only
-// where that path exists on the guest -- Apple's 10.6.8 combo product
-// checks /usr/bin/quartz-wm before its X11 package, say -- and the conf
-// says so by the update's position.
-func TestTheConfCarriesAnUpdatesCondition(t *testing.T) {
+// fakeDist writes a fake installer distribution -- a stub
+// installer-gui-script, never Apple's -- at dir/name, and returns its path.
+func fakeDist(t *testing.T, dir, name string) string {
+	t.Helper()
+	p := filepath.Join(dir, name)
+	if err := os.WriteFile(p, []byte("<?xml version=\"1.0\"?>\n<installer-gui-script minSpecVersion=\"1\"/>\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+// TestTheConfCarriesAProductsMembersApart: 10.6.8's combo is a
+// distribution and the 18 packages it installs; the guest runs installer
+// on the distribution alone, so the members are carried but never named
+// as updates to install.
+func TestTheConfCarriesAProductsMembersApart(t *testing.T) {
 	dir := t.TempDir()
 	c := DefaultConfig()
 	c.UpdatePkgs = []MediaFile{
-		{Path: fakePkg(t, dir, "a.pkg"), Name: "mqg-update-01-a.pkg"},
-		{Path: fakePkg(t, dir, "b.pkg"), Name: "mqg-update-02-b.pkg", If: "/Applications/Utilities/QuickTime Player 7.app"},
+		{Path: fakePkg(t, dir, "Part0.pkg"), Name: "Part0.pkg", Member: true},
+		{Path: fakePkg(t, dir, "Part1.pkg"), Name: "Part1.pkg", Member: true},
+		{Path: fakeDist(t, dir, "combo.dist"), Name: "mqg-update-01-combo.dist"},
+		{Path: fakePkg(t, dir, "secupd.pkg"), Name: "mqg-update-02-secupd.pkg"},
 	}
 	c.Updates = "security"
 	conf, err := Conf(c)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(conf), "\nMQG_FB_UPDATE_IF_2=/Applications/Utilities/QuickTime\\ Player\\ 7.app\n") {
-		t.Fatalf("conf does not carry the second update's condition:\n%s", conf)
+	if !strings.Contains(string(conf), "\nMQG_FB_UPDATE_PKGS=mqg-update-01-combo.dist\\ mqg-update-02-secupd.pkg\\ \n") {
+		t.Fatalf("conf does not name exactly the two installables:\n%s", conf)
 	}
-	if strings.Contains(string(conf), "MQG_FB_UPDATE_IF_1") {
-		t.Fatalf("conf carries a condition for an unconditional update:\n%s", conf)
+	if !strings.Contains(string(conf), "\nMQG_FB_UPDATE_MEMBERS=Part0.pkg\\ Part1.pkg\\ \n") {
+		t.Fatalf("conf does not name the members to carry:\n%s", conf)
 	}
 }
 
-func TestFirstbootShHonoursAnUpdatesCondition(t *testing.T) {
+// TestAConfWithNoMembersSaysNothingAboutThem: 10.9's updates are plain
+// packages, and their conf is what it always was.
+func TestAConfWithNoMembersSaysNothingAboutThem(t *testing.T) {
+	dir := t.TempDir()
+	c := DefaultConfig()
+	c.UpdatePkgs = []MediaFile{{Path: fakePkg(t, dir, "a.pkg"), Name: "mqg-update-01-a.pkg"}}
+	c.Updates = "security"
+	conf, err := Conf(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(conf), "MQG_FB_UPDATE_MEMBERS") {
+		t.Fatalf("conf mentions members it has none of:\n%s", conf)
+	}
+}
+
+// TestADistributionIsAnUpdateTheMediaCarries: a .dist is not a flat
+// package and is accepted anyway, when it is an installer distribution.
+func TestADistributionIsAnUpdateTheMediaCarries(t *testing.T) {
+	dir := t.TempDir()
+	files := []MediaFile{{Path: fakeDist(t, dir, "combo.dist"), Name: "mqg-update-01-combo.dist"}}
+	if err := validateMediaFiles("UpdatePkgs", files); err != nil {
+		t.Fatalf("a distribution was refused: %v", err)
+	}
+}
+
+// TestAFakeDistributionIsRefused: the .dist suffix alone vouches for
+// nothing.
+func TestAFakeDistributionIsRefused(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "combo.dist")
+	if err := os.WriteFile(p, []byte("not a distribution"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	files := []MediaFile{{Path: p, Name: "mqg-update-01-combo.dist"}}
+	if err := validateMediaFiles("UpdatePkgs", files); err == nil || !strings.Contains(err.Error(), "distribution") {
+		t.Fatalf("err = %v; want a fake distribution refused", err)
+	}
+}
+
+// TestADistributionIsNeverAMember: a member is a package the distribution
+// installs; a distribution among them would never run.
+func TestADistributionIsNeverAMember(t *testing.T) {
+	dir := t.TempDir()
+	files := []MediaFile{{Path: fakeDist(t, dir, "combo.dist"), Name: "combo.dist", Member: true}}
+	if err := validateMediaFiles("UpdatePkgs", files); err == nil {
+		t.Fatal("a distribution carried as a member was accepted")
+	}
+}
+
+func TestPostinstallCarriesAProductsMembersBesideIt(t *testing.T) {
+	b := postinstallSh(t)
+	if !bytes.Contains(b, []byte(`carry_pkgs "$CONF_DIR/updates" $MQG_FB_UPDATE_PKGS ${MQG_FB_UPDATE_MEMBERS:-}`)) {
+		t.Error(`postinstall does not carry $MQG_FB_UPDATE_MEMBERS into "$CONF_DIR/updates" beside the updates`)
+	}
+}
+
+func TestFirstbootShNeverInstallsAMemberByItself(t *testing.T) {
 	sh := firstbootSh(t)
-	for _, want := range []string{`MQG_FB_UPDATE_IF_`, `not installing`} {
-		if !strings.Contains(string(sh), want) {
-			t.Errorf("firstboot.sh never mentions %q: an update's condition is not checked", want)
+	if strings.Contains(string(sh), "MQG_FB_UPDATE_MEMBERS") {
+		t.Error("firstboot.sh reads MQG_FB_UPDATE_MEMBERS: a member is installed only by its distribution")
+	}
+	if strings.Contains(string(sh), "MQG_FB_UPDATE_IF_") {
+		t.Error("firstboot.sh still checks per-update conditions; the distribution makes them")
+	}
+}
+
+// 10.6's updates replace the running system, and until a restart a new
+// process can find a new library under an old dyld: MEASURED 2026-10-04,
+// with 10.6.8 and 2013-004 installed and no restart, sshd answered and
+// every session hung. So on 10.6 firstboot.sh does everything else first,
+// installs the updates last, and restarts; sshd first runs after that.
+
+var (
+	installUpdatesCallRe = regexp.MustCompile(`^\s*install_updates\s*$`)
+	verdictRe            = regexp.MustCompile(`^say "account: `)
+	doneMarkerRe         = regexp.MustCompile(`> "\$DONE_MARKER"`)
+	restartRe            = regexp.MustCompile(`shutdown -r now`)
+	sshdLoadRe           = regexp.MustCompile(`launchctl load -w /System/Library/LaunchDaemons/ssh.plist`)
+)
+
+func TestFirstbootShInstallsSnowLeopardsUpdatesLast(t *testing.T) {
+	b := firstbootSh(t)
+	verdict, done := lineOf(b, verdictRe), lineOf(b, doneMarkerRe)
+	var calls []int
+	for i, line := range strings.Split(string(b), "\n") {
+		if installUpdatesCallRe.MatchString(line) {
+			calls = append(calls, i)
 		}
+	}
+	if len(calls) != 2 {
+		t.Fatalf("install_updates is called on %d line(s); want 2, 10.9's place and 10.6's", len(calls))
+	}
+	if calls[1] < verdict || calls[1] > done {
+		t.Fatalf("10.6's install_updates at line %d; want after the verdict (line %d) and before the marker (line %d)", calls[1]+1, verdict+1, done+1)
+	}
+}
+
+func TestFirstbootShRestartsAfterSnowLeopardsUpdates(t *testing.T) {
+	b := firstbootSh(t)
+	r, done := lineOf(b, restartRe), lineOf(b, doneMarkerRe)
+	if r < 0 || r < done {
+		t.Fatalf("restart at line %d; want one, after the marker (line %d)", r+1, done+1)
+	}
+	if !strings.Contains(string(b), `MQG_FB_RELEASE`) {
+		t.Fatal("firstboot.sh never reads MQG_FB_RELEASE")
+	}
+}
+
+// TestFirstbootShLeavesSSHDForTheRestart: on the restart path, Remote
+// Login is turned on for the next boot -- launchd's override -- without
+// starting sshd on this one, and the load that starts it is the other
+// path's alone.
+func TestFirstbootShLeavesSSHDForTheRestart(t *testing.T) {
+	b := string(firstbootSh(t))
+	if !strings.Contains(b, `com.openssh.sshd -dict Disabled -bool false`) {
+		t.Fatal("firstboot.sh never enables sshd for the next boot alone")
+	}
+	if n := len(sshdLoadRe.FindAllString(b, -1)); n != 1 {
+		t.Fatalf("%d sshd loads; want 1", n)
+	}
+}
+
+// TestTheBuiltPostinstallCarriesUpdatesOnATargetOffline runs postinstall
+// with updates, as each release's media has them: 10.9's, with no
+// members (its conf never mentions MQG_FB_UPDATE_MEMBERS, and the script
+// runs under set -u), and 10.6's, a distribution beside its members.
+// Every update must land in the target's updates/.
+func TestTheBuiltPostinstallCarriesUpdatesOnATargetOffline(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		files func(t *testing.T, media string) []MediaFile
+	}{
+		{"10.9, no members", func(t *testing.T, media string) []MediaFile {
+			return []MediaFile{{Path: fakePkg(t, media, "mqg-update-01-SecUpd.pkg"), Name: "mqg-update-01-SecUpd.pkg"}}
+		}},
+		{"10.6, a distribution and its members", func(t *testing.T, media string) []MediaFile {
+			return []MediaFile{
+				{Path: fakePkg(t, media, "Part0.pkg"), Name: "Part0.pkg", Member: true},
+				{Path: fakeDist(t, media, "mqg-update-01-combo.dist"), Name: "mqg-update-01-combo.dist"},
+				{Path: fakePkg(t, media, "mqg-update-02-SecUpd.pkg"), Name: "mqg-update-02-SecUpd.pkg"},
+			}
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			keyPath := filepath.Join(dir, "id_rsa.pub")
+			if err := os.WriteFile(keyPath, rsaPubKey(t), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			// The media: the payload package and the updates beside it,
+			// where carry_pkgs looks (the directory of $1).
+			media := filepath.Join(dir, "media")
+			if err := os.MkdirAll(media, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			c := DefaultConfig()
+			c.SSHKey = keyPath
+			c.Updates = "security"
+			c.UpdatePkgs = tc.files(t, media)
+
+			out := filepath.Join(media, "mqg-firstboot.pkg")
+			if _, err := Build(context.Background(), proc.Exec{}, c, out, t.Logf); err != nil {
+				t.Fatal(err)
+			}
+			pkg, err := os.ReadFile(out)
+			if err != nil {
+				t.Fatal(err)
+			}
+			postPath := filepath.Join(dir, "postinstall")
+			if err := os.WriteFile(postPath, extractPostinstall(t, pkg), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			target := filepath.Join(dir, "target")
+			if err := os.MkdirAll(target, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			cmd := exec.Command("sh", postPath, out, "/dest", target, "/")
+			if combined, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("postinstall: %v: %s", err, combined)
+			}
+			updates := filepath.Join(target, "private", "var", "db", ".mqg-firstboot", "updates")
+			for _, f := range c.UpdatePkgs {
+				if _, err := os.Stat(filepath.Join(updates, f.Name)); err != nil {
+					t.Errorf("%s not carried to the target: %v", f.Name, err)
+				}
+			}
+			if _, err := os.Stat(filepath.Join(target, "private", "var", "db", ".AppleSetupDone")); err != nil {
+				t.Errorf("postinstall did not reach its end: %v", err)
+			}
+		})
 	}
 }

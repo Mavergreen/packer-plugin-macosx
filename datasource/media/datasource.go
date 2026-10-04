@@ -108,7 +108,7 @@ type DatasourceOutput struct {
 // The goldens part is the digest of that code's goldens (recipe_test.go's
 // recipeGoldens), and TestRecipePinsTheGoldens fails when they change and
 // this does not.
-const recipe = "3 goldens:2850b5fe303d62c0"
+const recipe = "3 goldens:1b4932652398af26"
 
 // Datasource is mavericks-media.
 type Datasource struct {
@@ -570,7 +570,7 @@ func (d *Datasource) make(ctx context.Context, g *fetch.Getter, reg *pins.Regist
 	}
 	var updatePaths []string
 	for _, u := range ups {
-		pc.UpdatePkgs = append(pc.UpdatePkgs, payload.MediaFile{Path: u.Path, Name: u.Staged, If: u.If})
+		pc.UpdatePkgs = append(pc.UpdatePkgs, payload.MediaFile{Path: u.Path, Name: u.Staged, Member: u.Member})
 		updatePaths = append(updatePaths, u.Path)
 	}
 	pkg := filepath.Join(dir, payloadName)

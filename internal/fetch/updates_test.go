@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -75,16 +76,20 @@ func TestStagedName(t *testing.T) {
 	}
 }
 
-// snowLeopardSecurity is Apple's own 10.6.8 combo product's client
-// packages in the order its distribution lists them (catalogue product
-// 041-98121), then 10.6's last security update (041-91751): MEASURED
-// 2026-10-04 from index-leopard-snowleopard.merged-1.sucatalog.
+// snowLeopardSecurity is 10.6's updates = "security", in fetch order:
+// the members of Apple's client 10.6.8 combo product (catalogue product
+// 041-98179) -- carried beside its distribution, which installs them in
+// one installer run -- then that distribution, then Security Update
+// 2013-004 (041-91751). MEASURED 2026-10-04: installing the members one
+// at a time breaks a running 10.6.0; the distribution in one run does not.
 var snowLeopardSecurity = []string{
-	"apple-subasesystem-combo-10.6.8",
-	"apple-client-combo-10.6.8",
-	"apple-rosetta-combo-10.6.8",
-	"apple-qt7-combo-10.6.8",
-	"apple-x11-combo-10.6.8",
+	"apple-combo-10.6.8-part0", "apple-combo-10.6.8-part1", "apple-combo-10.6.8-part2",
+	"apple-combo-10.6.8-part3", "apple-combo-10.6.8-part4", "apple-combo-10.6.8-part5",
+	"apple-combo-10.6.8-part6", "apple-combo-10.6.8-part7", "apple-combo-10.6.8-part8",
+	"apple-combo-10.6.8-part9", "apple-combo-10.6.8-part10", "apple-combo-10.6.8-part11",
+	"apple-combo-10.6.8-part12", "apple-combo-10.6.8-subasesystem", "apple-combo-10.6.8-qt7",
+	"apple-combo-10.6.8-x11", "apple-combo-10.6.8-rosetta", "apple-combo-10.6.8-meta",
+	"apple-combo-10.6.8-dist",
 	"apple-secupd-2013-004-snowleopard",
 }
 
@@ -130,18 +135,68 @@ func TestEverySnowLeopardUpdateIsPinnedWithARealChecksum(t *testing.T) {
 	}
 }
 
-// TestSnowLeopardOptionalUpdatesCarryTheirCondition: the combo's Rosetta,
-// QuickTime 7 and X11 packages go in only where Apple's distribution
-// would put them, the guest already having the component.
-func TestSnowLeopardOptionalUpdatesCarryTheirCondition(t *testing.T) {
-	want := map[string]string{
-		"apple-rosetta-combo-10.6.8": "/usr/libexec/oah/translate",
-		"apple-qt7-combo-10.6.8":     "/Applications/Utilities/QuickTime Player 7.app",
-		"apple-x11-combo-10.6.8":     "/usr/bin/quartz-wm",
+// TestAProductsMembersAreCarriedUnderTheirOwnNames: a distribution names
+// its packages by their own file names, so a member is staged under its
+// base name and marked a member, not installed by itself; the
+// distribution and the security update are what get installed, in order.
+func TestAProductsMembersAreCarriedUnderTheirOwnNames(t *testing.T) {
+	dist := []byte(`<?xml version="1.0"?><installer-gui-script minSpecVersion="1"></installer-gui-script>`)
+	bodies := map[string][]byte{}
+	var rows []string
+	srvBodies := func(n, file string, b []byte) {
+		bodies["/"+file] = b
+		rows = append(rows, fmt.Sprintf("%s\t%%s/%s\t%s", n, file, sum(b)))
 	}
 	for _, n := range snowLeopardSecurity {
-		if got := UpdateIf(n); got != want[n] {
-			t.Errorf("UpdateIf(%s) = %q; want %q", n, got, want[n])
+		file := n + ".pkg"
+		b := xar(n)
+		if n == "apple-combo-10.6.8-dist" {
+			file, b = "041-98179.English.dist", dist
 		}
+		srvBodies(n, file, b)
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if b, ok := bodies[r.URL.Path]; ok {
+			w.Write(b)
+			return
+		}
+		w.WriteHeader(404)
+	}))
+	defer srv.Close()
+	var reg strings.Builder
+	for _, r := range rows {
+		fmt.Fprintf(&reg, r+"\n", srv.URL)
+	}
+	pr, err := pins.Parse(strings.NewReader(reg.String()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := getter(t).UpdatesFor(context.Background(), pr, "snowleopard", "security")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var installed []string
+	for _, u := range got {
+		if u.Member {
+			if u.Staged != filepath.Base(u.Path) {
+				t.Errorf("member %s staged as %s; want its own name %s", u.Name, u.Staged, filepath.Base(u.Path))
+			}
+			continue
+		}
+		installed = append(installed, u.Staged)
+	}
+	want := []string{"mqg-update-01-041-98179.English.dist", "mqg-update-02-apple-secupd-2013-004-snowleopard.pkg"}
+	if !slices.Equal(installed, want) {
+		t.Fatalf("installed %v; want %v", installed, want)
+	}
+}
+
+func TestADistributionThatIsNotOneIsRefused(t *testing.T) {
+	body := []byte("not a distribution")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write(body) }))
+	defer srv.Close()
+	reg, _ := pins.Parse(strings.NewReader(fmt.Sprintf("apple-combo-10.6.8-dist\t%s/x.dist\t%s\n", srv.URL, sum(body))))
+	if _, err := getter(t).getUpdate(context.Background(), reg, "apple-combo-10.6.8-dist", 1); err == nil || !strings.Contains(err.Error(), "installer-gui-script") {
+		t.Fatalf("err = %v", err)
 	}
 }

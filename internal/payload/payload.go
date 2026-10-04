@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -86,10 +87,12 @@ type Config struct {
 // conf naming the wrong one leaves the guest without the package.
 type MediaFile struct {
 	Path, Name string
-	// If, when set, is a path on the guest that must exist for the
-	// package to be installed: the check Apple's own distribution makes
-	// before a package that updates an optional component (X11, say).
-	If string
+	// Member is a package an update's installer distribution installs
+	// (fetch.Update.Member): carried to the guest beside it, never
+	// installed by itself. 10.6.8's combo is a distribution and 18
+	// members, which one installer run on the distribution installs, in
+	// its order and by its conditions.
+	Member bool
 }
 
 // DefaultConfig is the first-boot defaults: user mavsuser, uid 501, gid
@@ -324,14 +327,19 @@ func Conf(c Config) ([]byte, error) {
 		if err := line(kv{"Updates", "MQG_FB_UPDATES", c.Updates}); err != nil {
 			return nil, err
 		}
-		if err := line(kv{"UpdatePkgs", "MQG_FB_UPDATE_PKGS", spaceNames(c.UpdatePkgs)}); err != nil {
+		var installs, members []MediaFile
+		for _, u := range c.UpdatePkgs {
+			if u.Member {
+				members = append(members, u)
+			} else {
+				installs = append(installs, u)
+			}
+		}
+		if err := line(kv{"UpdatePkgs", "MQG_FB_UPDATE_PKGS", spaceNames(installs)}); err != nil {
 			return nil, err
 		}
-		for i, u := range c.UpdatePkgs {
-			if u.If == "" {
-				continue
-			}
-			if err := line(kv{"UpdatePkgs", "MQG_FB_UPDATE_IF_" + strconv.Itoa(i+1), u.If}); err != nil {
+		if len(members) > 0 {
+			if err := line(kv{"UpdatePkgs", "MQG_FB_UPDATE_MEMBERS", spaceNames(members)}); err != nil {
 				return nil, err
 			}
 		}
@@ -515,13 +523,27 @@ func validatePkgs(field string, pkgs []string) error {
 }
 
 // validateMediaFiles is validatePkgs for media files: each Path exactly
-// as validatePkgs checks a path, and each Name a plain base name -- not
-// empty, not "." or "..", no "/" -- with no whitespace, since it is the
-// Name that travels through firstboot.conf's space-separated list.
+// as validatePkgs checks a path -- except that an update that is not a
+// Member may instead be an installer distribution, which installer runs
+// as it runs a package -- and each Name a plain base name -- not empty,
+// not "." or "..", no "/" -- with no whitespace, since it is the Name
+// that travels through firstboot.conf's space-separated list.
 func validateMediaFiles(field string, files []MediaFile) error {
 	for _, f := range files {
-		if err := validatePkgs(field, []string{f.Path}); err != nil {
-			return err
+		dist, err := isDistribution(f.Path)
+		if err != nil {
+			return fieldErrorf(field, "%s: %w", f.Path, err)
+		}
+		switch {
+		case dist && f.Member:
+			return fieldErrorf(field, "%s is an installer distribution, and a member must be a package", f.Path)
+		case dist:
+		case strings.HasSuffix(f.Path, ".dist"):
+			return fieldErrorf(field, "%s is not an installer distribution", f.Path)
+		default:
+			if err := validatePkgs(field, []string{f.Path}); err != nil {
+				return err
+			}
 		}
 		if f.Name == "" || f.Name == "." || f.Name == ".." || strings.Contains(f.Name, "/") {
 			return fieldErrorf(field, "%s: media name %q is not a plain file name", f.Path, f.Name)
@@ -531,6 +553,20 @@ func validateMediaFiles(field string, files []MediaFile) error {
 		}
 	}
 	return nil
+}
+
+// isDistribution reports whether path is an installer distribution (an
+// installer-gui-script document, as Apple's product .dist files are).
+// A missing file is not one; validatePkgs reports it.
+func isDistribution(path string) (bool, error) {
+	b, err := os.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return bytes.Contains(b, []byte("<installer-gui-script")), nil
 }
 
 // validateConfig applies every rule that can be checked before

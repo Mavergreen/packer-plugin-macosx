@@ -92,23 +92,40 @@ apple-itunes-12.6.2-itunesx	http://swcdn.apple.com/content/downloads/43/51/041-9
 apple-itunes-12.6.2-coreadi	http://swcdn.apple.com/content/downloads/43/51/041-90431-A_KDUB55Q5HN/74ql3cr329p2uthplgu2h2cxbq7067tglv/CoreADI.pkg	0493d62c590416bfa3ad97067f5e33b5edbd417406252cca0cc95ca6e45ed0de
 
 # Mac OS X 10.6's updates, for snowleopard-media's updates = "security" (the
-# default): Apple's 10.6.8 combo update, then 10.6's last security update.
-# Same rules as 10.9's above: fetched at build time from Apple's CDN on the
-# user's machine, never republished, never by `softwareupdate`.
+# default): Apple's client 10.6.8 combo update, then 10.6's last security
+# update. Same rules as 10.9's above: fetched at build time from Apple's
+# servers on the user's machine, never republished, never by
+# `softwareupdate`.
 #
-# Taken from Apple's index-leopard-snowleopard.merged-1.sucatalog on
-# 2026-10-04; every byte count matched the catalogue's Size. The combo is
-# one catalogue product (041-98121) of several packages, listed here in its
-# distribution's order. Its client install takes the first two always; the
-# Rosetta, QuickTime Player 7 and X11 packages only where the guest already
-# has /usr/libexec/oah/translate, QuickTime Player 7.app or
-# /usr/bin/quartz-wm, the distribution's own checks, which firstboot.sh
-# repeats. Its server package is left out.
-apple-subasesystem-combo-10.6.8	http://swcdn.apple.com/content/downloads/36/43/041-98121-A_GC9KUH2DGY/ukhwc206sod9l9fkfnsd0izm3g4d11g8r3/SUBaseSystemCombo10.6.8.pkg	f3bc7f5e83a5be09efa9a5a2bc0c67643b18162365753a5719bd97cfd69cfa86
-apple-client-combo-10.6.8	http://swcdn.apple.com/content/downloads/36/43/041-98121-A_GC9KUH2DGY/ukhwc206sod9l9fkfnsd0izm3g4d11g8r3/MacOSXClientCombo10.6.8.pkg	87b4f18ea3a6c897636078b4b6b83c1e026d41bb88e7b5eb00545d76536297e7
-apple-rosetta-combo-10.6.8	http://swcdn.apple.com/content/downloads/36/43/041-98121-A_GC9KUH2DGY/ukhwc206sod9l9fkfnsd0izm3g4d11g8r3/RosettaForCombo10.6.8.pkg	b24f3fa404b00490cef13fa88824f7a357c90691f3305861b29320e0af0bf2b5
-apple-qt7-combo-10.6.8	http://swcdn.apple.com/content/downloads/36/43/041-98121-A_GC9KUH2DGY/ukhwc206sod9l9fkfnsd0izm3g4d11g8r3/QuickTimePlayer7ForCombo10.6.8.pkg	d7d160c4f85b971d1c8183a5a2e4c00717d1eb66006a8adccee8c054b8dd8e8c
-apple-x11-combo-10.6.8	http://swcdn.apple.com/content/downloads/36/43/041-98121-A_GC9KUH2DGY/ukhwc206sod9l9fkfnsd0izm3g4d11g8r3/X11ForCombo10.6.8.pkg	e3618a2a018e630dbb67cd5c9449e1bf4821b5d8aef5a093ee80a8ba8302e5f5
+# The combo is the catalogue product 041-98179 in Apple's
+# index-leopard-snowleopard.merged-1.sucatalog, read 2026-10-04, every size
+# matching the catalogue's: its distribution and the 18 packages beside it,
+# which the distribution installs in ONE installer run (firstboot.sh runs
+# `installer -pkg <the .dist>`). MEASURED 2026-10-04: installed one at a
+# time instead, its SUBaseSystem package brings a new libSystem while dyld
+# stays 10.6.0's, and every process after it crashes. The distribution
+# itself picks the Rosetta, QuickTime 7 and X11 packages by what the guest
+# has. (The catalogue's other 10.6.8 combo, 041-98121, is client and
+# server in one, with an unconditional server package; not this one.)
+apple-combo-10.6.8-part0	http://swcdn.apple.com/content/downloads/49/43/041-98179-A_LECWR24EMQ/2dml09vesnhzp7lgix8nrewu5moiymbfw8/MacOSXUpdCombo10.6.8.Part0.pkg	87c490a6843fbba5167c89cadfdff750c64526f92f1ad67faa7be5ca0dbbf060
+apple-combo-10.6.8-part1	http://swcdn.apple.com/content/downloads/49/43/041-98179-A_LECWR24EMQ/2dml09vesnhzp7lgix8nrewu5moiymbfw8/MacOSXUpdCombo10.6.8.Part1.pkg	f10068685c407f581b2e6c0945906d14e5c3897a34331d2f5bb1525961e770be
+apple-combo-10.6.8-part2	http://swcdn.apple.com/content/downloads/49/43/041-98179-A_LECWR24EMQ/2dml09vesnhzp7lgix8nrewu5moiymbfw8/MacOSXUpdCombo10.6.8.Part2.pkg	d9e8971963dcc79bafccb415f04c948ff9fc6a820c3e85527326927170b6cbe6
+apple-combo-10.6.8-part3	http://swcdn.apple.com/content/downloads/49/43/041-98179-A_LECWR24EMQ/2dml09vesnhzp7lgix8nrewu5moiymbfw8/MacOSXUpdCombo10.6.8.Part3.pkg	e1150c69e172aa420213f918e15d1ee7a0715bed562fe4d9e3e1db68a394b57b
+apple-combo-10.6.8-part4	http://swcdn.apple.com/content/downloads/49/43/041-98179-A_LECWR24EMQ/2dml09vesnhzp7lgix8nrewu5moiymbfw8/MacOSXUpdCombo10.6.8.Part4.pkg	65dd70cf4feb86a3502b9f2318c3107272c9076947555a5ad57fbe34556c8322
+apple-combo-10.6.8-part5	http://swcdn.apple.com/content/downloads/49/43/041-98179-A_LECWR24EMQ/2dml09vesnhzp7lgix8nrewu5moiymbfw8/MacOSXUpdCombo10.6.8.Part5.pkg	2252604469a87306b10254de6b3ff077e66d43241e0a96d8ca646b68bdca1532
+apple-combo-10.6.8-part6	http://swcdn.apple.com/content/downloads/49/43/041-98179-A_LECWR24EMQ/2dml09vesnhzp7lgix8nrewu5moiymbfw8/MacOSXUpdCombo10.6.8.Part6.pkg	df325456fa6ab9dbc6d2a76ced1c4f7141f9d96b621b81f71710de0251256301
+apple-combo-10.6.8-part7	http://swcdn.apple.com/content/downloads/49/43/041-98179-A_LECWR24EMQ/2dml09vesnhzp7lgix8nrewu5moiymbfw8/MacOSXUpdCombo10.6.8.Part7.pkg	400a65e1b7dff4e603ddcc21191bb9c312008b104fefaad6ade138d7be446193
+apple-combo-10.6.8-part8	http://swcdn.apple.com/content/downloads/49/43/041-98179-A_LECWR24EMQ/2dml09vesnhzp7lgix8nrewu5moiymbfw8/MacOSXUpdCombo10.6.8.Part8.pkg	ceafcfd6eeb9cc4e87b0e176a327a0bad213edf429ff4ad794a5d94b8d3c502c
+apple-combo-10.6.8-part9	http://swcdn.apple.com/content/downloads/49/43/041-98179-A_LECWR24EMQ/2dml09vesnhzp7lgix8nrewu5moiymbfw8/MacOSXUpdCombo10.6.8.Part9.pkg	08b9d6dc155abbd85a499a5dd156d30da29db0099273c859ce8f110347b61c62
+apple-combo-10.6.8-part10	http://swcdn.apple.com/content/downloads/49/43/041-98179-A_LECWR24EMQ/2dml09vesnhzp7lgix8nrewu5moiymbfw8/MacOSXUpdCombo10.6.8.Part10.pkg	1026b294dd425a5373f17f43981a9169df362d2216af4c87baa19fe97a955adc
+apple-combo-10.6.8-part11	http://swcdn.apple.com/content/downloads/49/43/041-98179-A_LECWR24EMQ/2dml09vesnhzp7lgix8nrewu5moiymbfw8/MacOSXUpdCombo10.6.8.Part11.pkg	f0b2aa060bc9aec83362ed4df742e4e10996518a4d2e0344db768f391de6ec45
+apple-combo-10.6.8-part12	http://swcdn.apple.com/content/downloads/49/43/041-98179-A_LECWR24EMQ/2dml09vesnhzp7lgix8nrewu5moiymbfw8/MacOSXUpdCombo10.6.8.Part12.pkg	a69bf4e483e29cf751741367110f34071425658308d47567e5afb12ab2caaab4
+apple-combo-10.6.8-subasesystem	http://swcdn.apple.com/content/downloads/49/43/041-98179-A_LECWR24EMQ/2dml09vesnhzp7lgix8nrewu5moiymbfw8/SUBaseSystemCombo10.6.8.pkg	d00bd3fa79969ef6e83f7a968d161cc7637adb6d13ff922927c37e80d99e545d
+apple-combo-10.6.8-qt7	http://swcdn.apple.com/content/downloads/49/43/041-98179-A_LECWR24EMQ/2dml09vesnhzp7lgix8nrewu5moiymbfw8/QuickTimePlayer7ForCombo10.6.8.pkg	a310ce322ac77c6167455b567cefb212c8f25a735271fe81e09f39abf3332cb7
+apple-combo-10.6.8-x11	http://swcdn.apple.com/content/downloads/49/43/041-98179-A_LECWR24EMQ/2dml09vesnhzp7lgix8nrewu5moiymbfw8/X11ForCombo10.6.8.pkg	8a6342d7389d57016e5f4f423a7e1794a0e6c5aab75ce620a1f528d46a811085
+apple-combo-10.6.8-rosetta	http://swcdn.apple.com/content/downloads/49/43/041-98179-A_LECWR24EMQ/2dml09vesnhzp7lgix8nrewu5moiymbfw8/RosettaForCombo10.6.8.pkg	38f071ed52da2e2ff59e6da01ddbfb2b30943cf2b3761821a6c2fbc57e07061e
+apple-combo-10.6.8-meta	http://swcdn.apple.com/content/downloads/49/43/041-98179-A_LECWR24EMQ/2dml09vesnhzp7lgix8nrewu5moiymbfw8/MacOSXUpdCombo10.6.8.pkg	d0b6ef379bd285893f70a7880392c35770d402312e6a9880fe66c55154b4befd
+apple-combo-10.6.8-dist	https://swdist.apple.com/content/downloads/49/43/041-98179-A_LECWR24EMQ/2dml09vesnhzp7lgix8nrewu5moiymbfw8/MacOSXUpdCombo10.6.8.dst/041-98179.English.dist	2d2861c955c6182ef48367ac744a69efb5c8d73d5f991959dccef7fc90607d65
 #
 # Security Update 2013-004 for 10.6.8, the client product (041-91751); the
 # catalogue's other one (041-91749) adds the server package.

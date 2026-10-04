@@ -237,7 +237,7 @@ func TestUpdatesStampForSnowLeopard(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rows) != 7 || rows[0] != (Row{"updates", "security"}) || rows[6].Key != "update:apple-secupd-2013-004-snowleopard" {
+	if len(rows) != 21 || rows[0] != (Row{"updates", "security"}) || rows[20].Key != "update:apple-secupd-2013-004-snowleopard" {
 		t.Fatalf("rows = %v", rows)
 	}
 	mav, _ := UpdatesStamp(reg, "security")

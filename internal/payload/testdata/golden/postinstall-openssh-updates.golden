@@ -155,6 +155,8 @@ MQG_FB_EXTRA_PKGS=
 MQG_FB_UPDATES=none
 # shellcheck disable=SC2034
 MQG_FB_UPDATE_PKGS=
+# The release the payload is for: empty (10.9) or snowleopard (10.6).
+MQG_FB_RELEASE=
 
 [ -r "$CONF_DIR/firstboot.conf" ] && . "$CONF_DIR/firstboot.conf"
 
@@ -466,46 +468,65 @@ fi
 # does not reboot: the build shuts the guest down once it has checked it,
 # and every later boot is a cold one, so the restart happens anyway, once,
 # without this script racing the build that is waiting for SSH.
-say "updates: $MQG_FB_UPDATES"
-say "updates: build before: $(sw_vers -buildVersion 2>&1)"
+#
+# 10.6 INSTALLS THEM LAST, THEN RESTARTS
+#
+# 10.6.8's combo replaces libSystem, dyld and launchd under the running
+# system, and until a restart a new process can load a new library under
+# the old dyld. MEASURED 2026-10-04: with 10.6.8 and 2013-004 installed
+# and no restart, sshd answered and every session hung. So on 10.6, with
+# updates to install, this script does everything else first, turns
+# Remote Login on for the next boot without starting sshd on this one,
+# installs the updates last and restarts: the first sshd is 10.6.8's, on
+# a 10.6.8 boot. 10.9's security update needs no such care (above).
+MQG_FB_RESTART=0
+if [ "$MQG_FB_RELEASE" = snowleopard ] && [ -n "$MQG_FB_UPDATE_PKGS" ]; then
+    MQG_FB_RESTART=1
+fi
 
-if [ -n "$MQG_FB_UPDATE_PKGS" ]; then
-    _upd_count=0
-    _upd_missing=0
-    _upd_n=0
-    for _u in $MQG_FB_UPDATE_PKGS; do
-        _upd_n=$((_upd_n + 1))
-        # MQG_FB_UPDATE_IF_<n>: a path that must exist for update n to go
-        # in, the check Apple's own distribution makes before a package
-        # that updates an optional component (10.6.8's X11, say).
-        eval "_upd_if=\${MQG_FB_UPDATE_IF_$_upd_n:-}"
-        if [ -n "$_upd_if" ] && [ ! -e "$_upd_if" ]; then
-            say "updates: not installing $_u: $_upd_if is not on this system"
-            continue
-        fi
-        if [ -f "$CONF_DIR/updates/$_u" ]; then
-            _upd_count=$((_upd_count + 1))
-            # 3600s: 2016-004 is 354 MB of package over 6891 files, and it
-            # rebuilds the kernel and dyld caches on the way out. The
-            # OpenSSH base package gets 900s and is 12 MB.
-            run_with_timeout 3600 installer -verbose \
-                -pkg "$CONF_DIR/updates/$_u" -target /
-        else
-            _upd_missing=$((_upd_missing + 1))
-            say "updates: NOT ON THE TARGET VOLUME: $_u"
-        fi
-    done
-    say "updates: installed $_upd_count package(s), $_upd_missing missing"
-    say "updates: build after: $(sw_vers -buildVersion 2>&1)"
-    say "updates: sw_vers still reports: $(sw_vers -productVersion 2>&1)" \
-        "(expected -- a security update is not a point release)"
-    say "updates: receipts: $(pkgutil --pkgs 2>/dev/null \
-        | grep -i -E 'update|safari|itunes' | tr '\n' ' ')"
-    # Keeping 685 MB of installed package on a 60 GB image would be the
-    # only trace of it that costs anything.
-    rm -rf "$CONF_DIR/updates"
+install_updates() {
+    say "updates: $MQG_FB_UPDATES"
+    say "updates: build before: $(sw_vers -buildVersion 2>&1)"
+
+    if [ -n "$MQG_FB_UPDATE_PKGS" ]; then
+        _upd_count=0
+        _upd_missing=0
+        # An update is a package or, for 10.6.8's combo, Apple's product
+        # distribution (.dist), which installs the packages postinstall
+        # carried beside it in one run, in its order and by its conditions.
+        # MEASURED 2026-10-04: those packages installed one at a time leave
+        # 10.6 with a new libSystem under 10.6.0's dyld, and nothing runs.
+        for _u in $MQG_FB_UPDATE_PKGS; do
+            if [ -f "$CONF_DIR/updates/$_u" ]; then
+                _upd_count=$((_upd_count + 1))
+                # 3600s: 2016-004 is 354 MB of package over 6891 files, and it
+                # rebuilds the kernel and dyld caches on the way out. The
+                # OpenSSH base package gets 900s and is 12 MB.
+                run_with_timeout 3600 installer -verbose \
+                    -pkg "$CONF_DIR/updates/$_u" -target /
+            else
+                _upd_missing=$((_upd_missing + 1))
+                say "updates: NOT ON THE TARGET VOLUME: $_u"
+            fi
+        done
+        say "updates: installed $_upd_count package(s), $_upd_missing missing"
+        say "updates: build after: $(sw_vers -buildVersion 2>&1)"
+        say "updates: sw_vers still reports: $(sw_vers -productVersion 2>&1)" \
+            "(expected -- a security update is not a point release)"
+        say "updates: receipts: $(pkgutil --pkgs 2>/dev/null \
+            | grep -i -E 'update|safari|itunes' | tr '\n' ' ')"
+        # Keeping 685 MB of installed package on a 60 GB image would be the
+        # only trace of it that costs anything.
+        rm -rf "$CONF_DIR/updates"
+    else
+        say "updates: none requested; this image is stock 10.9.5 (13F34)"
+    fi
+}
+
+if [ "$MQG_FB_RESTART" = 0 ]; then
+    install_updates
 else
-    say "updates: none requested; this image is stock 10.9.5 (13F34)"
+    say "updates: $MQG_FB_UPDATES, installed last on 10.6, then a restart"
 fi
 
 # --- the family's own OpenSSH ---------------------------------------------
@@ -644,9 +665,19 @@ fi
 # Both spellings, because they fail differently. systemsetup is the
 # documented one but asks an interactive yes/no question without -f; loading
 # the job directly is what actually has to end up true.
-run_with_timeout 60 systemsetup -f -setremotelogin on
-run_with_timeout 60 launchctl load -w /System/Library/LaunchDaemons/ssh.plist
-say "remote login: $(systemsetup -getremotelogin 2>&1)"
+#
+# On 10.6 with updates to install, launchd's override alone: sshd is on
+# from the next boot, and does not start on this one (see the updates).
+if [ "$MQG_FB_RESTART" = 1 ]; then
+    run_with_timeout 60 defaults write \
+        /private/var/db/launchd.db/com.apple.launchd/overrides \
+        com.openssh.sshd -dict Disabled -bool false
+    say "remote login: on from the next boot; sshd waits for the restart"
+else
+    run_with_timeout 60 systemsetup -f -setremotelogin on
+    run_with_timeout 60 launchctl load -w /System/Library/LaunchDaemons/ssh.plist
+    say "remote login: $(systemsetup -getremotelogin 2>&1)"
+fi
 
 # --- sleep, screensaver ----------------------------------------------------
 #
@@ -717,6 +748,10 @@ say "account: $(id "$MQG_FB_USER" 2>&1)"
 say "ssh: $(ssh -V 2>&1)"
 say "sshd job: $(launchctl list 2>/dev/null | grep -c com.openssh.sshd) entries"
 
+if [ "$MQG_FB_RESTART" = 1 ]; then
+    install_updates
+fi
+
 # Copy the log somewhere a host can find it without a running VM: the log in
 # /private/var/log is fine once SSH works, and useless when it does not.
 cp "$LOG" /.mqg-firstboot.log 2>/dev/null
@@ -744,6 +779,16 @@ date -u '+%Y-%m-%dT%H:%M:%SZ' > "$DONE_MARKER"
 say "removing the LaunchDaemon so this never runs again"
 rm -f "$DAEMON"
 say "LaunchDaemon gone: $([ -e "$DAEMON" ] && echo NO || echo yes)"
+
+# 10.6 with updates: the restart they need, after which sshd starts and
+# auto-login applies.
+if [ "$MQG_FB_RESTART" = 1 ]; then
+    say "restarting into the updated system"
+    say "done"
+    cp "$LOG" /.mqg-firstboot.log 2>/dev/null
+    shutdown -r now
+    exit 0
+fi
 
 # Restart loginwindow so auto-login takes effect on this boot rather than
 # the next one. loginwindow started before the account existed, so it has no
@@ -894,7 +939,9 @@ if [ -n "${MQG_FB_EXTRA_PKGS:-}" ]; then
 fi
 if [ -n "${MQG_FB_UPDATE_PKGS:-}" ]; then
     say "updates: ${MQG_FB_UPDATES:-none}"
-    carry_pkgs "$CONF_DIR/updates" $MQG_FB_UPDATE_PKGS
+    # MQG_FB_UPDATE_MEMBERS: the packages an update's distribution
+    # installs, carried beside it so installer finds them by name.
+    carry_pkgs "$CONF_DIR/updates" $MQG_FB_UPDATE_PKGS ${MQG_FB_UPDATE_MEMBERS:-}
 fi
 
 chmod 755 "$CONF_DIR/firstboot.sh" 2>/dev/null

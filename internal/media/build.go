@@ -157,7 +157,7 @@ func (b *Builder) Validate(o Options) error {
 		if !config.RegularFile(e) {
 			return fmt.Errorf("no such extra package: %s", e)
 		}
-		if err := xarMagic(e); err != nil {
+		if err := extraMagic(e); err != nil {
 			return err
 		}
 	}
@@ -739,6 +739,23 @@ func xarMagic(path string) error {
 	var magic [4]byte
 	if _, err := io.ReadFull(f, magic[:]); err != nil || string(magic[:]) != "xar!" {
 		return fmt.Errorf("%s is not a flat package (no xar magic)", path)
+	}
+	return nil
+}
+
+// extraMagic is xarMagic for an extra, which may instead be an installer
+// distribution named *.dist: 10.6.8's combo is Apple's product
+// distribution, which installer runs over the packages beside it.
+func extraMagic(path string) error {
+	if !strings.HasSuffix(path, ".dist") {
+		return xarMagic(path)
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	if !bytes.Contains(b, []byte("<installer-gui-script")) {
+		return fmt.Errorf("%s is not an installer distribution (no installer-gui-script)", path)
 	}
 	return nil
 }

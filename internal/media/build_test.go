@@ -520,11 +520,24 @@ func TestPreflightNamesEverythingMissing(t *testing.T) {
 	}
 }
 
+// TestValidateAcceptsAnInstallerDistribution: 10.6.8's combo is carried
+// as Apple's product distribution beside its packages, and installer runs
+// the distribution; it is an extra, and not a flat package.
+func TestValidateAcceptsAnInstallerDistribution(t *testing.T) {
+	dir := t.TempDir()
+	dist := writeFile(t, filepath.Join(dir, "combo.dist"), "<?xml version=\"1.0\"?>\n<installer-gui-script minSpecVersion=\"1\"/>\n")
+	g := newRig(t)
+	if err := g.b.Validate(Options{Injectables: Injectables{ExtraPkgs: []string{dist}}}); err != nil {
+		t.Fatalf("a distribution was refused: %v", err)
+	}
+}
+
 func TestBuildRefuses(t *testing.T) {
 	dir := t.TempDir()
 	notXar := writeFile(t, filepath.Join(dir, "not-xar.pkg"), "PK\x03\x04 a zip")
 	good := writeFile(t, filepath.Join(dir, "good.pkg"), "xar!good")
 	nowhere := filepath.Join(dir, "nowhere.pkg")
+	fakeDist := writeFile(t, filepath.Join(dir, "fake.dist"), "not a distribution")
 	for _, tc := range []struct {
 		name  string
 		esd   string // "" is the rig's
@@ -542,6 +555,8 @@ func TestBuildRefuses(t *testing.T) {
 			"no such extra package: " + nowhere},
 		{"extra package not xar", "", Options{Injectables: Injectables{ExtraPkgs: []string{notXar}}}, nil,
 			notXar + " is not a flat package (no xar magic)"},
+		{"extra .dist not a distribution", "", Options{Injectables: Injectables{ExtraPkgs: []string{fakeDist}}}, nil,
+			fakeDist + " is not an installer distribution"},
 		{"two extras on one name", "", Options{Injectables: Injectables{ExtraPkgs: []string{good, good}}}, nil,
 			"would both be System/Installation/Packages/good.pkg"},
 		{"negative space", "", Options{ExtraSpaceMiB: -1}, nil,

@@ -1,9 +1,12 @@
 package fetch
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/Mavergreen/packer-plugin-macosx/internal/config"
@@ -25,20 +28,36 @@ var updateSources = map[string][]string{
 	},
 }
 
-// snowLeopardSources is 10.6's updateSources: Apple's 10.6.8 combo
-// product's client packages in its distribution's order, then 10.6's last
-// security update (assets/pins/sources.tsv says which catalogue products).
+// snowLeopardSources is 10.6's updateSources: the members of Apple's
+// client 10.6.8 combo product (catalogue product 041-98179), then the
+// product's distribution, which installs them in one installer run, then
+// Security Update 2013-004 (assets/pins/sources.tsv says which products).
 var snowLeopardSources = map[string][]string{
 	"none": nil,
-	"security": {
-		"apple-subasesystem-combo-10.6.8",
-		"apple-client-combo-10.6.8",
-		"apple-rosetta-combo-10.6.8",
-		"apple-qt7-combo-10.6.8",
-		"apple-x11-combo-10.6.8",
+	"security": append(comboMembers(),
+		"apple-combo-10.6.8-dist",
 		"apple-secupd-2013-004-snowleopard",
-	},
+	),
 }
+
+// comboMembers is the 10.6.8 combo product's packages, in its
+// distribution's order, then the one package of the product that the
+// distribution does not name.
+func comboMembers() []string {
+	var m []string
+	for i := 0; i <= 12; i++ {
+		m = append(m, fmt.Sprintf("apple-combo-10.6.8-part%d", i))
+	}
+	return append(m, "apple-combo-10.6.8-subasesystem", "apple-combo-10.6.8-qt7",
+		"apple-combo-10.6.8-x11", "apple-combo-10.6.8-rosetta", "apple-combo-10.6.8-meta")
+}
+
+// isMember is whether name is carried beside a distribution, which
+// installs it, rather than installed by itself. MEASURED 2026-10-04:
+// installed one at a time, the combo's packages leave a running 10.6.0
+// with its new libSystem and its old dyld, and every process after the
+// first crashes.
+func isMember(name string) bool { return slices.Contains(comboMembers(), name) }
 
 // UpdateNames is Mavericks' UpdateNamesFor.
 func UpdateNames(selection string) ([]string, error) { return UpdateNamesFor("mavericks", selection) }
@@ -62,20 +81,12 @@ func UpdateNamesFor(release, selection string) ([]string, error) {
 // media presents it under (StagedName) -- and so the name firstboot.conf
 // must carry: payload.MediaFile{Path: u.Path, Name: u.Staged}, never the
 // base of Path.
-type Update struct{ Name, Path, Staged, If string }
-
-// updateIf is the guest path each conditional update's install waits on:
-// the checks Apple's 10.6.8 combo distribution (catalogue product
-// 041-98121) makes before its optional packages.
-var updateIf = map[string]string{
-	"apple-rosetta-combo-10.6.8": "/usr/libexec/oah/translate",
-	"apple-qt7-combo-10.6.8":     "/Applications/Utilities/QuickTime Player 7.app",
-	"apple-x11-combo-10.6.8":     "/usr/bin/quartz-wm",
+type Update struct {
+	Name, Path, Staged string
+	// Member is a package a distribution among these installs: carried
+	// under its own name, never installed by itself.
+	Member bool
 }
-
-// UpdateIf is the path on the guest that update name needs to exist
-// before it installs, or "" when it always installs.
-func UpdateIf(name string) string { return updateIf[name] }
 
 // StagedName is how the installer media presents the n-th update
 // (1-based): the install order is legible in the name, and the prefix
@@ -91,6 +102,41 @@ func (g *Getter) Updates(ctx context.Context, reg *pins.Registry, selection stri
 	return g.UpdatesFor(ctx, reg, "mavericks", selection)
 }
 
+// getUpdate fetches and checks one update: a flat package, or a
+// distribution (an installer-gui-script), staged as the nth to install,
+// or under its own name if it is a member.
+func (g *Getter) getUpdate(ctx context.Context, reg *pins.Registry, name string, n int) (Update, error) {
+	src, err := reg.Lookup(name)
+	if err != nil {
+		return Update{}, err
+	}
+	path, err := g.Get(ctx, Item{Name: name, URL: src.URL, SHA256: src.SHA256})
+	if err != nil {
+		return Update{}, err
+	}
+	if strings.HasSuffix(path, ".dist") {
+		b, err := os.ReadFile(path)
+		if err != nil {
+			return Update{}, err
+		}
+		if !bytes.Contains(b, []byte("<installer-gui-script")) {
+			return Update{}, fmt.Errorf("%s is not a distribution (no installer-gui-script)", path)
+		}
+	} else {
+		ok, err := HasXarMagic(path)
+		if err != nil {
+			return Update{}, fmt.Errorf("%s: %w", path, err)
+		}
+		if !ok {
+			return Update{}, fmt.Errorf("%s is not a flat package (no xar magic)", path)
+		}
+	}
+	if isMember(name) {
+		return Update{Name: name, Path: path, Staged: filepath.Base(path), Member: true}, nil
+	}
+	return Update{Name: name, Path: path, Staged: StagedName(n, path)}, nil
+}
+
 // UpdatesFor is Updates for a release's selection.
 func (g *Getter) UpdatesFor(ctx context.Context, reg *pins.Registry, release, selection string) ([]Update, error) {
 	names, err := UpdateNamesFor(release, selection)
@@ -98,23 +144,16 @@ func (g *Getter) UpdatesFor(ctx context.Context, reg *pins.Registry, release, se
 		return nil, err
 	}
 	var out []Update
-	for i, n := range names {
-		src, err := reg.Lookup(n)
+	n := 0
+	for _, name := range names {
+		if !isMember(name) {
+			n++
+		}
+		u, err := g.getUpdate(ctx, reg, name, n)
 		if err != nil {
 			return nil, err
 		}
-		path, err := g.Get(ctx, Item{Name: n, URL: src.URL, SHA256: src.SHA256})
-		if err != nil {
-			return nil, err
-		}
-		ok, err := HasXarMagic(path)
-		if err != nil {
-			return nil, fmt.Errorf("%s: %w", path, err)
-		}
-		if !ok {
-			return nil, fmt.Errorf("%s is not a flat package (no xar magic)", path)
-		}
-		out = append(out, Update{Name: n, Path: path, Staged: StagedName(i+1, path), If: UpdateIf(n)})
+		out = append(out, u)
 	}
 	return out, nil
 }

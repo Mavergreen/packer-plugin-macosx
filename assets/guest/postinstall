@@ -150,7 +150,9 @@ if [ -n "${MQG_FB_EXTRA_PKGS:-}" ]; then
 fi
 if [ -n "${MQG_FB_UPDATE_PKGS:-}" ]; then
     say "updates: ${MQG_FB_UPDATES:-none}"
-    carry_pkgs "$CONF_DIR/updates" $MQG_FB_UPDATE_PKGS
+    # MQG_FB_UPDATE_MEMBERS: the packages an update's distribution
+    # installs, carried beside it so installer finds them by name.
+    carry_pkgs "$CONF_DIR/updates" $MQG_FB_UPDATE_PKGS ${MQG_FB_UPDATE_MEMBERS:-}
 fi
 
 chmod 755 "$CONF_DIR/firstboot.sh" 2>/dev/null
