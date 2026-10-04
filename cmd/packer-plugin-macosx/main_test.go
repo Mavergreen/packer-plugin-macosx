@@ -15,7 +15,7 @@ import (
 // its "describe" command, the same way `packer init`/`packer plugins`
 // would. This is the plugin's outermost seam: it fails until main.go
 // exists and registers all three stub data sources.
-func TestDescribeListsAllThreeDatasources(t *testing.T) {
+func TestDescribeListsEveryDatasource(t *testing.T) {
 	bin := filepath.Join(t.TempDir(), "packer-plugin-macosx")
 	build := exec.Command("go", "build", "-o", bin, ".")
 	if out, err := build.CombinedOutput(); err != nil {
@@ -34,7 +34,7 @@ func TestDescribeListsAllThreeDatasources(t *testing.T) {
 
 	got := append([]string(nil), desc.Datasources...)
 	sort.Strings(got)
-	want := []string{"mavericks-firmware", "mavericks-installesd", "mavericks-media"}
+	want := []string{"mavericks-firmware", "mavericks-installesd", "mavericks-media", "snowleopard-installer"}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("datasources = %v; want %v", got, want)
 	}
