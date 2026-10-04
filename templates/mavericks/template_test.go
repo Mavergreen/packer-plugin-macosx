@@ -12,183 +12,32 @@
 package template
 
 import (
-	"errors"
-	"io"
-	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
-	"runtime"
 	"strings"
 	"testing"
 
 	"github.com/Mavergreen/packer-plugin-macosx/internal/payload"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/templatetest"
 )
 
-// repoRoot is this file's own location, walked up past templates/mavericks/: robust
-// to whatever directory `go test` runs from.
-func repoRoot(t *testing.T) string {
-	t.Helper()
-	_, thisFile, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("runtime.Caller(0) failed")
-	}
-	return filepath.Dir(filepath.Dir(filepath.Dir(thisFile)))
-}
+// osName is the template this package is: templates/<osName>/.
+const osName = "mavericks"
 
-// packerBinary is the packer this test drives.
-func packerBinary(t *testing.T) string {
-	t.Helper()
-	bin := os.Getenv("PACKER")
-	if bin == "" {
-		bin = "packer"
-	}
-	path, err := exec.LookPath(bin)
-	if err != nil {
-		t.Skipf("packer not found (%s); set $PACKER to its path to run this test", err)
-	}
-	return path
-}
-
-// seedPluginDir is where the qemu and vagrant plugins this test needs are
-// already downloaded.
-func seedPluginDir(t *testing.T) string {
-	t.Helper()
-	dir := os.Getenv("PACKER_PLUGIN_PATH")
-	if dir == "" {
-		t.Skip("PACKER_PLUGIN_PATH not set; nowhere to find the qemu and vagrant plugins this test needs")
-	}
-	if _, err := os.Stat(dir); err != nil {
-		t.Skipf("PACKER_PLUGIN_PATH %s: %v", dir, err)
-	}
-	return dir
-}
-
-// copyTree copies src onto dst, creating directories as needed and
-// preserving each file's mode: the seeded plugin binaries need their +x,
-// and dev-install.sh's own `packer plugins install` writes its manifest
-// files alongside them, so the copy -- not the shared seed itself --
-// takes that write.
-func copyTree(src, dst string) error {
-	return filepath.WalkDir(src, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		rel, err := filepath.Rel(src, path)
-		if err != nil {
-			return err
-		}
-		target := filepath.Join(dst, rel)
-		if d.IsDir() {
-			return os.MkdirAll(target, 0o755)
-		}
-		info, err := d.Info()
-		if err != nil {
-			return err
-		}
-		in, err := os.Open(path)
-		if err != nil {
-			return err
-		}
-		defer in.Close()
-		out, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, info.Mode().Perm())
-		if err != nil {
-			return err
-		}
-		defer out.Close()
-		_, err = io.Copy(out, in)
-		return err
-	})
-}
-
-// devInstall builds the plugin from this checkout and installs it into
-// pluginDir with bin/dev-install.sh, the same script a developer or CI
-// uses -- not a separate, parallel build path this test invents for
-// itself.
-func devInstall(t *testing.T, root, packer, pluginDir string) {
-	t.Helper()
-	cmd := exec.Command("bash", filepath.Join(root, "bin", "dev-install.sh"))
-	cmd.Dir = root
-	cmd.Env = append(os.Environ(),
-		"PACKER="+packer,
-		"PACKER_PLUGIN_PATH="+pluginDir,
-		"CHECKPOINT_DISABLE=1",
-	)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("bin/dev-install.sh: %v\n%s", err, out)
-	}
-}
-
-// shippedFiles is the template archive's own file list, read out of
-// .goreleaser.yml's "- src: templates/mavericks/<name>" lines: exactly what a
-// release carries, which tests/release.bats holds to the tracked
-// template files.
-func shippedFiles(t *testing.T, root string) []string {
-	t.Helper()
-	b, err := os.ReadFile(filepath.Join(root, ".goreleaser.yml"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var names []string
-	for _, m := range regexp.MustCompile(`(?m)^\s*- src: templates/mavericks/(\S+)\s*$`).FindAllStringSubmatch(string(b), -1) {
-		names = append(names, m[1])
-	}
-	if len(names) == 0 {
-		t.Fatal(".goreleaser.yml names no template files")
-	}
-	return names
-}
-
-// shippedCopy copies the files a release's template archive carries --
-// and nothing else: no build output, no test -- into a fresh directory,
-// and returns it. Validating that copy is what shows templates/mavericks/ is
-// self-contained, and a build's leftovers in the checkout's own
-// templates/mavericks/ (output-mavericks/, which packer validate refuses) cannot
-// affect it.
-func shippedCopy(t *testing.T, root string) string {
-	t.Helper()
-	dst := filepath.Join(t.TempDir(), "template")
-	if err := os.MkdirAll(dst, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	for _, n := range shippedFiles(t, root) {
-		b, err := os.ReadFile(filepath.Join(root, "templates", "mavericks", n))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(dst, n), b, 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	return dst
-}
-
-// dirEmpty reports whether dir has no entries. A PACKER_CACHE_DIR that
-// packer validate never asked for stays exactly as empty as one it never
-// even created -- both count as "no data source executed".
-func dirEmpty(dir string) (bool, error) {
-	entries, err := os.ReadDir(dir)
-	if errors.Is(err, fs.ErrNotExist) {
-		return true, nil
-	}
-	if err != nil {
-		return false, err
-	}
-	return len(entries) == 0, nil
-}
+func repoRoot(t *testing.T) string { return templatetest.RepoRoot(t) }
 
 func TestValidate(t *testing.T) {
 	root := repoRoot(t)
-	packer := packerBinary(t)
-	seed := seedPluginDir(t)
+	packer := templatetest.PackerBinary(t)
+	seed := templatetest.SeedPluginDir(t)
 
 	tmp := t.TempDir()
 	pluginDir := filepath.Join(tmp, "plugins")
-	if err := copyTree(seed, pluginDir); err != nil {
+	if err := templatetest.CopyTree(seed, pluginDir); err != nil {
 		t.Fatalf("seeding plugin dir: %v", err)
 	}
-	devInstall(t, root, packer, pluginDir)
+	templatetest.DevInstall(t, root, packer, pluginDir)
 
 	cacheDir := filepath.Join(tmp, "cache")
 
@@ -196,7 +45,7 @@ func TestValidate(t *testing.T) {
 	// directory that is not the template's own: every file it reads from
 	// beside itself must be named through ${path.root}, as CI's
 	// `packer validate templates/mavericks/` from the repository root needs.
-	tmpl := shippedCopy(t, root)
+	tmpl := templatetest.ShippedCopy(t, root, osName)
 	elsewhere := filepath.Join(tmp, "elsewhere")
 	if err := os.MkdirAll(elsewhere, 0o755); err != nil {
 		t.Fatal(err)
@@ -224,7 +73,7 @@ func TestValidate(t *testing.T) {
 		if err != nil {
 			t.Fatalf("packer validate: %v\n%s", err, out)
 		}
-		empty, err := dirEmpty(cacheDir)
+		empty, err := templatetest.DirEmpty(cacheDir)
 		if err != nil {
 			t.Fatalf("checking cache dir: %v", err)
 		}

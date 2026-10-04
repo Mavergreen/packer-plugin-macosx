@@ -421,22 +421,26 @@ teardown() {
     fi
 }
 
-@test "the template archive names each tracked template file, no glob and no test" {
-    run template_srcs mavericks
-    [ "$status" -eq 0 ]
-    [ -n "$output" ]
-    [[ "$output" != *'*'* ]]
-    [[ "$output" != *'?'* ]]
-    [[ "$output" != *'['* ]]
-    [[ "$output" != *_test.go* ]]
-    want=$(git -C "$REPO" ls-files templates/mavericks/ | grep -v '_test\.go$' | sort)
-    got=$(template_srcs mavericks | sort)
-    [ "$got" = "$want" ]
+@test "each template archive names each tracked template file, no glob and no test" {
+    for os in mavericks snowleopard; do
+        run template_srcs "$os"
+        [ "$status" -eq 0 ]
+        [ -n "$output" ]
+        [[ "$output" != *'*'* ]]
+        [[ "$output" != *'?'* ]]
+        [[ "$output" != *'['* ]]
+        [[ "$output" != *_test.go* ]]
+        want=$(git -C "$REPO" ls-files "templates/$os/" | grep -v '_test\.go$' | sort)
+        got=$(template_srcs "$os" | sort)
+        [ "$got" = "$want" ] || { echo "$os: archive names differ from the tracked files"; false; }
+    done
 }
 
 @test "each OS's template archive is named for its OS" {
-    run grep -c 'name_template: "packer-plugin-macosx_v{{ .Version }}_mavericks_template"' "$REPO/.goreleaser.yml"
-    [ "$output" = "1" ]
+    for os in mavericks snowleopard; do
+        run grep -c "name_template: \"packer-plugin-macosx_v{{ .Version }}_${os}_template\"" "$REPO/.goreleaser.yml"
+        [ "$output" = "1" ]
+    done
     run grep -c '_template"$' "$REPO/.goreleaser.yml"
     [ "$output" = "$(ls -d "$REPO"/templates/*/ | wc -l | tr -d ' ')" ]
 }

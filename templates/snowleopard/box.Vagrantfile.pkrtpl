@@ -1,0 +1,81 @@
+# The box's own Vagrantfile. It is packed into the box by
+# snowleopard.pkr.hcl's post-processor "vagrant" block. `vagrant box add`
+# unpacks it beside box.img (v1) or box_0.img (v2), whichever
+# vagrant-qemu's box import finds (lib/vagrant-qemu/action/import.rb),
+# and beside OVMF_CODE.fd, OVMF_VARS.fd and opencore.img, which
+# `include` copied in. It never runs during the Packer build itself.
+#
+# RENDERED FROM THE BUILD'S OWN SETTINGS. snowleopard.pkr.hcl renders this
+# file from box.Vagrantfile.pkrtpl, a Packer templatefile(), with the
+# build's user, cpu, memory, cpus, nic and accelerator, so the box logs
+# in and boots the way its image was built. A project Vagrantfile can
+# still override any of it. The rendering is HCL's: in the template, a
+# dollar sign or a percent sign directly before an open brace starts an
+# interpolation or a directive.
+#
+# NOT THE WHOLE VAGRANTFILE. The box's Vagrantfile is the stock vagrant
+# post-processor's own libvirt stanza (`config.vm.provider :libvirt`,
+# setting libvirt.driver) followed by this file (packer-plugin-vagrant
+# v1.1.7's boxVagrantfileContents). Under `vagrant up --provider qemu`
+# that libvirt stanza is inert: it configures a provider nobody is using.
+# The rendered file also passes through Packer's legacy Go template
+# engine twice (the file provisioner that carries it, and the
+# post-processor), so it must never contain a double open brace.
+Vagrant.configure("2") do |config|
+  boxdir = File.expand_path(__dir__)
+
+  # :darwin is Vagrant's own guest support for macOS; 10.6 needs no
+  # guest additions for it.
+  config.vm.guest = :darwin
+  config.ssh.username = "${user}"
+
+  # 10.6's sshd is Apple's OpenSSH 5.2, whose host keys and signatures are
+  # ssh-rsa (SHA-1) alone, which a current OpenSSH client refuses unless
+  # told otherwise (MEASURED 2026-10-04): what `vagrant ssh` runs is that
+  # client, so it is told.
+  config.ssh.extra_args = %W(-o HostKeyAlgorithms=+ssh-rsa -o PubkeyAcceptedAlgorithms=+ssh-rsa)
+
+  config.vm.synced_folder ".", "/vagrant", disabled: true
+
+  # A clean `vagrant halt`. vagrant-qemu's halt presses the ACPI power
+  # button, which Mac OS X answers with a dialog rather than a shutdown, and
+  # after 60s it quits QEMU under the running guest (MEASURED 2026-09-27:
+  # no SHUTDOWN_TIME in the guest's system.log). It never asks the guest
+  # itself, so this does: passwordless sudo lets the shutdown run, and
+  # QEMU exits when the guest powers off.
+  config.trigger.before :halt do |t|
+    t.name = "guest shutdown"
+    t.on_error = :continue
+    t.run_remote = { inline: "sudo /sbin/shutdown -h now" }
+  end
+
+  config.vm.provider "qemu" do |qe|
+    qe.arch = "x86_64"
+    qe.machine = "q35,vmport=off%{ if accelerator != "none" },accel=${accelerator}%{ endif }"
+    qe.cpu = "${cpu}"
+    qe.smp = "${cpus}"
+    qe.memory = "%{ if memory % 1024 == 0 }${memory / 1024}G%{ else }${memory}M%{ endif }"
+    qe.net_device = "${nic}"
+    qe.drive_interface = "ide"
+
+    # A headless run (the default) daemonizes QEMU and drops the
+    # display entirely; ENV["MAVERICKS_DISPLAY"] (e.g. "gtk") asks for
+    # a window instead, which needs QEMU to stay in the foreground
+    # (no_daemonize) with a real -display in place of "none". On 10.6 the
+    # window shows the screen and takes no input: there is no USB
+    # keyboard or mouse, since 10.6.0's UHCI driver hangs the guest
+    # (docs/decisions/0014). Use it to watch; work over `vagrant ssh`.
+    display = ENV["MAVERICKS_DISPLAY"]
+    qe.no_daemonize = true if display
+    qe.other_default = %W(-parallel none)
+
+    qe.extra_qemu_args = %W(
+      -drive if=pflash,format=raw,unit=0,readonly=on,file=#{boxdir}/OVMF_CODE.fd
+      -drive if=pflash,format=raw,unit=1,snapshot=on,file=#{boxdir}/OVMF_VARS.fd
+      -device qemu-xhci,id=usb
+      -drive id=opencore,if=none,format=raw,snapshot=on,file=#{boxdir}/opencore.img
+      -device usb-storage,bus=usb.0,drive=opencore
+      -device VGA,vgamem_mb=64
+    ) + (display ? %W(-display #{display}) : %W(-display none))
+  end
+end

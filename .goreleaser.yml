@@ -122,6 +122,18 @@ archives:
       - src: templates/mavericks/variables.pkr.hcl
       - src: templates/mavericks/verify.sh
 
+  - id: template-snowleopard
+    meta: true
+    format: zip
+    name_template: "packer-plugin-macosx_v{{ .Version }}_snowleopard_template"
+    files:
+      - src: templates/snowleopard/box.Vagrantfile.pkrtpl
+      - src: templates/snowleopard/firstboot-wait.sh
+      - src: templates/snowleopard/snowleopard.pkr.hcl
+      - src: templates/snowleopard/vagrant-standard-insecure-first-boot-only.key.rsa
+      - src: templates/snowleopard/variables.pkr.hcl
+      - src: templates/snowleopard/verify.sh
+
 checksum:
   name_template: "{{ .ProjectName }}_v{{ .Version }}_SHA256SUMS"
   algorithm: sha256

@@ -176,6 +176,11 @@ jobs:
       - name: packer validate templates/mavericks/
         run: packer validate templates/mavericks/
 
+      # installer is the user's own disc; validate executes no data
+      # source, so any path will do here.
+      - name: packer validate templates/snowleopard/
+        run: packer validate -var installer=/your/own/disc.iso templates/snowleopard/
+
       - name: go test ./templates/... (TestValidate, not skipped)
         run: go test -race ./templates/...
 

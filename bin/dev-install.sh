@@ -26,8 +26,12 @@ cd "$MQG_REPO_ROOT"
 PACKER=${PACKER:-packer}
 require_cmd go "$PACKER"
 
-log "building ./packer-plugin-macosx"
-go build -o packer-plugin-macosx ./cmd/packer-plugin-macosx
+# MQG_PLUGIN_BIN: where the binary is built. Two builds at once -- the
+# two templates' tests, run in parallel -- must not write one file.
+BIN=${MQG_PLUGIN_BIN:-./packer-plugin-macosx}
+
+log "building $BIN"
+go build -o "$BIN" ./cmd/packer-plugin-macosx
 
 log "installing with $PACKER plugins install"
-"$PACKER" plugins install --path ./packer-plugin-macosx github.com/mavergreen/macosx
+"$PACKER" plugins install --path "$BIN" github.com/mavergreen/macosx

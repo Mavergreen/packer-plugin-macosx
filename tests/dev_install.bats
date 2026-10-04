@@ -35,3 +35,14 @@ teardown() {
     [ "$status" -ne 0 ]
     [[ "$output" == *"nonexistent-packer"* ]]
 }
+
+@test "dev-install builds where MQG_PLUGIN_BIN says, so two builds at once never share a binary" {
+    bin="$BATS_TEST_TMPDIR/elsewhere/packer-plugin-macosx"
+    mkdir -p "${bin%/*}"
+    run env PACKER="$STUB_DIR/packer" MQG_PLUGIN_BIN="$bin" "$REPO/bin/dev-install.sh"
+    [ "$status" -eq 0 ]
+    [ -x "$bin" ]
+    [ ! -e "$REPO/packer-plugin-macosx" ]
+    run cat "$RECORD"
+    [ "$output" = "plugins install --path $bin github.com/mavergreen/macosx" ]
+}
