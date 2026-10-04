@@ -90,3 +90,26 @@ apple-itunes-12.6.2-mobiledevice	http://swcdn.apple.com/content/downloads/43/51/
 apple-itunes-12.6.2-itunesaccess	http://swcdn.apple.com/content/downloads/43/51/041-90431-A_KDUB55Q5HN/74ql3cr329p2uthplgu2h2cxbq7067tglv/iTunesAccess.pkg	dc7eb3e908ece5d29cd81da7d0d4ecca4efeda814d78d5d4c83e0425128ac4e6
 apple-itunes-12.6.2-itunesx	http://swcdn.apple.com/content/downloads/43/51/041-90431-A_KDUB55Q5HN/74ql3cr329p2uthplgu2h2cxbq7067tglv/iTunesX.pkg	4d0ccd1d6bf5c34ff664f2009ae648ddaf8256dac350b1473ff0d286607e446f
 apple-itunes-12.6.2-coreadi	http://swcdn.apple.com/content/downloads/43/51/041-90431-A_KDUB55Q5HN/74ql3cr329p2uthplgu2h2cxbq7067tglv/CoreADI.pkg	0493d62c590416bfa3ad97067f5e33b5edbd417406252cca0cc95ca6e45ed0de
+
+# Mac OS X 10.6's updates, for snowleopard-media's updates = "security" (the
+# default): Apple's 10.6.8 combo update, then 10.6's last security update.
+# Same rules as 10.9's above: fetched at build time from Apple's CDN on the
+# user's machine, never republished, never by `softwareupdate`.
+#
+# Taken from Apple's index-leopard-snowleopard.merged-1.sucatalog on
+# 2026-10-04; every byte count matched the catalogue's Size. The combo is
+# one catalogue product (041-98121) of several packages, listed here in its
+# distribution's order. Its client install takes the first two always; the
+# Rosetta, QuickTime Player 7 and X11 packages only where the guest already
+# has /usr/libexec/oah/translate, QuickTime Player 7.app or
+# /usr/bin/quartz-wm, the distribution's own checks, which firstboot.sh
+# repeats. Its server package is left out.
+apple-subasesystem-combo-10.6.8	http://swcdn.apple.com/content/downloads/36/43/041-98121-A_GC9KUH2DGY/ukhwc206sod9l9fkfnsd0izm3g4d11g8r3/SUBaseSystemCombo10.6.8.pkg	f3bc7f5e83a5be09efa9a5a2bc0c67643b18162365753a5719bd97cfd69cfa86
+apple-client-combo-10.6.8	http://swcdn.apple.com/content/downloads/36/43/041-98121-A_GC9KUH2DGY/ukhwc206sod9l9fkfnsd0izm3g4d11g8r3/MacOSXClientCombo10.6.8.pkg	87b4f18ea3a6c897636078b4b6b83c1e026d41bb88e7b5eb00545d76536297e7
+apple-rosetta-combo-10.6.8	http://swcdn.apple.com/content/downloads/36/43/041-98121-A_GC9KUH2DGY/ukhwc206sod9l9fkfnsd0izm3g4d11g8r3/RosettaForCombo10.6.8.pkg	b24f3fa404b00490cef13fa88824f7a357c90691f3305861b29320e0af0bf2b5
+apple-qt7-combo-10.6.8	http://swcdn.apple.com/content/downloads/36/43/041-98121-A_GC9KUH2DGY/ukhwc206sod9l9fkfnsd0izm3g4d11g8r3/QuickTimePlayer7ForCombo10.6.8.pkg	d7d160c4f85b971d1c8183a5a2e4c00717d1eb66006a8adccee8c054b8dd8e8c
+apple-x11-combo-10.6.8	http://swcdn.apple.com/content/downloads/36/43/041-98121-A_GC9KUH2DGY/ukhwc206sod9l9fkfnsd0izm3g4d11g8r3/X11ForCombo10.6.8.pkg	e3618a2a018e630dbb67cd5c9449e1bf4821b5d8aef5a093ee80a8ba8302e5f5
+#
+# Security Update 2013-004 for 10.6.8, the client product (041-91751); the
+# catalogue's other one (041-91749) adds the server package.
+apple-secupd-2013-004-snowleopard	http://swcdn.apple.com/content/downloads/59/44/041-91751-A_6E8UPFATJA/pzuccll6v4vpgcdddnpjn9jq5mhkcvt6j6/SecUpd2013-004.pkg	9c96256de017278a894e04920e85956c55dd331931d6a194d931ac2ab97add60

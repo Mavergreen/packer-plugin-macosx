@@ -17,6 +17,16 @@ const DefaultQEMU = "qemu-system-x86_64"
 // build-time choice whose default is a decision.
 var UpdateChoices = []string{"none", "security", "all"}
 
+// UpdateChoicesFor is a release's updates choices: Mavericks' are
+// UpdateChoices; Snow Leopard has no "all", since no 10.6 application
+// updates are chosen.
+func UpdateChoicesFor(release string) []string {
+	if release == "snowleopard" {
+		return []string{"none", "security"}
+	}
+	return UpdateChoices
+}
+
 const DefaultUpdates = "security"
 
 // Paths is the layout under a data source's cache directory.

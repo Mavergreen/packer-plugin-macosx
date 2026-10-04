@@ -74,3 +74,58 @@ func TestStagedName(t *testing.T) {
 		t.Fatal(StagedName(3, "/c/x/iTunesX.pkg"))
 	}
 }
+
+// snowLeopardSecurity is Apple's own 10.6.8 combo product's client
+// packages in the order its distribution lists them (catalogue product
+// 041-98121), then 10.6's last security update (041-91751): MEASURED
+// 2026-10-04 from index-leopard-snowleopard.merged-1.sucatalog.
+var snowLeopardSecurity = []string{
+	"apple-subasesystem-combo-10.6.8",
+	"apple-client-combo-10.6.8",
+	"apple-rosetta-combo-10.6.8",
+	"apple-qt7-combo-10.6.8",
+	"apple-x11-combo-10.6.8",
+	"apple-secupd-2013-004-snowleopard",
+}
+
+func TestSnowLeopardSelections(t *testing.T) {
+	none, err := UpdateNamesFor("snowleopard", "none")
+	if err != nil || len(none) != 0 {
+		t.Fatalf("none = %v, %v", none, err)
+	}
+	sec, err := UpdateNamesFor("snowleopard", "security")
+	if err != nil || !slices.Equal(sec, snowLeopardSecurity) {
+		t.Fatalf("security = %v, %v; want %v", sec, err, snowLeopardSecurity)
+	}
+	_, err = UpdateNamesFor("snowleopard", "all")
+	if err == nil || err.Error() != `unknown updates selection "all": choose one of none, security` {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestUpdateNamesForMavericksIsUpdateNames(t *testing.T) {
+	for _, sel := range []string{"none", "security", "all"} {
+		a, _ := UpdateNames(sel)
+		b, err := UpdateNamesFor("mavericks", sel)
+		if err != nil || !slices.Equal(a, b) {
+			t.Fatalf("%s: UpdateNamesFor = %v, %v; UpdateNames = %v", sel, b, err, a)
+		}
+	}
+}
+
+func TestEverySnowLeopardUpdateIsPinnedWithARealChecksum(t *testing.T) {
+	reg, err := pins.Embedded()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range snowLeopardSecurity {
+		s, err := reg.Lookup(n)
+		if err != nil {
+			t.Error(err)
+			continue
+		}
+		if len(s.SHA256) != 64 {
+			t.Errorf("%s: sha256 %q", n, s.SHA256)
+		}
+	}
+}

@@ -25,10 +25,34 @@ var updateSources = map[string][]string{
 	},
 }
 
-func UpdateNames(selection string) ([]string, error) {
-	names, ok := updateSources[selection]
+// snowLeopardSources is 10.6's updateSources: Apple's 10.6.8 combo
+// product's client packages in its distribution's order, then 10.6's last
+// security update (assets/pins/sources.tsv says which catalogue products).
+var snowLeopardSources = map[string][]string{
+	"none": nil,
+	"security": {
+		"apple-subasesystem-combo-10.6.8",
+		"apple-client-combo-10.6.8",
+		"apple-rosetta-combo-10.6.8",
+		"apple-qt7-combo-10.6.8",
+		"apple-x11-combo-10.6.8",
+		"apple-secupd-2013-004-snowleopard",
+	},
+}
+
+// UpdateNames is Mavericks' UpdateNamesFor.
+func UpdateNames(selection string) ([]string, error) { return UpdateNamesFor("mavericks", selection) }
+
+// UpdateNamesFor is a release's updates selection's packages, in install
+// order: "mavericks" or "snowleopard".
+func UpdateNamesFor(release, selection string) ([]string, error) {
+	sources := updateSources
+	if release == "snowleopard" {
+		sources = snowLeopardSources
+	}
+	names, ok := sources[selection]
 	if !ok {
-		return nil, fmt.Errorf("unknown updates selection %q: choose one of %s", selection, strings.Join(config.UpdateChoices, ", "))
+		return nil, fmt.Errorf("unknown updates selection %q: choose one of %s", selection, strings.Join(config.UpdateChoicesFor(release), ", "))
 	}
 	return append([]string(nil), names...), nil
 }
