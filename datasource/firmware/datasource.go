@@ -80,9 +80,20 @@ type DatasourceOutput struct {
 // and this does not.
 const recipe = "1 goldens:956c273101856ce4"
 
-// Datasource is mavericks-firmware.
+// Datasource is a release's firmware data source: mavericks-firmware
+// when Release is zero, snowleopard-firmware with firmware.SnowLeopard.
 type Datasource struct {
-	config Config
+	Release firmware.Release
+	config  Config
+}
+
+// rel is the release this data source builds for: Mavericks unless
+// Release says otherwise.
+func (d *Datasource) rel() firmware.Release {
+	if d.Release.Name == "" {
+		return firmware.Mavericks
+	}
+	return d.Release
 }
 
 var _ packersdk.Datasource = new(Datasource)
@@ -96,7 +107,7 @@ func (d *Datasource) Configure(raws ...interface{}) error {
 		return err
 	}
 	if d.config.SMBIOS == "" {
-		d.config.SMBIOS = firmware.DefaultSMBIOS
+		d.config.SMBIOS = d.rel().DefaultSMBIOS
 	}
 	if !firmware.SMBIOSWellformed(d.config.SMBIOS) {
 		return fmt.Errorf("smbios %q is not a usable SMBIOS model identifier (letters, digits, comma, dot, dash, underscore; 64 at most)", d.config.SMBIOS)
@@ -135,7 +146,7 @@ var loadRegistry = pins.Embedded
 // as debug says. A test replaces this var with a fake that writes known
 // bytes at b.Paths.Firmware()'s three files and b.Paths.OpenCoreImage(),
 // so no test runs a real EDK II build.
-var buildFirmware = func(ctx context.Context, b *firmware.Builder, in firmware.Inputs, model string, debug bool) error {
+var buildFirmware = func(ctx context.Context, b *firmware.Builder, in firmware.Inputs, rel firmware.Release, model string, debug bool) error {
 	if _, err := b.OpenCore(ctx, in); err != nil {
 		return fmt.Errorf("opencore: %w", err)
 	}
@@ -145,10 +156,43 @@ var buildFirmware = func(ctx context.Context, b *firmware.Builder, in firmware.I
 	if _, err := b.Kexts(ctx, in); err != nil {
 		return fmt.Errorf("kexts: %w", err)
 	}
-	if _, err := b.EFIImage(ctx, model, debug); err != nil {
+	if _, err := b.EFIImage(ctx, rel, model, debug); err != nil {
 		return fmt.Errorf("efi image: %w", err)
 	}
 	return nil
+}
+
+// listing is the store's key: the boot stack's pins and patches, the
+// compiler, the release's EFI inputs (its own config.plist among them),
+// the model and debug settings, and the recipe. A release other than
+// Mavericks also names itself, so two releases never share an entry;
+// Mavericks names none, so the entries it made before there were two
+// releases stay valid.
+func (d *Datasource) listing(reg *pins.Registry, compiler string) ([]string, error) {
+	efi := "efi"
+	if d.rel().Name != firmware.Mavericks.Name {
+		efi = "efi-" + d.rel().Name
+	}
+	var repo []inputs.Row
+	for _, part := range []string{"opencore", "ovmf", efi} {
+		rows, err := inputs.RepoRows(reg, part, compiler)
+		if err != nil {
+			return nil, err
+		}
+		repo = append(repo, rows...)
+	}
+	extras := []inputs.Row{
+		{Key: "smbios", Value: d.config.SMBIOS},
+		{Key: "debug", Value: strconv.FormatBool(d.config.Debug)},
+		{Key: "recipe", Value: recipe},
+	}
+	if d.rel().Name != firmware.Mavericks.Name {
+		extras = append(extras, inputs.Row{Key: "release", Value: d.rel().Name})
+	}
+	// opencore and ovmf share the boot-stack pins, the patch rows, the
+	// compiler and build-options rows: deduped so the listing (and its
+	// digest) does not carry the same row twice.
+	return inputs.Listing(dedupeRows(repo), extras), nil
 }
 
 // logf reaches Packer's log (PACKER_LOG=1): a data source gets no UI, and
@@ -166,22 +210,10 @@ func (d *Datasource) Execute() (cty.Value, error) {
 	tc := firmware.Toolchain{Runner: proc.Exec{}, GCCBin: os.Getenv("GCC_BIN"), Override: d.config.Compiler}
 	compiler := tc.CompilerLine(ctx)
 
-	var repo []inputs.Row
-	for _, part := range []string{"opencore", "ovmf", "efi"} {
-		rows, err := inputs.RepoRows(reg, part, compiler)
-		if err != nil {
-			return cty.NullVal(cty.EmptyObject), err
-		}
-		repo = append(repo, rows...)
+	listing, err := d.listing(reg, compiler)
+	if err != nil {
+		return cty.NullVal(cty.EmptyObject), err
 	}
-	// opencore and ovmf share the boot-stack pins, the patch rows, the
-	// compiler and build-options rows: deduped so the listing (and its
-	// digest) does not carry the same row twice.
-	listing := inputs.Listing(dedupeRows(repo), []inputs.Row{
-		{Key: "smbios", Value: d.config.SMBIOS},
-		{Key: "debug", Value: strconv.FormatBool(d.config.Debug)},
-		{Key: "recipe", Value: recipe},
-	})
 
 	cacheDir := d.config.CacheDir
 	if cacheDir == "" {
@@ -271,7 +303,7 @@ func (d *Datasource) make(ctx context.Context, cacheDir string, reg *pins.Regist
 		Env:       os.Environ(),
 		Log:       logf,
 	}
-	if err := buildFirmware(ctx, b, in, d.config.SMBIOS, d.config.Debug); err != nil {
+	if err := buildFirmware(ctx, b, in, d.rel(), d.config.SMBIOS, d.config.Debug); err != nil {
 		return err
 	}
 

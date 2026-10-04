@@ -99,7 +99,8 @@ var efiDirs = []string{"/EFI", "/EFI/BOOT", "/EFI/OC", "/EFI/OC/Drivers", "/EFI/
 // config.plist on a FAT32 EFI System Partition -- and writes it to
 // build/opencore.img with a .sha256 sidecar, without sgdisk or mtools,
 // and deterministic.
-// model "" means DefaultSMBIOS; debug turns on DebugSettings.
+// rel picks the config.plist and the model table; model "" means
+// rel.DefaultSMBIOS; debug turns on DebugSettings.
 //
 // config.plist ships verbatim unless model asks for a different SMBIOS
 // or debug is on, when a copy with SystemProductName and/or the three
@@ -107,15 +108,15 @@ var efiDirs = []string{"/EFI", "/EFI/BOOT", "/EFI/OC", "/EFI/OC/Drivers", "/EFI/
 // checked by the ocvalidate this OpenCore built, and shipped instead:
 // the repository config's checksum is a row of the firmware's input
 // listing, and a default build must ship exactly that file.
-func (b *Builder) EFIImage(ctx context.Context, model string, debug bool) (string, error) {
+func (b *Builder) EFIImage(ctx context.Context, rel Release, model string, debug bool) (string, error) {
 	if model == "" {
-		model = DefaultSMBIOS
+		model = rel.DefaultSMBIOS
 	}
 	if !SMBIOSWellformed(model) {
 		return "", fmt.Errorf("SMBIOS %q is not a usable model identifier (letters, digits, comma, dot, dash, underscore; 64 at most)", model)
 	}
-	SMBIOSCheck(model, b.logf)
-	plist, err := b.config(ctx, model, debug)
+	rel.SMBIOSCheck(model, b.logf)
+	plist, err := b.config(ctx, rel, model, debug)
 	if err != nil {
 		return "", err
 	}
@@ -198,19 +199,22 @@ func (b *Builder) EFIImage(ctx context.Context, model string, debug bool) (strin
 
 // config is the config.plist to ship for model and debug: the
 // repository's, verbatim, or a derived copy, validated.
-func (b *Builder) config(ctx context.Context, model string, debug bool) ([]byte, error) {
-	base, err := fs.ReadFile(macosx.Files, "assets/firmware/config.plist")
+func (b *Builder) config(ctx context.Context, rel Release, model string, debug bool) ([]byte, error) {
+	base, err := fs.ReadFile(macosx.Files, rel.ConfigPlist)
 	if err != nil {
 		return nil, err
 	}
 	have := ProductName(base)
 	if model == have && !debug {
-		b.logf("smbios: %s, as assets/firmware/config.plist has it", model)
-		b.logf("debug: off, as assets/firmware/config.plist has it")
+		b.logf("smbios: %s, as %s has it", model, rel.ConfigPlist)
+		b.logf("debug: off, as %s has it", rel.ConfigPlist)
 		return base, nil
 	}
 	derived := base
 	name := "config-" + model
+	if rel.Name != Mavericks.Name {
+		name = "config-" + rel.Name + "-" + model
+	}
 	if model != have {
 		if derived, err = SetProductName(derived, model); err != nil {
 			return nil, err
@@ -243,12 +247,12 @@ func (b *Builder) config(ctx context.Context, model string, debug bool) ([]byte,
 		b.logf("smbios: SystemProductName %s -> %s (%s)", have, model, path)
 		b.logf("smbios: serial, board serial, ROM and UUID are unchanged -- OpenCore derives the board id from the product name (Automatic=true)")
 	} else {
-		b.logf("smbios: %s, as assets/firmware/config.plist has it", model)
+		b.logf("smbios: %s, as %s has it", model, rel.ConfigPlist)
 	}
 	if debug {
 		b.logf("debug: on -- AppleDebug true, DisplayLevel 2147483714, boot-args with debug=0x100 (%s)", path)
 	} else {
-		b.logf("debug: off, as assets/firmware/config.plist has it")
+		b.logf("debug: off, as %s has it", rel.ConfigPlist)
 	}
 	return derived, nil
 }

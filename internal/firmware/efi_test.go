@@ -144,7 +144,7 @@ func shipped(f *fixture) {
 }
 
 func (f *fixture) efiImage(model string) (string, error) {
-	return f.b.EFIImage(context.Background(), model, false)
+	return f.b.EFIImage(context.Background(), Mavericks, model, false)
 }
 
 // imageContents is an image's GPT partitions and its FAT, read back.

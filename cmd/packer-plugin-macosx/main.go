@@ -20,6 +20,7 @@ import (
 	"github.com/Mavergreen/packer-plugin-macosx/datasource/installesd"
 	"github.com/Mavergreen/packer-plugin-macosx/datasource/media"
 	"github.com/Mavergreen/packer-plugin-macosx/datasource/snowleopardinstaller"
+	fw "github.com/Mavergreen/packer-plugin-macosx/internal/firmware"
 	"github.com/Mavergreen/packer-plugin-macosx/version"
 )
 
@@ -29,6 +30,7 @@ func main() {
 	pps.RegisterDatasource("mavericks-firmware", new(firmware.Datasource))
 	pps.RegisterDatasource("mavericks-media", new(media.Datasource))
 	pps.RegisterDatasource("snowleopard-installer", new(snowleopardinstaller.Datasource))
+	pps.RegisterDatasource("snowleopard-firmware", &firmware.Datasource{Release: fw.SnowLeopard})
 	pps.SetVersion(version.PluginVersion)
 	if err := pps.Run(); err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())

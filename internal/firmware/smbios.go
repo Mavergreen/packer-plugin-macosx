@@ -54,19 +54,25 @@ func SMBIOSStatusText(status string) string {
 
 // SMBIOSVerdict is what the table says about model: its status and a
 // detail sentence, pure.
-func SMBIOSVerdict(model string) (status, detail string) {
-	for _, m := range SMBIOSModels {
+func SMBIOSVerdict(model string) (status, detail string) { return Mavericks.SMBIOSVerdict(model) }
+
+// SMBIOSVerdict is what r's table says about model.
+func (r Release) SMBIOSVerdict(model string) (status, detail string) {
+	for _, m := range r.Models {
 		if m.Model == model {
 			return m.Status, SMBIOSStatusText(m.Status) + " -- " + m.Evidence
 		}
 	}
-	return "UNLISTED", SMBIOSStatusText("UNLISTED") + ` -- "` + model + `" is not in this project's tested-options table; the default is iMac14,2 (docs/decisions/0010)`
+	return "UNLISTED", SMBIOSStatusText("UNLISTED") + ` -- "` + model + `" is not in this project's tested-options table; the default is ` + r.DefaultSMBIOS + ` (` + r.Decision + `)`
 }
 
 // SMBIOSCheck is the gate Builder.EFIImage calls. It never fails: the
 // table is guidance, not a whitelist.
-func SMBIOSCheck(model string, logf func(string, ...any)) {
-	status, detail := SMBIOSVerdict(model)
+func SMBIOSCheck(model string, logf func(string, ...any)) { Mavericks.SMBIOSCheck(model, logf) }
+
+// SMBIOSCheck is SMBIOSCheck against r's table.
+func (r Release) SMBIOSCheck(model string, logf func(string, ...any)) {
+	status, detail := r.SMBIOSVerdict(model)
 	switch status {
 	case "VERIFIED":
 		logf("smbios: %s -- %s", model, detail)
@@ -74,7 +80,7 @@ func SMBIOSCheck(model string, logf func(string, ...any)) {
 		logf("smbios: %s -- %s", model, detail)
 		logf("warning: smbios: this is not the model the default was verified on.")
 		logf("warning: If a guest INSTALLS with it, say so: that is how the row")
-		logf("warning: moves to VERIFIED (docs/decisions/0010).")
+		logf("warning: moves to VERIFIED (%s).", r.Decision)
 	case "PANICKED":
 		logf("warning: smbios: %s -- %s", model, detail)
 		logf("warning: Proceeding anyway, because that is the point: this row")
@@ -83,18 +89,18 @@ func SMBIOSCheck(model string, logf func(string, ...any)) {
 		logf("warning: is on the guest's screen, not in QEMU's output -- watch the")
 		logf("warning: display, and remember that 2 colours is white-on-black TEXT")
 		logf("warning: and not a blank screen. Record the result in")
-		logf("warning: docs/decisions/0010 either way.")
+		logf("warning: %s either way.", r.Decision)
 	case "NOT-TESTED", "UNLISTED":
 		logf("warning: smbios: %s -- %s", model, detail)
 		logf("warning: Proceeding: the table is guidance, not a whitelist.")
-		logf("warning: WHAT TO WATCH FOR: a SystemProductName 10.9 dislikes does")
+		logf("warning: WHAT TO WATCH FOR: a SystemProductName %s dislikes does", r.Version)
 		logf("warning: not fail at QEMU start -- it panics in the guest or hangs")
 		logf("warning: at a grey screen, both of which look like 'the install is")
 		logf("warning: slow'. If it works, report it; if it panics, report the")
 		logf("warning: kext named in the panic. Either answer is worth more than")
 		logf("warning: the row it replaces.")
 		var names []string
-		for _, m := range SMBIOSModels {
+		for _, m := range r.Models {
 			names = append(names, m.Model)
 		}
 		logf("warning: Known models: %s ", strings.Join(names, " "))

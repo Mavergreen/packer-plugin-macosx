@@ -131,7 +131,7 @@ func TestEFIImageWithDebugOn(t *testing.T) {
 		if err := os.WriteFile(f.b.ocvalidate(), []byte("#!/bin/sh\n"), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		img, err := f.b.EFIImage(t.Context(), m, true)
+		img, err := f.b.EFIImage(t.Context(), Mavericks, m, true)
 		if err != nil {
 			t.Fatalf("%s: EFIImage: %v\n%s", m, err, f.log.String())
 		}

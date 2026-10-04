@@ -227,3 +227,22 @@ func TestDigestIsSha256sumOfTheSortedText(t *testing.T) {
 		t.Fatalf("got %s, want %s", got, want)
 	}
 }
+
+func TestUpdatesStampForSnowLeopard(t *testing.T) {
+	reg, err := pins.Embedded()
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows, err := UpdatesStampFor(reg, "snowleopard", "security")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 7 || rows[0] != (Row{"updates", "security"}) || rows[6].Key != "update:apple-secupd-2013-004-snowleopard" {
+		t.Fatalf("rows = %v", rows)
+	}
+	mav, _ := UpdatesStamp(reg, "security")
+	same, _ := UpdatesStampFor(reg, "mavericks", "security")
+	if len(mav) != len(same) || mav[1] != same[1] {
+		t.Fatalf("UpdatesStampFor(mavericks) %v is not UpdatesStamp %v", same, mav)
+	}
+}

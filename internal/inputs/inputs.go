@@ -28,7 +28,7 @@ func (r Row) line() string { return r.Key + "\t" + r.Value }
 // repoParts is the parts a data source builds that have repository-side
 // inputs to declare: installesd lists esd; firmware lists opencore, ovmf
 // and efi; media lists payload and media.
-var repoParts = []string{"esd", "opencore", "ovmf", "efi", "payload", "media"}
+var repoParts = []string{"esd", "opencore", "ovmf", "efi", "efi-snowleopard", "payload", "media"}
 
 // RepoRows is the part's repository-side inputs: the pins, patches and
 // embedded files it builds from (the payload's are the three files it
@@ -52,7 +52,9 @@ func RepoRows(reg *pins.Registry, part, compiler string) ([]Row, error) {
 			{"ovmf-build", firmware.OVMFDsc + " " + firmware.Arch + " " + firmware.EDKToolchain + " " + firmware.EDKTarget},
 		})
 	case "efi":
-		return efiRows(reg)
+		return efiRows(reg, "assets/firmware/config.plist")
+	case "efi-snowleopard":
+		return efiRows(reg, "assets/firmware/snowleopard/config.plist")
 	case "payload":
 		return payloadRows()
 	case "media":
@@ -99,8 +101,8 @@ func bootStackPins(reg *pins.Registry) []Row {
 	return rows
 }
 
-func efiRows(reg *pins.Registry) ([]Row, error) {
-	sum, err := embeddedSHA256("assets/firmware/config.plist")
+func efiRows(reg *pins.Registry, plist string) ([]Row, error) {
+	sum, err := embeddedSHA256(plist)
 	if err != nil {
 		return nil, err
 	}
@@ -255,10 +257,15 @@ func Digest(rows []string) string { return pins.Digest(rows) }
 // updates=<selection> and one update:<name>=<pinned sha256> row per
 // package name, in install order (fetch.UpdateNames's order).
 func UpdatesStamp(reg *pins.Registry, selection string) ([]Row, error) {
+	return UpdatesStampFor(reg, "mavericks", selection)
+}
+
+// UpdatesStampFor is UpdatesStamp for a release's selection.
+func UpdatesStampFor(reg *pins.Registry, release, selection string) ([]Row, error) {
 	if selection == "none" {
 		return nil, nil
 	}
-	names, err := fetch.UpdateNames(selection)
+	names, err := fetch.UpdateNamesFor(release, selection)
 	if err != nil {
 		return nil, err
 	}

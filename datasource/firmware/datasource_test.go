@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/Mavergreen/packer-plugin-macosx/internal/fetch"
 	"github.com/Mavergreen/packer-plugin-macosx/internal/firmware"
+	"github.com/Mavergreen/packer-plugin-macosx/internal/inputs"
 	"github.com/Mavergreen/packer-plugin-macosx/internal/lock"
 	"github.com/Mavergreen/packer-plugin-macosx/internal/pins"
 )
@@ -131,8 +133,8 @@ func fakeSources(t *testing.T, names []string) (reg *pins.Registry, srv *httptes
 // workspace paths a real build would have shipped to, without running
 // Toolchain.Check, requireTools or anything through b.Runner: no test
 // runs a real EDK II build.
-func fakeBuild(calls *int32) func(context.Context, *firmware.Builder, firmware.Inputs, string, bool) error {
-	return func(_ context.Context, b *firmware.Builder, _ firmware.Inputs, _ string, _ bool) error {
+func fakeBuild(calls *int32) func(context.Context, *firmware.Builder, firmware.Inputs, firmware.Release, string, bool) error {
+	return func(_ context.Context, b *firmware.Builder, _ firmware.Inputs, _ firmware.Release, _ string, _ bool) error {
 		atomic.AddInt32(calls, 1)
 		if err := os.MkdirAll(b.Paths.Firmware(), 0o755); err != nil {
 			return err
@@ -316,9 +318,9 @@ func TestDebugIsARowAndReachesTheBuild(t *testing.T) {
 	var buildCalls int32
 	var asked []bool
 	fake := fakeBuild(&buildCalls)
-	buildFirmware = func(ctx context.Context, b *firmware.Builder, in firmware.Inputs, model string, debug bool) error {
+	buildFirmware = func(ctx context.Context, b *firmware.Builder, in firmware.Inputs, rel firmware.Release, model string, debug bool) error {
 		asked = append(asked, debug)
-		return fake(ctx, b, in, model, debug)
+		return fake(ctx, b, in, rel, model, debug)
 	}
 	t.Cleanup(func() { loadRegistry, buildFirmware = savedLoad, savedBuild })
 
@@ -362,7 +364,7 @@ func TestALongCacheRootIsRefusedBeforeAnyWork(t *testing.T) {
 
 	savedLoad, savedBuild := loadRegistry, buildFirmware
 	loadRegistry = func() (*pins.Registry, error) { return reg, nil }
-	buildFirmware = func(context.Context, *firmware.Builder, firmware.Inputs, string, bool) error {
+	buildFirmware = func(context.Context, *firmware.Builder, firmware.Inputs, firmware.Release, string, bool) error {
 		t.Fatal("buildFirmware must not run when the cache root is too long")
 		return nil
 	}
@@ -444,5 +446,56 @@ func TestAConcurrentBuildInTheSameWorkspaceIsRefused(t *testing.T) {
 	}
 	if got := atomic.LoadInt32(&buildCalls); got != 1 {
 		t.Fatalf("buildFirmware ran %d times after the lock was released, want 1", got)
+	}
+}
+
+func listingFor(t *testing.T, d *Datasource) []string {
+	t.Helper()
+	if err := d.Configure(map[string]interface{}{}); err != nil {
+		t.Fatal(err)
+	}
+	reg, err := pins.Embedded()
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows, err := d.listing(reg, "gcc (GCC) 13.3.0 -std=gnu17")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return rows
+}
+
+// TestTheTwoReleasesNeverShareAnEFIImage: the firmware store is shared,
+// so a 10.6 listing that matched a 10.9 one would hand back 10.9's EFI
+// image -- 10.9's config.plist -- for a 10.6 guest.
+func TestTheTwoReleasesNeverShareAnEFIImage(t *testing.T) {
+	mav := listingFor(t, new(Datasource))
+	sl := listingFor(t, &Datasource{Release: firmware.SnowLeopard})
+	if inputs.Digest(mav) == inputs.Digest(sl) {
+		t.Fatal("the Mavericks and Snow Leopard firmware listings are the same")
+	}
+	if !slices.Contains(sl, "release\tsnowleopard") {
+		t.Fatalf("the Snow Leopard listing does not name its release: %v", sl)
+	}
+}
+
+// TestTheMavericksListingIsUnchanged: a zero Release is Mavericks, and
+// its listing carries no release row, so every Mavericks user's cached
+// firmware stays valid.
+func TestTheMavericksListingIsUnchanged(t *testing.T) {
+	for _, row := range listingFor(t, new(Datasource)) {
+		if strings.HasPrefix(row, "release\t") {
+			t.Fatalf("the Mavericks listing gained %q", row)
+		}
+	}
+}
+
+func TestSnowLeopardFirmwareDefaultsToItsModel(t *testing.T) {
+	d := &Datasource{Release: firmware.SnowLeopard}
+	if err := d.Configure(map[string]interface{}{}); err != nil {
+		t.Fatal(err)
+	}
+	if d.config.SMBIOS != "iMac9,1" {
+		t.Fatalf("smbios = %q; want 10.6's default, iMac9,1", d.config.SMBIOS)
 	}
 }

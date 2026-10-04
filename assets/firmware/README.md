@@ -407,6 +407,31 @@ machine), `ConnectDrivers: true`, and `Quirks > RequestBootVarRouting:
 true` (which pairs with `OpenRuntime.efi`). `ReservedMemory` and `Unload`
 are emptied of the sample's examples.
 
+## `snowleopard/config.plist`: Mac OS X 10.6
+
+`snowleopard-firmware` ships `snowleopard/config.plist`, which is this
+file with exactly three differences, held there by
+`internal/firmware`'s `TestSnowLeopardConfigDiffersOnlyAsDocumented`:
+
+- **`Booter > Quirks > RebuildAppleMemoryMap` = `true`.** MEASURED
+  2026-10-04 on `pet-power-plant` (KVM): without it the 10.6.0 retail
+  installer's 64-bit kernel stops for good after `mig_table_max_displ =
+  73`, with one CPU or two, and with `idlehalt=0`; with it, the installer
+  starts. It came from `jprx/how-to-install-snow-leopard-in-qemu`
+  (`docs/prior-art.md`).
+- **`PlatformInfo > Generic > SystemProductName` = `iMac9,1`**, a Mac
+  older than 10.6.0, whose retail disc therefore has its drivers
+  (`internal/firmware`'s `SnowLeopardModels`).
+- **The description** names the OS.
+
+**`Booter > Quirks > DevirtualiseMmio` stays `false`**, though the same
+guide sets it. MEASURED 2026-10-04: with it on, the install ran to its
+end and then the installer's `bless` panicked in `AppleEFIRuntime`
+writing NVRAM, leaving a disk OpenCore found no boot entry on; with it
+off, `bless` succeeds and the installer reboots into 10.6. The likely
+reason, not measured: the quirk takes the runtime mapping away from MMIO
+regions, OVMF's NVRAM flash among them.
+
 ---
 
 ## What is still unverified
