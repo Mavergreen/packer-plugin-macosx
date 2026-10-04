@@ -26,7 +26,7 @@ import (
 	"github.com/Mavergreen/packer-plugin-macosx/internal/payload"
 )
 
-// repoRoot is this file's own location, walked up past template/: robust
+// repoRoot is this file's own location, walked up past templates/mavericks/: robust
 // to whatever directory `go test` runs from.
 func repoRoot(t *testing.T) string {
 	t.Helper()
@@ -34,7 +34,7 @@ func repoRoot(t *testing.T) string {
 	if !ok {
 		t.Fatal("runtime.Caller(0) failed")
 	}
-	return filepath.Dir(filepath.Dir(thisFile))
+	return filepath.Dir(filepath.Dir(filepath.Dir(thisFile)))
 }
 
 // packerBinary is the packer this test drives.
@@ -121,7 +121,7 @@ func devInstall(t *testing.T, root, packer, pluginDir string) {
 }
 
 // shippedFiles is the template archive's own file list, read out of
-// .goreleaser.yml's "- src: template/<name>" lines: exactly what a
+// .goreleaser.yml's "- src: templates/mavericks/<name>" lines: exactly what a
 // release carries, which tests/release.bats holds to the tracked
 // template files.
 func shippedFiles(t *testing.T, root string) []string {
@@ -131,7 +131,7 @@ func shippedFiles(t *testing.T, root string) []string {
 		t.Fatal(err)
 	}
 	var names []string
-	for _, m := range regexp.MustCompile(`(?m)^\s*- src: template/(\S+)\s*$`).FindAllStringSubmatch(string(b), -1) {
+	for _, m := range regexp.MustCompile(`(?m)^\s*- src: templates/mavericks/(\S+)\s*$`).FindAllStringSubmatch(string(b), -1) {
 		names = append(names, m[1])
 	}
 	if len(names) == 0 {
@@ -142,9 +142,9 @@ func shippedFiles(t *testing.T, root string) []string {
 
 // shippedCopy copies the files a release's template archive carries --
 // and nothing else: no build output, no test -- into a fresh directory,
-// and returns it. Validating that copy is what shows template/ is
+// and returns it. Validating that copy is what shows templates/mavericks/ is
 // self-contained, and a build's leftovers in the checkout's own
-// template/ (output-mavericks/, which packer validate refuses) cannot
+// templates/mavericks/ (output-mavericks/, which packer validate refuses) cannot
 // affect it.
 func shippedCopy(t *testing.T, root string) string {
 	t.Helper()
@@ -153,7 +153,7 @@ func shippedCopy(t *testing.T, root string) string {
 		t.Fatal(err)
 	}
 	for _, n := range shippedFiles(t, root) {
-		b, err := os.ReadFile(filepath.Join(root, "template", n))
+		b, err := os.ReadFile(filepath.Join(root, "templates", "mavericks", n))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -195,7 +195,7 @@ func TestValidate(t *testing.T) {
 	// The template as a release ships it, validated from a working
 	// directory that is not the template's own: every file it reads from
 	// beside itself must be named through ${path.root}, as CI's
-	// `packer validate template/` from the repository root needs.
+	// `packer validate templates/mavericks/` from the repository root needs.
 	tmpl := shippedCopy(t, root)
 	elsewhere := filepath.Join(tmp, "elsewhere")
 	if err := os.MkdirAll(elsewhere, 0o755); err != nil {

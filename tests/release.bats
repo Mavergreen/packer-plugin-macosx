@@ -391,14 +391,15 @@ make_repo() {
 # --- what a release archive carries ------------------------------------------
 #
 # The tree checks above cannot see goreleaser's dist/. A glob in
-# .goreleaser.yml would zip template/'s git-ignored build outputs -- a
+# .goreleaser.yml would zip templates/mavericks/'s git-ignored build outputs -- a
 # 7.7 GB box of Apple's OS among them -- into the template archive. These
 # hold the archive's file list to the tracked template, and fire archive
 # mode (bin/no-apple-bytes.sh --archives) at planted violations.
 
-# The template archive's files, as .goreleaser.yml names them, one per line.
+# One OS's template archive's files ($1: mavericks, ...), as
+# .goreleaser.yml names them, one per line.
 template_srcs() {
-    sed -n -e 's/^ *- src: \(template\/.*\)$/\1/p' "$REPO/.goreleaser.yml"
+    sed -n -e "s/^ *- src: \\(templates\\/$1\\/.*\\)\$/\\1/p" "$REPO/.goreleaser.yml"
 }
 
 # A zip at $1 holding the named files ($2...), read from the repository
@@ -421,24 +422,31 @@ teardown() {
 }
 
 @test "the template archive names each tracked template file, no glob and no test" {
-    run template_srcs
+    run template_srcs mavericks
     [ "$status" -eq 0 ]
     [ -n "$output" ]
     [[ "$output" != *'*'* ]]
     [[ "$output" != *'?'* ]]
     [[ "$output" != *'['* ]]
     [[ "$output" != *_test.go* ]]
-    want=$(git -C "$REPO" ls-files template/ | grep -v '_test\.go$' | sort)
-    got=$(template_srcs | sort)
+    want=$(git -C "$REPO" ls-files templates/mavericks/ | grep -v '_test\.go$' | sort)
+    got=$(template_srcs mavericks | sort)
     [ "$got" = "$want" ]
 }
 
-@test "a build's box left in template/output/ would not ship in the template archive" {
-    if [ ! -d "$REPO/template/output" ]; then
-        mkdir "$REPO/template/output"
-        PLANTED_DIR="$REPO/template/output"
+@test "each OS's template archive is named for its OS" {
+    run grep -c 'name_template: "packer-plugin-macosx_v{{ .Version }}_mavericks_template"' "$REPO/.goreleaser.yml"
+    [ "$output" = "1" ]
+    run grep -c '_template"$' "$REPO/.goreleaser.yml"
+    [ "$output" = "$(ls -d "$REPO"/templates/*/ | wc -l | tr -d ' ')" ]
+}
+
+@test "a build's box left in templates/mavericks/output/ would not ship in the template archive" {
+    if [ ! -d "$REPO/templates/mavericks/output" ]; then
+        mkdir "$REPO/templates/mavericks/output"
+        PLANTED_DIR="$REPO/templates/mavericks/output"
     fi
-    PLANTED_BOX="$REPO/template/output/planted-by-release-bats-$$.box"
+    PLANTED_BOX="$REPO/templates/mavericks/output/planted-by-release-bats-$$.box"
     printf 'not really a box\n' > "$PLANTED_BOX"
 
     # Every name the archive takes is a regular file, never a directory
@@ -447,25 +455,25 @@ teardown() {
         [ -f "$REPO/$src" ]
         [ ! -d "$REPO/$src" ]
         [ "$REPO/$src" != "$PLANTED_BOX" ]
-    done < <(template_srcs)
+    done < <(template_srcs mavericks)
 
     # What goreleaser would zip from those names, checked the way a
     # release is: it passes, and the planted box is not in it.
     mkdir -p "$BATS_TEST_TMPDIR/dist"
     # shellcheck disable=SC2046  # one word per listed file
-    zip_from_repo "$BATS_TEST_TMPDIR/dist/t_template.zip" $(template_srcs)
+    zip_from_repo "$BATS_TEST_TMPDIR/dist/t_template.zip" $(template_srcs mavericks)
     run unzip -Z1 "$BATS_TEST_TMPDIR/dist/t_template.zip"
     [ "$status" -eq 0 ]
     [[ "$output" != *planted-by-release-bats* ]]
-    [[ "$output" == *template/mavericks.pkr.hcl* ]]
+    [[ "$output" == *templates/mavericks/mavericks.pkr.hcl* ]]
     run "$REPO/bin/no-apple-bytes.sh" --archives "$BATS_TEST_TMPDIR/dist"
     [ "$status" -eq 0 ]
 
-    # And had it been swept in, as template/* once did, archive mode says so.
+    # And had it been swept in, as templates/mavericks/* once did, archive mode says so.
     rm -f "$BATS_TEST_TMPDIR/dist/t_template.zip"
     # shellcheck disable=SC2046
-    zip_from_repo "$BATS_TEST_TMPDIR/dist/t_template.zip" $(template_srcs) \
-        "template/output/${PLANTED_BOX##*/}"
+    zip_from_repo "$BATS_TEST_TMPDIR/dist/t_template.zip" $(template_srcs mavericks) \
+        "templates/mavericks/output/${PLANTED_BOX##*/}"
     run "$REPO/bin/no-apple-bytes.sh" --archives "$BATS_TEST_TMPDIR/dist"
     [ "$status" -ne 0 ]
     [[ "$output" == *"planted-by-release-bats-$$.box"* ]]
@@ -534,11 +542,11 @@ teardown() {
 }
 
 @test "a build's own outputs are git-ignored, the manifest among them" {
-    run git -C "$REPO" check-ignore -q template/packer-manifest.json
+    run git -C "$REPO" check-ignore -q templates/mavericks/packer-manifest.json
     [ "$status" -eq 0 ]
-    run git -C "$REPO" check-ignore -q template/output/x.box
+    run git -C "$REPO" check-ignore -q templates/mavericks/output/x.box
     [ "$status" -eq 0 ]
-    run git -C "$REPO" check-ignore -q template/output-mavericks/mavericks.qcow2
+    run git -C "$REPO" check-ignore -q templates/mavericks/output-mavericks/mavericks.qcow2
     [ "$status" -eq 0 ]
 }
 
@@ -707,7 +715,7 @@ print('ok')
 }
 
 @test "the README documents the headful escape hatch" {
-    # template/box.Vagrantfile.pkrtpl reads MAVERICKS_DISPLAY to trade the
+    # templates/mavericks/box.Vagrantfile.pkrtpl reads MAVERICKS_DISPLAY to trade the
     # headless default for a real window; undocumented, nobody finds it.
     run grep -c 'MAVERICKS_DISPLAY=[a-z]* vagrant up --provider qemu' "$REPO/README.md"
     [ "$output" -ge 1 ]

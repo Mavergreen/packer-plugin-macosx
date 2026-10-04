@@ -181,7 +181,7 @@ or corrected, with the date and what was observed.
   `enforce`, a missing feature is an error that names the feature instead
   of a warning. Under TCG the answer describes the emulator, not the host.
 - **Everything else** comes from a build: `PACKER_LOG=1 packer build` in
-  `template/`, keeping the log. `verify.sh` prints what the guest is
+  `templates/mavericks/`, keeping the log. `verify.sh` prints what the guest is
   (`sw_vers`, the CPU it decided it got, the disk bus, the receipts, the
   OpenSSH version) before it judges it. Record the host's CPU, kernel,
   QEMU and gcc beside the result.

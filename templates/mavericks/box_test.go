@@ -69,7 +69,7 @@ func traversalString(t hcl.Traversal) string {
 
 func TestVagrantPostProcessorBlock(t *testing.T) {
 	root := repoRoot(t)
-	path := filepath.Join(root, "template", "mavericks.pkr.hcl")
+	path := filepath.Join(root, "templates", "mavericks", "mavericks.pkr.hcl")
 	src, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
@@ -258,7 +258,7 @@ func TestVagrantPostProcessorBlock(t *testing.T) {
 // variable's type, with overrides applied the way -var would.
 func templateVars(t *testing.T, overrides map[string]cty.Value) map[string]cty.Value {
 	t.Helper()
-	path := filepath.Join(repoRoot(t), "template", "variables.pkr.hcl")
+	path := filepath.Join(repoRoot(t), "templates", "mavericks", "variables.pkr.hcl")
 	src, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
@@ -320,7 +320,7 @@ func templateVars(t *testing.T, overrides map[string]cty.Value) map[string]cty.V
 // calls none, and a call would fail here first.)
 func renderBoxVagrantfile(t *testing.T, overrides map[string]cty.Value) string {
 	t.Helper()
-	dir := filepath.Join(repoRoot(t), "template")
+	dir := filepath.Join(repoRoot(t), "templates", "mavericks")
 	path := filepath.Join(dir, "mavericks.pkr.hcl")
 	src, err := os.ReadFile(path)
 	if err != nil {
@@ -485,7 +485,7 @@ func rubyArray(t *testing.T, text, prefix string) []string {
 // libvirt provider place there), and takes the build's settings from
 // templatefile()'s variables.
 func TestBoxVagrantfileSource(t *testing.T) {
-	path := filepath.Join(repoRoot(t), "template", "box.Vagrantfile.pkrtpl")
+	path := filepath.Join(repoRoot(t), "templates", "mavericks", "box.Vagrantfile.pkrtpl")
 	src, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)

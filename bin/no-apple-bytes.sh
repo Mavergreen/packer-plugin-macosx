@@ -44,7 +44,7 @@
 # The tree a release is built from is only half of it. What gets uploaded
 # is goreleaser's dist/, which git never sees: a glob in .goreleaser.yml,
 # in a checkout that has run `packer build`, would zip the git-ignored
-# template/output/*.box -- Apple's whole OS -- into the template archive,
+# templates/mavericks/output/*.box -- Apple's whole OS -- into the template archive,
 # and no check of the tree could ever notice. (So .goreleaser.yml names
 # the template's files one by one.)
 # Archive mode reads what is actually about to be uploaded: every file

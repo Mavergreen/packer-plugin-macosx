@@ -25,7 +25,7 @@ file, and nothing else:
    zipped, for linux, darwin and netbsd on amd64 and arm64: the names
    `packer init` expects for the plugin source
    `github.com/mavergreen/macosx`.
-2. **The template**, `template/` as one zip: `mavericks.pkr.hcl`,
+2. **The template**, `templates/mavericks/` as one zip: `mavericks.pkr.hcl`,
    `variables.pkr.hcl`, the box's Vagrantfile template, the two guest-side
    scripts the build runs, and Vagrant's insecure private key. A build
    needs this directory and the plugin, not a checkout.
@@ -71,7 +71,7 @@ that `vagrant-qemu` runs. It carries:
 - the installed disk;
 - the OVMF code and variable-store images and the OpenCore EFI image, the
   firmware's own outputs, beside the disk;
-- a Vagrantfile rendered from `template/box.Vagrantfile.pkrtpl` with the
+- a Vagrantfile rendered from `templates/mavericks/box.Vagrantfile.pkrtpl` with the
   build's own `user`, `cpu`, `memory`, `cpus`, `nic` and `accelerator`, so
   the box logs in and boots the way its image was installed. It wires up
   the firmware and the machine, and adds a `before :halt` trigger that

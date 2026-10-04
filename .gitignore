@@ -22,15 +22,15 @@ __pycache__/
 /dist/
 
 # `packer build`/the vagrant post-processor's own output, from
-# template/mavericks.pkr.hcl's output_directory and vagrant
+# templates/mavericks/mavericks.pkr.hcl's output_directory and vagrant
 # post-processor `output`.
-/template/output/
-/template/output-mavericks/
+/templates/*/output/
+/templates/*/output-*/
 *.box
 # The manifest post-processor's record of a build.
-/template/packer-manifest.json
+/templates/*/packer-manifest.json
 # The same outputs when packer runs from the repository root
-# (`packer build template/`): output_directory, the box and the manifest
+# (`packer build templates/mavericks/`): output_directory, the box and the manifest
 # are relative to the working directory, not the template.
 /output/
 /output-mavericks/

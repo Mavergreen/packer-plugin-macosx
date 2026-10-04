@@ -2,7 +2,7 @@ name: ci
 
 # What this repository can check without a Mac, a KVM host or 6 GB of
 # Apple's media: the whole test suite and the three checks that guard the
-# ingredient registry. template/'s own TestValidate (go test ./template/...)
+# ingredient registry. templates/mavericks/'s own TestValidate (go test ./templates/...)
 # validates mavericks.pkr.hcl against real Packer, for every NIC choice; the
 # `go` job's plain `go test -race ./...` still skips it (no `packer` on
 # PATH there), but the `template` job below gives it both PACKER and
@@ -14,7 +14,7 @@ name: ci
 # needs Apple's installer, which a cache here must not become a way to
 # publish, more disk than a standard runner has free, and half an hour.
 # Building an image is exercised on the host it is for.
-# `packer validate` never executes a data source (see template/mavericks.pkr.hcl's
+# `packer validate` never executes a data source (see templates/mavericks/mavericks.pkr.hcl's
 # own comment on ssh_private_key_file), so the `template` job fetches no
 # Apple bytes either -- and must never be changed so that it does.
 
@@ -105,7 +105,7 @@ jobs:
 
       # -race: internal/fetch's stall watcher cancels a download from
       # another goroutine, and internal/privops's staged-module cache is
-      # shared, and locked, across a Backend's copies. template/'s own
+      # shared, and locked, across a Backend's copies. templates/mavericks/'s own
       # TestValidate is in this ./... too, and skips here (no packer on
       # PATH) -- the `template` job below is where it actually runs.
       - name: Test
@@ -123,13 +123,13 @@ jobs:
               GOOS=${target%/*} GOARCH=${target#*/} go build -o /dev/null ./cmd/packer-plugin-macosx
           done
 
-  # template/mavericks.pkr.hcl against a REAL packer: the qemu and vagrant
+  # templates/mavericks/mavericks.pkr.hcl against a REAL packer: the qemu and vagrant
   # plugins it requires are fetched (network, as for any user),
   # bin/dev-install.sh builds and installs THIS checkout's own plugin
   # beside them (no network -- it is already on disk), and `packer
   # validate` then resolves every data source and post-processor block for
-  # real. go test ./template/... exercises the same path through
-  # template/template_test.go's TestValidate, with PACKER and
+  # real. go test ./templates/... exercises the same path through
+  # templates/mavericks/template_test.go's TestValidate, with PACKER and
   # PACKER_PLUGIN_PATH set so it runs rather than skips (see that test's
   # own doc comment).
   template:
@@ -161,7 +161,7 @@ jobs:
       - name: Install this checkout's own plugin build
         run: ./bin/dev-install.sh
 
-      # Not `packer init template/`: required_plugins also names this
+      # Not `packer init templates/mavericks/`: required_plugins also names this
       # plugin, and init would fetch a RELEASE of it -- failing before the
       # first one exists, and validating the release rather than this
       # checkout after. bin/dev-install.sh above installs this checkout's
@@ -173,11 +173,11 @@ jobs:
           packer plugins install github.com/hashicorp/qemu '~> 1'
           packer plugins install github.com/hashicorp/vagrant '~> 1'
 
-      - name: packer validate template/
-        run: packer validate template/
+      - name: packer validate templates/mavericks/
+        run: packer validate templates/mavericks/
 
-      - name: go test ./template/ (TestValidate, not skipped)
-        run: go test -race ./template/...
+      - name: go test ./templates/... (TestValidate, not skipped)
+        run: go test -race ./templates/...
 
   # The go job cross-builds for darwin; this one RUNS the tests there.
   # flock semantics, sun_path's 104-byte limit and signal delivery are

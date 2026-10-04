@@ -102,25 +102,25 @@ archives:
   #
   # EVERY FILE BY NAME, NEVER A GLOB. goreleaser's file globs include a
   # matched directory's whole contents, and a checkout that has run the
-  # README's own `packer build` holds template/output/*.box and
-  # template/output-mavericks/*.qcow2 -- Apple's OS, git-ignored, so the
-  # dirty-tree check never sees them. `template/*` would zip exactly
-  # those, and template/*_test.go (meaningless outside this repository)
+  # README's own `packer build` holds templates/mavericks/output/*.box and
+  # templates/mavericks/output-mavericks/*.qcow2 -- Apple's OS, git-ignored, so the
+  # dirty-tree check never sees them. `templates/mavericks/*` would zip exactly
+  # those, and templates/mavericks/*_test.go (meaningless outside this repository)
   # besides. tests/release.bats holds this list to `git ls-files
-  # template/` minus the tests, and template's TestValidate validates a
+  # templates/mavericks/` minus the tests, and template's TestValidate validates a
   # copy of exactly these files, so a file the template needs cannot be
   # left off.
-  - id: template
+  - id: template-mavericks
     meta: true
     format: zip
-    name_template: "packer-plugin-macosx_v{{ .Version }}_template"
+    name_template: "packer-plugin-macosx_v{{ .Version }}_mavericks_template"
     files:
-      - src: template/box.Vagrantfile.pkrtpl
-      - src: template/firstboot-wait.sh
-      - src: template/mavericks.pkr.hcl
-      - src: template/vagrant-standard-insecure-first-boot-only.key.rsa
-      - src: template/variables.pkr.hcl
-      - src: template/verify.sh
+      - src: templates/mavericks/box.Vagrantfile.pkrtpl
+      - src: templates/mavericks/firstboot-wait.sh
+      - src: templates/mavericks/mavericks.pkr.hcl
+      - src: templates/mavericks/vagrant-standard-insecure-first-boot-only.key.rsa
+      - src: templates/mavericks/variables.pkr.hcl
+      - src: templates/mavericks/verify.sh
 
 checksum:
   name_template: "{{ .ProjectName }}_v{{ .Version }}_SHA256SUMS"

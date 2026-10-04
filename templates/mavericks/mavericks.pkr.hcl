@@ -28,7 +28,7 @@
 #
 # PATHS. Every file this template reads from beside itself is named
 # through ${path.root} -- the template's own directory -- so a build works
-# from any working directory (`packer build template/` from the repository
+# from any working directory (`packer build templates/mavericks/` from the repository
 # root, as CI validates, as well as `cd template && packer build .`). The
 # one exception is templatefile()'s argument, which Packer itself resolves
 # against that same directory (local.box_vagrantfile). What
@@ -52,14 +52,14 @@
 # and the NIC and memory choices would become Go template logic inside
 # Ruby.
 #
-# THE SSH KEY. template/ ships as its own release artifact (a build only
+# THE SSH KEY. templates/mavericks/ ships as its own release artifact (a build only
 # needs this directory, not a checkout of the whole repository), so
 # nothing here may point outside it. ssh_private_key_file therefore names
-# template/vagrant-standard-insecure-first-boot-only.key.rsa -- a copy of
+# templates/mavericks/vagrant-standard-insecure-first-boot-only.key.rsa -- a copy of
 # assets/vagrant/vagrant-standard-insecure-first-boot-only.key.rsa,
 # held byte-identical to it by this package's own
 # TestVagrantKeyMatchesEmbedded -- rather than reaching out via path.root
-# to assets/ (a template/ shipped alone has no such path to reach), and
+# to assets/ (a templates/mavericks/ shipped alone has no such path to reach), and
 # rather than data.macosx-mavericks-media.media.ssh_private_key_file, even
 # though that data source output is the very same bytes for the default
 # authorized_key (internal/payload's VagrantPrivateKey reads this exact
@@ -129,7 +129,7 @@ locals {
   # templatefile() resolves a relative path against the template's own
   # directory already (Packer's basedir, which is also path.root), so
   # the name goes in bare: "${path.root}/..." would join a relative
-  # path.root twice (MEASURED: `packer validate template/` looked for
+  # path.root twice (MEASURED, as this directory was then named: `packer validate template/` looked for
   # template/template/box.Vagrantfile.pkrtpl).
   box_vagrantfile = templatefile("box.Vagrantfile.pkrtpl", {
     user        = var.user

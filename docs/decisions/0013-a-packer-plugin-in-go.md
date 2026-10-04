@@ -39,7 +39,7 @@ their inputs (`docs/decisions/0006`):
 | `mavericks-firmware` | OVMF and the OpenCore EFI image, built from pinned source |
 | `mavericks-media` | installer media carrying the unattended-install hooks and the first-boot payload |
 
-The template (`template/`) wires them to Packer's stock `qemu` builder,
+The template (`templates/mavericks/`) wires them to Packer's stock `qemu` builder,
 which boots the installer with no `boot_command` (Apple's installer reads
 its configuration off the media), and to the stock `vagrant`
 post-processor, which already makes a libvirt-provider box from a qemu

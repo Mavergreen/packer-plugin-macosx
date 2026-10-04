@@ -75,7 +75,7 @@ evidence either. What moves, MEASURED 2026-09-22 from the running guest:
 - **the build number**: the update carries `SystemVersion.plist`, so
   `sw_vers -buildVersion` goes **13F34 → 13F1911**.
 
-`template/verify.sh` fails the build, before a box is made, if a guest
+`templates/mavericks/verify.sh` fails the build, before a box is made, if a guest
 built with `security` or `all` lacks that receipt.
 
 ### 3. The media's free space is not spare room

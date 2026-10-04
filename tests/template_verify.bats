@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 #
-# template/verify.sh's verdict. It runs in the guest, over SSH, after the
+# templates/mavericks/verify.sh's verdict. It runs in the guest, over SSH, after the
 # first boot; a wrong verdict either packages a broken guest as a box or
 # fails a good build. These run it under this host's /bin/sh -- a stricter
 # POSIX sh than 10.9's bash 3.2, which is the point -- with stubs for the
@@ -44,9 +44,9 @@ EOF
 
 verify() {  # $1 = UPDATES, or "-" to leave it unset
     if [ "$1" = - ]; then
-        run env -u UPDATES PATH="$STUB:$PATH" MQG_VERIFY_MARKER="$MARKER" /bin/sh "$REPO/template/verify.sh"
+        run env -u UPDATES PATH="$STUB:$PATH" MQG_VERIFY_MARKER="$MARKER" /bin/sh "$REPO/templates/mavericks/verify.sh"
     else
-        run env UPDATES="$1" PATH="$STUB:$PATH" MQG_VERIFY_MARKER="$MARKER" /bin/sh "$REPO/template/verify.sh"
+        run env UPDATES="$1" PATH="$STUB:$PATH" MQG_VERIFY_MARKER="$MARKER" /bin/sh "$REPO/templates/mavericks/verify.sh"
     fi
 }
 
@@ -126,6 +126,6 @@ verify() {  # $1 = UPDATES, or "-" to leave it unset
 }
 
 @test "the template passes verify.sh the updates it asked for" {
-    run grep -F 'environment_vars = ["UPDATES=${var.updates}"]' "$REPO/template/mavericks.pkr.hcl"
+    run grep -F 'environment_vars = ["UPDATES=${var.updates}"]' "$REPO/templates/mavericks/mavericks.pkr.hcl"
     [ "$status" -eq 0 ]
 }
