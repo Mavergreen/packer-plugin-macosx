@@ -71,6 +71,28 @@ keepsyms=1" (debug off by default); `vagrant halt` 23 s, exit 0,
 
 Not measured: a box run with a display (`MAVERICKS_DISPLAY`).
 
+**10.6, `templates/snowleopard/`, 2026-10-04**, from the 10A432 retail
+disc image (`docs/decisions/0014`), default settings (`updates =
+security`, one CPU, XHCI): `packer build -var installer=...` in
+**24m41s**, exit 0, with `snowleopard-installer` and the firmware
+already built and the media built fresh (data sources 2 minutes; the
+install, the first boot with 10.6.8 and 2013-004, and its restart, 22
+minutes until SSH answered). `verify.sh` said "verify: ok: 10.6.8,
+first boot finished, passwordless sudo for vagrant, updates=security as
+asked"; 16 update receipts (13 combo parts, the base system, X11,
+2013-004). `vagrant up --provider qemu` 48 s; `vagrant ssh -c sw_vers`
+10.6.8 10K549; `sudo -n true` succeeded; `vagrant halt` 7 s. With `-var
+updates=none`: **14m08s**, exit 0 (SSH after 12 minutes of install and
+first boot); `verify.sh` "ok: 10.6, ... updates=none as asked";
+hostname `snowleopard`; `vagrant up --provider qemu` 64 s;
+`vagrant ssh -c sw_vers` 10.6 10A432; `vagrant halt` 8 s.
+
+**10.9 again after the 10.6 work, 2026-10-04**, the default
+`templates/mavericks/` build from a seeded InstallESD, the media built
+fresh: **21m53s**, exit 0; `verify.sh` "ok: 10.9.5, first boot
+finished, passwordless sudo for vagrant, updates=security as asked";
+13F1911, the 2016-004 receipt.
+
 ## The hosts
 
 ### `pet-power-plant`: Mac mini 2018, Linux Mint 22.3, primary

@@ -99,6 +99,49 @@ OSK value, which this project does not need. Its CPU choice is
 
 OpenCore configuration details.
 
+## Installing and booting 10.6 under QEMU
+
+Read on 2026-10-04 -- after the first 10.6 boot had already hung, which
+is the wrong order; next time, here first.
+
+### jprx/how-to-install-snow-leopard-in-qemu
+
+10.6 on OSX-KVM's OpenCore. Its `config.plist` changes include
+`Booter > Quirks > RebuildAppleMemoryMap` and `DevirtualiseMmio`, one
+core, and `e1000-82545em`, and it warns that the install ends in a kernel
+panic when the installer blesses the new disk, fixed by running `bless`
+by hand. **Tested here** (2026-10-04, `assets/firmware/README.md`):
+`RebuildAppleMemoryMap` is what gets 10.6.0's kernel past
+`mig_table_max_displ` under KVM; `DevirtualiseMmio` is what makes `bless`
+panic, writing NVRAM, and with it off the install blesses and reboots on
+its own, so nothing is blessed by hand.
+
+### royalgraphx/LegacyOSXKVM
+
+10.0 through 10.12 on QEMU, by the author of DarwinKVM (above); archived
+2025-11-16. Its 10.6 OpenCore image (`opencore/opencore-SLeopard.qcow2`,
+read here 2026-10-04) has `RebuildAppleMemoryMap` on and
+`DevirtualiseMmio` off -- what this project measured -- plus
+`ProvideCurrentCpuInfo`, `ForceExitBootServices`, and boot-args
+`cpus=2`, none of which turned out to be needed here. It boots OVMF with
+`-bios` (no NVRAM variable store) and uses QEMU's `isa-applesmc` with
+Apple's OSK string, which this project does not (VirtualSMC instead).
+
+### Gabriel Somlo's 10.6-era notes
+
+His page's older revision (`index_old.html`, above) says 10.6 and early
+10.7 use MONITOR/MWAIT, which KVM did not support, and need `idlehalt=0`
+or `AppleIntelCPUPowerManagement.kext` removed; and that 10.6 panics with
+"HPET not found" on a PIIX machine with more than one CPU. **Tested
+here** 2026-10-04: `idlehalt=0` did not move the `mig_table_max_displ`
+hang, and this project's machine is q35, not PIIX.
+
+### Infinite Mac
+
+infinitemac.org runs classic Mac OS and PowerPC Mac OS X, up to 10.4, in
+a browser (INHERITED, not verified here). Prior art for a PowerPC Tiger,
+not for an Intel 10.6 under KVM.
+
 ## Installer media
 
 ### Mavericks Forever `get.sh`

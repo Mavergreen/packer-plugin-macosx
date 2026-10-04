@@ -126,17 +126,18 @@ named for it -- today `mavericks-installesd`, `mavericks-firmware` and
 later guest is new data sources beside these, never an OS-version
 parameter on them.
 
-**Nothing here adds a 10.6 or 10.4 data source until there is a 10.6 or
-10.4 guest to test it against.** A parameter with one value is honest; a
-parameter with one value and a second branch nobody has run is a claim
-nobody can support.
+**Nothing here adds a data source for a release until there is a guest
+of that release to test it against.** A parameter with one value is
+honest; a parameter with one value and a second branch nobody has run is
+a claim nobody can support.
 
-What is expected to transfer, and is not measured: for 10.6, the Intel,
-EFI, OpenCore and KVM boot stack and the minstallconfig.xml unattended
-install (both exist from 10.5 on). What will not: 10.6 has no
-osrecovery download -- it shipped on DVD, so its installer would be
-supplied by the user and pinned by checksum -- and its DVD is not an
-InstallESD.dmg, so its media is built differently. Tiger is a different
-bring-up, not a variation: Intel Tiger shipped only on machine-specific
-discs and needs 32-bit EFI, and PowerPC Tiger needs qemu-system-ppc and
-OpenBIOS, with no OVMF, no OpenCore and no KVM.
+10.6 has since been measured, and is built: `docs/decisions/0014`. What
+carried over, MEASURED 2026-10-04: the Intel, EFI, OpenCore and KVM boot
+stack, with one Booter quirk more; the minstallconfig.xml unattended
+install, with the file in /etc; and 10.9's first-boot payload.
+What did not: the installer, which the user supplies, since Apple offers
+10.6 for no download; the media, built from the disc's own volume rather
+than an InstallESD.dmg; sudo, OpenSSH and the updates. Tiger is still a
+different bring-up, not a variation: Intel Tiger shipped only on
+machine-specific discs and needs 32-bit EFI, and PowerPC Tiger needs
+qemu-system-ppc and OpenBIOS, with no OVMF, no OpenCore and no KVM.

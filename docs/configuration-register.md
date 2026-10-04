@@ -147,6 +147,17 @@ columns 3 and 4 where the answer is interesting.
 
 ---
 
+### 10.6 Snow Leopard (`snowleopard/config.plist`, `docs/decisions/0014`)
+
+| Setting | Value | How we know | What would change it |
+|---|---|---|---|
+| `Booter > Quirks > RebuildAppleMemoryMap` | `true` (10.9: `false`) | **MEASURED 2026-10-04**: without it the 10.6.0 installer's kernel stops after `mig_table_max_displ = 73` under KVM, with one CPU or two and with `idlehalt=0`; with it the install runs. From `jprx/how-to-install-snow-leopard-in-qemu`. | A newer OpenCore or OVMF whose memory map 10.6 reads as it is. |
+| `Booter > Quirks > DevirtualiseMmio` | `false`, as 10.9 | **MEASURED 2026-10-04**: on, the installer's `bless` panicked in `AppleEFIRuntime` writing NVRAM and left an unbootable disk; off, `bless` succeeds. | Nothing, unless an NVRAM write ever stops needing the MMIO mapping. |
+| `PlatformInfo > Generic > SystemProductName` | `iMac9,1` | **MEASURED 2026-10-04**: installed with, booted from, answered SSH. Older than 10.6.0, so the retail disc has its drivers; no Mac Pro (`docs/decisions/0010`). | It failing; `Macmini3,1` is the untested fallback. |
+| `Kernel > Scheme > KernelArch` | `Auto`, as 10.9 | **MEASURED 2026-10-04**: 10.6.0 boots its 64-bit kernel with it, and Lilu and VirtualSMC carry i386 and x86_64. | Nothing seen. |
+| Template: USB (`templates/snowleopard`) | OpenCore's disk on `qemu-xhci`; no UHCI, no `usb-kbd`/`usb-mouse` (10.9: UHCI companions, keyboard, mouse) | **MEASURED 2026-10-04**: with UHCI, installs wedged at random at one CPU or two, CPU 0 polling the halted first UHCI controller (port `0x60e2`, `0x20`) with interrupts off: 10.6.0's `AppleUSBUHCI`. On XHCI, which 10.6 has no driver for, none wedged. EHCI alone: OVMF finds no boot device. | A USB keyboard and mouse 10.6.0 can drive without UHCI. |
+| Template: `cpus` | `1` (10.9: `2`) | **MEASURED 2026-10-04**: with two, spinlock and `pmap_flush_tlbs` panics under host load; pinned to cores, none. (A pinned guest that hung after first boot had installed the updates with no restart, which hangs one CPU too: `docs/decisions/0014`.) | Two CPUs measured clean unpinned, or once the guest is 10.6.8. |
+
 ## 8. Build toolchain
 
 | Knob | Value | Why, and on whose word | How we know | What would change it |
