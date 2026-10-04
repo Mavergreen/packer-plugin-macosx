@@ -37,3 +37,7 @@ __pycache__/
 /packer-manifest.json
 /.superpowers/
 /.idea/
+
+# Superpowers design specs and plans: working documents, not shipped
+# (the convention shipyard follows too).
+/docs/superpowers/
