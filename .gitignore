@@ -35,3 +35,5 @@ __pycache__/
 /output/
 /output-mavericks/
 /packer-manifest.json
+/.superpowers/
+/.idea/
