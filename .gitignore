@@ -37,6 +37,8 @@ __pycache__/
 /packer-manifest.json
 /.superpowers/
 /.idea/
+# release.yml collects the release assets here.
+/release/
 
 # Superpowers design specs and plans: working documents, not shipped
 # (the convention shipyard follows too).

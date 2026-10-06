@@ -39,7 +39,17 @@ jobs:
       - name: Install bats
         run: sudo apt-get update -qq && sudo apt-get install -y -qq bats shellcheck
 
-      - name: Test suite and the bash 3.2 floor
+      - name: Install mavericks-shipyard
+        uses: Mavergreen/shipyard/.github/actions/install@v1
+
+      # The family's runner: every top-level tests/*.bats, so a new test file runs the day it lands.
+      - name: Test suite
+        run: sh "$SHIPYARD_SCRIPTS/run-repo-tests.sh"
+
+      # bin/run-tests.sh's other half; its bats half is the step above.
+      - name: shellcheck and the bash 3.2 floor
+        env:
+          MQG_SKIP_BATS: "1"
         run: ./bin/run-tests.sh
 
       # OURS ALONE: a release must contain no Apple-derived bytes. It passes
@@ -68,11 +78,8 @@ jobs:
           path: .shipyard
 
       # Guards the ingredient-pin declaration against a glob that matches
-      # nothing. We declare no repackage-on-ingredient-bump caller -- we
-      # ship a recipe, so there is no artifact to repackage; INGREDIENTS.md
-      # says so with the reason -- and this check passes trivially for a
-      # repo with no caller. It is here so that the day a caller lands, the
-      # gate is already watching it.
+      # nothing: repackage-on-ingredient-bump.yml's watched paths must name
+      # real files, and not only own-upstream ones (INGREDIENTS.md).
       - name: Ingredient pin declaration
         run: sh .shipyard/scripts/check-ingredient-pins.sh
 

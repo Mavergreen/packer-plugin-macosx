@@ -1,0 +1,150 @@
+name: release
+
+# Builds the plugin for every host it names, with both templates, gates what it built, and --
+# only when asked -- publishes it. Entry points:
+#   - push to main / PR to main: build + gate, never publish (the PR build is a status check
+#     Renovate automerge waits on)
+#   - workflow_dispatch with local_release=true, on main: build, gate, then publish the next
+#     release on this version line, v0.<UPSTREAM_VERSION>.<N>, through shipyard's
+#     publish-release.yml, which mints the tag. Nothing pushes a tag by hand.
+#
+# Deliberate publish, because this repo is its own upstream (docs/decisions/0012): there is no
+# external bump to auto-cut on, so a person decides when a version line ships -- drydock's reason.
+# An ingredient bump (INGREDIENTS.md's "Declared state") still cuts N+1 unattended:
+# repackage-on-ingredient-bump.yml dispatches this workflow with local_release=true.
+#
+# The ingredients themselves are tested by ci.yml on the same pushes and pull requests; this
+# workflow gates what it ships, not the code again.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]          # the status check Renovate automerge waits on
+  workflow_dispatch:
+    inputs:
+      local_release:
+        description: Publish the next release on this version line (main only)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# Only a pull_request supersedes -- keyed per ref, so a force-push replaces its own predecessor.
+# Everything else (a branch push, a dispatch) is keyed per RUN and is therefore alone in its
+# group: never queued, never evicted, never cancelled. A shared group keeps only the newest
+# pending run and cancels the rest; golang lost a release to that on 2026-09-09.
+concurrency:
+  group: >-
+    release-${{ github.event_name == 'pull_request'
+                && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    name: build
+    runs-on: ubuntu-latest   # a Go cross-compile: no macOS, no Apple SDK
+    outputs:
+      version: ${{ steps.ver.outputs.full }}
+      tag: ${{ steps.ver.outputs.tag }}
+      publish: ${{ steps.ver.outputs.release }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0   # build/version.sh counts this line's tags; the notes generator refuses a shallow clone
+
+      - name: Install mavericks-shipyard
+        uses: Mavergreen/shipyard/.github/actions/install@v1
+
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Record the pre-build tree
+        run: sh "$SHIPYARD_SCRIPTS/assert-tree-clean.sh" --record
+
+      # A dispatch asking for a release cuts the next N on this line (version.sh local: .1 on a
+      # line with no release yet); every other run reports the line's current version and
+      # publishes nothing.
+      - name: Version (v0.YYYYMMDD.N) + publish decision
+        id: ver
+        env:
+          WANT_RELEASE: ${{ github.event_name == 'workflow_dispatch' && inputs.local_release && github.ref == 'refs/heads/main' }}
+        run: |
+          set -eu
+          mode=auto
+          if [ "$WANT_RELEASE" = true ]; then mode=local; fi
+          out="$(sh build/version.sh "$mode")"
+          full="$(printf '%s\n' "$out" | sed -n 's/^FULL=//p')"
+          tag="$(printf '%s\n' "$out" | sed -n 's/^TAG=//p')"
+          rel="$(printf '%s\n' "$out" | sed -n 's/^RELEASE=//p')"
+          if [ -z "$full" ] || [ -z "$tag" ]; then
+            echo "::error::build/version.sh gave no FULL=/TAG= line: $out"; exit 1
+          fi
+          if [ "$WANT_RELEASE" != true ]; then rel=no; fi
+          { echo "full=$full"; echo "tag=$tag"; echo "release=$rel"; } >> "$GITHUB_OUTPUT"
+          echo "version=$full tag=$tag release=$rel"
+
+      # GORELEASER_CURRENT_TAG: the tag does not exist yet -- publish-release.yml mints it -- so
+      # goreleaser is told it rather than reading it from git. --skip=validate for the same reason:
+      # validation wants that tag at HEAD.
+      - name: Build the plugin zips, the template zips and their SHA256SUMS
+        uses: goreleaser/goreleaser-action@v7.2.3
+        env:
+          GORELEASER_CURRENT_TAG: ${{ steps.ver.outputs.tag }}
+        with:
+          version: v2.18.2
+          args: release --clean --skip=validate
+
+      # The never-publish rule (README, docs/decisions/0007): the tree being released, then the
+      # archives goreleaser actually wrote, which a check of the tree alone cannot see into.
+      - name: The build must not have written into the source tree
+        run: sh "$SHIPYARD_SCRIPTS/assert-tree-clean.sh"
+
+      - name: No Apple bytes in the tree or the archives
+        run: |
+          set -eu
+          ./bin/no-apple-bytes.sh "$GITHUB_SHA"
+          ./bin/no-apple-bytes.sh --archives dist
+
+      # The Release body travels IN the artifact: publish-release.yml never checks this repo out,
+      # and it refuses an empty body. Generated on every run, so a broken notes pipeline costs a
+      # pull request instead of a release. --version is the tag's, without the v: the title must
+      # name the version a reader installs.
+      - name: Release notes
+        run: |
+          set -eu
+          tag='${{ steps.ver.outputs.tag }}'
+          mkdir -p release
+          sh "$SHIPYARD_SCRIPTS/release-notes.sh" \
+            --tag "$tag" --version "${tag#v}" \
+            --product packer-plugin-macosx --out release/RELEASE_NOTES.md
+          echo "=== RELEASE_NOTES.md ==="; cat release/RELEASE_NOTES.md
+
+      # goreleaser's dist/ also holds its build directories and metadata; the release is the zips
+      # and the packer-plugin-macosx_v<ver>_SHA256SUMS that `packer init` fetches.
+      - name: Collect the release assets
+        run: |
+          set -eu
+          cp dist/*.zip dist/*_SHA256SUMS release/
+          ls -l release
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: packer-plugin-macosx
+          path: release/*
+
+  # The only writer to Releases, and only a dispatch on main reaches it: nothing else sets
+  # release=yes. The shared workflow mints the tag, checks the notes and the first-release README,
+  # and adds a plain SHA256SUMS beside goreleaser's packer-plugin-macosx_v<ver>_SHA256SUMS, which is
+  # the file `packer init` fetches. Nothing here is Sparkle-signed, so no scan-for-key.yml.
+  publish:
+    needs: [build]
+    if: needs.build.outputs.publish == 'yes'
+    permissions:
+      contents: write
+    uses: Mavergreen/shipyard/.github/workflows/publish-release.yml@v1
+    with:
+      version: ${{ needs.build.outputs.tag }}
+      artifact: packer-plugin-macosx

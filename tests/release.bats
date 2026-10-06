@@ -636,7 +636,7 @@ print('ok')
     # gains an entry nobody intended -- the failure mode the whole design
     # exists to prevent.
     run bash -c "sed -n '/^## Declared state/,/^## /p' '$REPO/INGREDIENTS.md' \
-        | grep '^- ' | grep -cvE '^- (upstream|pins|openssh|opencore-config): '"
+        | grep '^- ' | grep -cvE '^- (upstream|pins|openssh|opencore-config|opencore-config-snowleopard): '"
     [ "$output" = "0" ]
 }
 

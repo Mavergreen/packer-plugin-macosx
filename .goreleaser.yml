@@ -1,8 +1,10 @@
-# Builds and packages releases of the Mavericks Packer plugin.
+# Builds and packages releases of the Mac OS X Packer plugin.
 #
-# Run BY HAND (`goreleaser release --clean`, from a signed `v0.YYYYMMDD.N`
-# tag) -- there is no CI workflow that runs this. A release is published
-# by a person, not by automation (docs/decisions/0012).
+# Run by .github/workflows/release.yml (`goreleaser release --clean --skip=validate`,
+# told its `v0.YYYYMMDD.N` tag through GORELEASER_CURRENT_TAG, since shipyard's
+# publish-release.yml mints that tag afterwards). goreleaser publishes nothing
+# itself (release: disable below); the workflow publishes, when dispatched to
+# (docs/decisions/0012).
 #
 # NAMING. `packer init` resolves a GitHub-source plugin by fetching, for
 # each OS/arch, a zip named
@@ -44,15 +46,14 @@
 # `--snapshot` build writes the six plugin zips, the two template zips
 # and SHA256SUMS, which `./bin/no-apple-bytes.sh --archives dist` passes.
 #
-# RELEASING. From a clean checkout of the tag:
-#   goreleaser release --clean
-#   ./bin/no-apple-bytes.sh "$(git describe --exact-match)"
+# RELEASING. .github/workflows/release.yml runs goreleaser, then
+#   ./bin/no-apple-bytes.sh "$GITHUB_SHA"
 #   ./bin/no-apple-bytes.sh --archives dist
-# and upload nothing unless both checks pass. The second reads the zips
+# and uploads nothing unless both checks pass. The second reads the zips
 # goreleaser actually wrote -- a check of the tree alone cannot see a
 # git-ignored build output that an archive glob picked up. goreleaser's
 # open-source edition has no after-hook to run it from, so it is a step
-# here rather than a hook.
+# there rather than a hook.
 version: 2
 
 # Explicit rather than left to goreleaser v2's own fallback (the `project`

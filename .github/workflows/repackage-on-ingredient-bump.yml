@@ -1,0 +1,21 @@
+name: repackage-on-ingredient-bump
+
+# An ingredient in INGREDIENTS.md's "Declared state" moved on main: cut the next release on this
+# version line, unattended, by dispatching release.yml with local_release=true. A moved
+# UPSTREAM_VERSION is a new version line, which a person releases (release.yml's header), so it is
+# this repo's own upstream here and is skipped.
+on:
+  push:
+    branches: [main]
+    paths:
+      - assets/pins/sources.tsv
+      - components/**
+      - assets/firmware/config.plist
+      - assets/firmware/snowleopard/config.plist
+jobs:
+  repackage:
+    permissions:
+      actions: write
+    uses: Mavergreen/shipyard/.github/workflows/repackage-on-ingredient-bump.yml@v1
+    with:
+      own-upstream-paths: UPSTREAM_VERSION

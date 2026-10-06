@@ -81,5 +81,13 @@ instead, because inline YAML cannot be tested and this repository tests it
   the OpenSSH component pin and `config.plist`. It is deliberately a
   subset of the full ingredient registry, so that a test tool moving never
   cuts a release.
-- **Releases are cut by hand**, with `goreleaser release --clean` from a
-  tag. No workflow publishes them, and there has been no release yet.
+- **Releases are deliberate, and cut by the family's workflow** (decided
+  2026-10-05, before the first release; the first draft cut them by hand
+  from a pushed tag, which is not the family's shape).
+  `.github/workflows/release.yml` builds and gates on every push and pull
+  request, and publishes only when dispatched with `local_release=true` on
+  main: `build/version.sh local` names the next N, goreleaser builds, and
+  shipyard's `publish-release.yml@v1` mints the tag. Deliberate, because
+  this repository is its own upstream; an ingredient bump still cuts N+1,
+  through `.github/workflows/repackage-on-ingredient-bump.yml`
+  (INGREDIENTS.md).

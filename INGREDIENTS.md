@@ -24,6 +24,7 @@ moving must never cut a release.
 - pins: assets/pins/sources.tsv
 - openssh: components/openssh/version
 - opencore-config: assets/firmware/config.plist
+- opencore-config-snowleopard: assets/firmware/snowleopard/config.plist
 
 ## What a bump does here is not what it does in a sibling
 
@@ -70,20 +71,24 @@ What this does not do: a finished box does not carry the listings, so
 "is this box still made of what the repository is made of?" has no answer
 from the box alone. Rebuilding answers it.
 
-### `repackage-on-ingredient-bump`: no caller declared
+### `repackage-on-ingredient-bump`: the caller, and the release model
 
 The family's caller exists to cut a release when an ingredient moves, so
 that what is published picks up the bump. What gets published here is the
 recipe, and a moved pin changes what that recipe builds: someone who
 installs last month's plugin builds last month's OpenCore from then on.
-That is exactly the staleness the caller exists to catch, so it applies in
-principle.
+That is exactly the staleness the caller exists to catch.
 
-**No caller is declared, because no release workflow exists.** Releases
-are cut by hand (`docs/decisions/0012`). `check-ingredient-pins.sh` runs in
-CI anyway (`.github/workflows/ci.yml`); it passes trivially for a
-repository declaring no caller, and is wired so that the day a caller
-lands, the gate is already watching it.
+**release-model: deliberate**, because this repository is its own
+upstream: there is no external bump to auto-cut on, so a person decides
+when a version line ships (`.github/workflows/release.yml`, dispatched
+with `local_release=true`; drydock's reason). An ingredient bump is not a
+person's decision, so `.github/workflows/repackage-on-ingredient-bump.yml`
+watches the `## Declared state` paths above and dispatches the next
+release on the line itself. A moved `UPSTREAM_VERSION` is a new line,
+declared own-upstream there and left to a person.
+`check-ingredient-pins.sh` (`.github/workflows/ci.yml`) holds the watched
+paths to that list.
 
 The `sparkle-updater:` deviations in `## Conformance deviations` below are
 untouched by any of this: they were never an argument about publishing.
