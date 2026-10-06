@@ -43,7 +43,7 @@
 # that is HashiCorp's own registry, not the github.com/mavergreen/macosx
 # source this plugin ships under -- so no `signs:` step here. MEASURED
 # 2026-10-05 with goreleaser v2.18.2: `goreleaser check` passes, and a
-# `--snapshot` build writes the six plugin zips, the two template zips
+# `--snapshot` build writes the plugin zip, the two template zips
 # and SHA256SUMS, which `./bin/no-apple-bytes.sh --archives dist` passes.
 #
 # RELEASING. .github/workflows/release.yml runs goreleaser, then
@@ -77,13 +77,14 @@ builds:
       - -s -w
       - -X github.com/Mavergreen/packer-plugin-macosx/version.Version={{ .Version }}
       - -X github.com/Mavergreen/packer-plugin-macosx/version.VersionPrerelease=
+    # Only the host internal/hostcheck supports: Linux on amd64. A darwin or
+    # netbsd zip would install with `packer init` and then refuse to build;
+    # without one, packer init says the platform has no plugin. CI still
+    # cross-builds all six (docs/decisions/0005), to keep the code portable.
     goos:
       - linux
-      - darwin
-      - netbsd
     goarch:
       - amd64
-      - arm64
     binary: "{{ .ProjectName }}_v{{ .Version }}_x5.0_{{ .Os }}_{{ .Arch }}"
 
 archives:

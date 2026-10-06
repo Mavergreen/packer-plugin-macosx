@@ -37,7 +37,9 @@ places:
   is a value plus a measurement, not a redesign.
 - **The plugin cross-builds** for linux, darwin and netbsd on amd64 and
   arm64, and CI builds them, so nothing Linux-only creeps into the shared
-  code.
+  code. A release ships only what `internal/hostcheck` supports, Linux on
+  amd64 (decided 2026-10-06, after `v0.20261005.1` shipped all six): a
+  binary for a host the plugin refuses would install and then fail.
 - **The firmware needs a host C toolchain.** A prebuilt, checksummed
   firmware would remove that requirement; `docs/decisions/0004` says why
   the firmware's bytes depend on the toolchain.

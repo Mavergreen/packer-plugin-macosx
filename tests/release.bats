@@ -730,3 +730,21 @@ print('ok')
     run grep -c 'not been read or edited by a human' "$REPO/README.md" || true
     [ "$output" = "0" ]
 }
+
+@test "a release ships the plugin only for the host it supports" {
+    # internal/hostcheck supports Linux on amd64 (an arm64 host cannot run an
+    # x86 guest under KVM). A darwin or netbsd zip installs with packer init
+    # and then refuses to build; with none, packer init says the platform has
+    # no plugin before anything is downloaded.
+    run python3 -c 'import yaml,sys; b=yaml.safe_load(open(sys.argv[1]))["builds"][0]; print(" ".join(b["goos"]), "/", " ".join(b["goarch"]))' "$REPO/.goreleaser.yml"
+    [ "$status" -eq 0 ]
+    [ "$output" = "linux / amd64" ]
+}
+
+@test "CI still cross-builds every host the code is kept portable to" {
+    # docs/decisions/0005: building them keeps Linux-only code out of the shared
+    # packages, whether or not a release ships them.
+    for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 netbsd/amd64 netbsd/arm64; do
+        grep -q "$target" "$REPO/.github/workflows/ci.yml" || { echo "ci.yml does not cross-build $target"; return 1; }
+    done
+}
