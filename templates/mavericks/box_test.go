@@ -393,7 +393,9 @@ func codeLines(text string) []string {
 
 // measuredBoxVagrantfile is the code of the box's Vagrantfile that the
 // measured builds of 2026-09-27 (docs/test-hosts.md) booted, logged in
-// to and halted, less its comments.
+// to and halted, less its comments -- with the cpu line's
+// vendor=GenuineIntel, which the 2026-10-06 builds on GitHub's Intel and
+// AMD runners carried (TestTheDefaultCPUSaysGenuineIntel).
 // Rendered with the template's defaults, the box's Vagrantfile must be
 // this code exactly.
 const measuredBoxVagrantfile = `Vagrant.configure("2") do |config|
@@ -409,7 +411,7 @@ const measuredBoxVagrantfile = `Vagrant.configure("2") do |config|
   config.vm.provider "qemu" do |qe|
     qe.arch = "x86_64"
     qe.machine = "q35,vmport=off,accel=kvm"
-    qe.cpu = "Penryn,+ssse3,+sse4.1,+sse4.2"
+    qe.cpu = "Penryn,vendor=GenuineIntel,+ssse3,+sse4.1,+sse4.2"
     qe.smp = "2"
     qe.memory = "4G"
     qe.net_device = "e1000-82545em"

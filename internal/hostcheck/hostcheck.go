@@ -1,8 +1,9 @@
 // Package hostcheck is whether this host can build Mavericks media and
-// run the guest at all: an Intel CPU (AMD is a known-harder case for
-// macOS guests under KVM, and nothing here has run on one), VT-x, and a
-// /dev/kvm this user can write. The media build's privops microVM runs
-// under KVM, and so does the guest.
+// run the guest at all: an Intel CPU with VT-x or an AMD one with AMD-V,
+// and a /dev/kvm this user can write. The media build's privops microVM
+// runs under KVM, and so does the guest. On AMD the guest's CPU must say
+// GenuineIntel, which the templates' default cpu does
+// (docs/host-profile.md G2).
 //
 // It is Linux-only today, and says so on any other OS rather than
 // probing Linux paths there (docs/decisions/0005: the Linux-only checks
@@ -42,15 +43,16 @@ func Real() Host {
 	}
 }
 
-// A Fact is one thing hostcheck judged: its name (cpu-vendor, vmx,
-// kvm-device), whether it holds, and what was found, in words.
+// A Fact is one thing hostcheck judged: its name (cpu-vendor,
+// virtualization, kvm-device), whether it holds, and what was found, in words.
 type Fact struct {
 	Check  string
 	OK     bool
 	Detail string
 }
 
-// Facts judges h: on Linux, the CPU vendor and VT-x from /proc/cpuinfo,
+// Facts judges h: on Linux, the CPU vendor and its virtualization (VT-x or
+// AMD-V) from /proc/cpuinfo,
 // and whether /dev/kvm exists and is writable. On any other OS it probes
 // nothing and returns nil; Supported says why.
 func Facts(h Host) []Fact {
@@ -63,15 +65,15 @@ func Facts(h Host) []Fact {
 	switch vendor {
 	case "GenuineIntel":
 		facts = append(facts, Fact{"cpu-vendor", true, "Intel: the documented KVM path"})
+		facts = append(facts, virtualization(flags, "vmx", "VT-x"))
 	case "AuthenticAMD":
-		facts = append(facts, Fact{"cpu-vendor", false, "AMD: a known-harder case for 10.9 under KVM, and untested here; an Intel host is needed"})
+		// KVM gives a guest the host's own vendor unless its -cpu line names
+		// one, and 10.9's kernel hangs at once on AuthenticAMD (measured
+		// 2026-10-06: Mavergreen/mavericks-vm Actions run 37524541544).
+		facts = append(facts, Fact{"cpu-vendor", true, "AMD: the guest's cpu must carry vendor=GenuineIntel, as the templates' default does"})
+		facts = append(facts, virtualization(flags, "svm", "AMD-V"))
 	default:
 		facts = append(facts, Fact{"cpu-vendor", false, "unrecognised CPU vendor: " + vendor})
-	}
-	if strings.Contains(" "+flags+" ", " vmx ") {
-		facts = append(facts, Fact{"vmx", true, "VT-x present"})
-	} else {
-		facts = append(facts, Fact{"vmx", false, "no VT-x; KVM acceleration unavailable"})
 	}
 	switch {
 	case h.Writable(KVMDevice):
@@ -82,6 +84,15 @@ func Facts(h Host) []Fact {
 		facts = append(facts, Fact{"kvm-device", false, KVMDevice + " does not exist"})
 	}
 	return facts
+}
+
+// virtualization is the fact that this CPU has its vendor's hardware
+// virtualization: flag in /proc/cpuinfo's flags, called name.
+func virtualization(flags, flag, name string) Fact {
+	if strings.Contains(" "+flags+" ", " "+flag+" ") {
+		return Fact{"virtualization", true, name + " present"}
+	}
+	return Fact{"virtualization", false, "no " + name + "; KVM acceleration unavailable"}
 }
 
 // Supported is whether hostcheck knows how to judge h's OS at all: Linux

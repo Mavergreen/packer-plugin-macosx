@@ -18,7 +18,11 @@ then comma-separated `+flag`, `-flag` or `key=value`). The table below is
 guidance, not a whitelist. The box's Vagrantfile is rendered with the same
 line.
 
-**The default is `Penryn,+ssse3,+sse4.1,+sse4.2`.**
+**The default is `Penryn,vendor=GenuineIntel,+ssse3,+sse4.1,+sse4.2`.**
+`vendor=GenuineIntel` was added on 2026-10-06 for AMD hosts, where KVM
+would otherwise give the guest the host's AuthenticAMD and 10.9 hangs
+before its kernel prints a line; on Intel it names what the guest gets
+anyway (`docs/host-profile.md` G2). The measurements below predate it.
 
 ## The measurements
 

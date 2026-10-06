@@ -12,8 +12,9 @@ You'll need fast network access and plenty of disk space.
 ### Supported host platforms
 
 - Linux with KVM enabled (a writable `/dev/kvm`), on an Intel CPU with VT-x
+  or an AMD CPU with AMD-V
 
-(AMD hosts are untested, so the build refuses them for now.
+(On AMD, keep `vendor=GenuineIntel` in the `cpu` variable, as its default has it.
 NetBSD and Mac OS X hosts are not yet supported.)
 
 ### Prerequisites

@@ -267,8 +267,9 @@ func (d *Datasource) Execute() (cty.Value, error) {
 	null := cty.NullVal(cty.EmptyObject)
 	c := d.config
 
-	// 1. The host, before anything: an AMD CPU, no VT-x or no writable
-	// /dev/kvm is refused by name, and so is any OS but Linux.
+	// 1. The host, before anything: a CPU without VT-x or AMD-V, any
+	// vendor but Intel or AMD, or no writable /dev/kvm is refused by name,
+	// and so is any OS but Linux.
 	if err := hostCheck(); err != nil {
 		return null, err
 	}

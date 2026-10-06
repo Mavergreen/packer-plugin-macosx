@@ -11,6 +11,7 @@ const (
 	intelCPU = "processor\t: 0\nvendor_id\t: GenuineIntel\nflags\t\t: fpu vme vmx sse4_2 ept\n\nprocessor\t: 1\nvendor_id\t: GenuineIntel\nflags\t\t: fpu\n"
 	amdCPU   = "processor\t: 0\nvendor_id\t: AuthenticAMD\nflags\t\t: fpu svm sse4_2\n"
 	noVMXCPU = "processor\t: 0\nvendor_id\t: GenuineIntel\nflags\t\t: fpu sse4_2 hypervisor\n"
+	noSVMCPU = "processor\t: 0\nvendor_id\t: AuthenticAMD\nflags\t\t: fpu sse4_2 hypervisor\n"
 )
 
 // fake is a Linux host with this cpuinfo text and a /dev/kvm that exists
@@ -62,18 +63,30 @@ func TestAnIntelHostWithVTxAndAWritableKVMPasses(t *testing.T) {
 	}
 }
 
-func TestAnAMDHostIsRefusedNamingTheVendor(t *testing.T) {
+// An AMD host builds and runs the guest (measured 2026-10-06 on GitHub's AMD
+// EPYC runners, Mavergreen/mavericks-vm Actions runs 37519070682 and 37524541544), as long as
+// the guest's CPU says GenuineIntel, which the templates' default cpu does.
+func TestAnAMDHostWithAMDVAndAWritableKVMPasses(t *testing.T) {
 	h := fake(t, amdCPU, true, true)
-	if f := fact(t, Facts(h), "cpu-vendor"); f.OK || !strings.Contains(f.Detail, "AMD") {
-		t.Fatalf("cpu-vendor = %+v", f)
+	for _, f := range Facts(h) {
+		if !f.OK {
+			t.Errorf("%+v fails", f)
+		}
 	}
-	// An AMD CPU has svm, never vmx: VT-x is Intel's.
-	if f := fact(t, Facts(h), "vmx"); f.OK {
-		t.Fatalf("vmx = %+v", f)
+	if f := fact(t, Facts(h), "cpu-vendor"); !strings.Contains(f.Detail, "vendor=GenuineIntel") {
+		t.Errorf("cpu-vendor = %+v, want it to say the guest needs vendor=GenuineIntel", f)
 	}
-	err := CheckHost(h)
-	if err == nil || !strings.Contains(err.Error(), "cpu-vendor: AMD") || !strings.Contains(err.Error(), "vmx: no VT-x") {
-		t.Fatalf("CheckHost = %v, want it to name the vendor and the missing VT-x", err)
+	if err := CheckHost(h); err != nil {
+		t.Fatalf("CheckHost = %v, want nil", err)
+	}
+}
+
+// AMD's virtualization is svm (AMD-V), never vmx: asking an AMD host for VT-x
+// would refuse every one of them.
+func TestAnAMDHostWithoutSVMIsRefused(t *testing.T) {
+	err := CheckHost(fake(t, noSVMCPU, true, true))
+	if err == nil || !strings.Contains(err.Error(), "virtualization: no AMD-V") || strings.Contains(err.Error(), "cpu-vendor") {
+		t.Fatalf("CheckHost = %v, want it to name AMD-V alone", err)
 	}
 }
 
@@ -83,7 +96,7 @@ func TestAnIntelHostWithoutVMXIsRefused(t *testing.T) {
 		t.Fatalf("cpu-vendor = %+v", f)
 	}
 	err := CheckHost(h)
-	if err == nil || !strings.Contains(err.Error(), "vmx: no VT-x") || strings.Contains(err.Error(), "cpu-vendor") {
+	if err == nil || !strings.Contains(err.Error(), "virtualization: no VT-x") || strings.Contains(err.Error(), "cpu-vendor") {
 		t.Fatalf("CheckHost = %v, want it to name VT-x alone", err)
 	}
 }

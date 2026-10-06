@@ -43,15 +43,21 @@ variable "debug" {
 
 variable "cpu" {
   type        = string
-  default     = "Penryn,+ssse3,+sse4.1,+sse4.2"
-  description = "The QEMU -cpu model line."
+  default     = "Penryn,vendor=GenuineIntel,+ssse3,+sse4.1,+sse4.2"
+  description = "The QEMU -cpu model line. Keep vendor=GenuineIntel on an AMD host."
+
+  # vendor=GenuineIntel: under KVM a guest gets the host's own CPU vendor
+  # unless this line names one, and 10.9's kernel hangs on AuthenticAMD
+  # before it prints a line, installing and booting alike (measured
+  # 2026-10-06, docs/host-profile.md G2). On Intel it names what the guest
+  # gets anyway.
 
   # The box's Vagrantfile puts this line in a Ruby string, so it is held
   # to what a QEMU -cpu line is made of: a model, then +flag, -flag or
   # key=value, comma-separated.
   validation {
     condition     = can(regex("^[A-Za-z0-9][A-Za-z0-9_.,+=-]*$", var.cpu))
-    error_message = "Cpu wants a QEMU -cpu line: a model name, then comma-separated +flag, -flag or key=value, such as Penryn,+ssse3,+sse4.1,+sse4.2."
+    error_message = "Cpu wants a QEMU -cpu line: a model name, then comma-separated +flag, -flag or key=value, such as Penryn,vendor=GenuineIntel,+ssse3,+sse4.1,+sse4.2."
   }
 }
 

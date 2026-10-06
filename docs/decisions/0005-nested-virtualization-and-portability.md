@@ -7,11 +7,13 @@ with no build behind it yet.
 
 ## 1. Where the plugin runs
 
-**A Linux host with an Intel CPU, VT-x and a writable `/dev/kvm`.**
-`mavericks-media` checks this before anything else and refuses, by name,
-an AMD CPU, a CPU without VT-x, an unwritable `/dev/kvm` and any OS but
-Linux (`internal/hostcheck`). AMD is a known-harder case for macOS guests
-(`docs/host-profile.md` G2, INHERITED); nothing here has run on one.
+**A Linux host with an Intel CPU and VT-x or an AMD CPU and AMD-V, and a
+writable `/dev/kvm`.** `mavericks-media` checks this before anything else
+and refuses, by name, a CPU without its vendor's virtualization, any
+other vendor, an unwritable `/dev/kvm` and any OS but Linux
+(`internal/hostcheck`). AMD was refused until 2026-10-06, when Mavericks
+built and booted on GitHub's AMD runners with `vendor=GenuineIntel` on
+the guest's `-cpu` line (`docs/host-profile.md` G2, MEASURED).
 
 Three hosts have built and installed a guest (`docs/test-hosts.md`):
 Linux Mint on a Coffee Lake Mac mini, EndeavourOS on a Broadwell MacBook

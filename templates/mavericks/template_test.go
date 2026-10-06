@@ -179,3 +179,26 @@ func TestValidate(t *testing.T) {
 		}
 	})
 }
+
+// TestTheDefaultCPUSaysGenuineIntel: under KVM a guest gets the host's
+// own CPU vendor unless the -cpu line names one, and 10.9's kernel hangs
+// on AuthenticAMD before it prints a line, at install and at boot alike
+// (measured 2026-10-06 on GitHub's AMD EPYC runners, Mavergreen/mavericks-vm
+// Actions run 37524541544). On an Intel host the vendor it names is the one the
+// guest would get anyway.
+func TestTheDefaultCPUSaysGenuineIntel(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join(templatetest.RepoRoot(t), "templates", osName, "variables.pkr.hcl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(b)
+	i := strings.Index(s, `variable "cpu" {`)
+	if i < 0 {
+		t.Fatal("no cpu variable")
+	}
+	block := s[i:]
+	block = block[:strings.Index(block, "\n}\n")]
+	if !strings.Contains(block, `default     = "Penryn,vendor=GenuineIntel,+ssse3,+sse4.1,+sse4.2"`) {
+		t.Fatalf("cpu does not default to Penryn with vendor=GenuineIntel:\n%s", block)
+	}
+}
