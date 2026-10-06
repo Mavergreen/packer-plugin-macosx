@@ -20,7 +20,7 @@ packer {
   required_plugins {
     macosx = {
       source  = "github.com/mavergreen/macosx"
-      version = ">= 0.0.0"
+      version = "~> 0.20261005.1"
     }
     qemu = {
       source  = "github.com/hashicorp/qemu"

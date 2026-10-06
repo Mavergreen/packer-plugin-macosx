@@ -42,11 +42,23 @@ November because Renovate moved the OpenCore pin.
 
 `packer init` resolves a plugin by a three-component semver tag, and the
 SDK's `version.NewPluginVersion` wants the same. So a release tag is
-**`v<UPSTREAM_VERSION>.<N>.0`**: `v20260927.1.0` for the family's
-`20260927.1`, with a literal `.0` patch component that never moves.
+**`v0.<UPSTREAM_VERSION>.<N>`**: `v0.20261005.1` for the family's
+`20261005.1`. The tag is `v0.` and the family version, so the two can
+never disagree, and `build/version.sh` counts N from those tags alone.
 `.goreleaser.yml` reads `{{ .Version }}` off that tag, without the `v`, and
-writes it into `version.Version` with `-ldflags`. A development build says
-`0.0.0-dev`.
+writes it into `version.Version` with `-ldflags`. A plain `go build` says
+`0.0.0-dev`; `bin/dev-install.sh` builds `0.<UPSTREAM_VERSION>.<N>-dev`,
+because Packer matches a `-dev` plugin by its version without the `-dev`
+and the templates take `~> 0.<UPSTREAM_VERSION>.1`.
+
+Why a 0 major (decided 2026-10-05, before the first release; the tag was
+first specified as `v<UPSTREAM_VERSION>.<N>.0`): a Packer plugin before
+1.0 conventionally says so with a 0 major; Go treats a major of 2 or more
+as needing a `/vN` module path, and would mark a date-major tag
+`+incompatible`; and semver's own reading fits -- a new date line is a
+minor bump, which under 0.x may break, and a release that only moves an
+ingredient is a patch. A template constrains its plugin to its own line,
+`~> 0.<UPSTREAM_VERSION>.1`: any N on that line, never a newer line.
 
 ## Why not the family's shared scripts
 

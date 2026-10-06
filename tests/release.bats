@@ -486,10 +486,10 @@ teardown() {
 @test "archive mode passes the plugin binary, a Mach-O over the size limit, and its zip" {
     d="$BATS_TEST_TMPDIR/dist"
     mkdir -p "$d/bin"
-    bin=packer-plugin-macosx_v20260927.1.0_x5.0_darwin_arm64
+    bin=packer-plugin-macosx_v0.20261005.1_x5.0_darwin_arm64
     { printf '\317\372\355\376'; head -c 3000000 /dev/zero; } > "$d/bin/$bin"
     (cd "$d/bin" && zip -q "../$bin.zip" "$bin")
-    printf 'deadbeef  %s.zip\n' "$bin" > "$d/packer-plugin-macosx_v20260927.1.0_SHA256SUMS"
+    printf 'deadbeef  %s.zip\n' "$bin" > "$d/packer-plugin-macosx_v0.20261005.1_SHA256SUMS"
     run "$REPO/bin/no-apple-bytes.sh" --archives "$d"
     [ "$status" -eq 0 ]
 }

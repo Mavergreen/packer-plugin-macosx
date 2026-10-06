@@ -165,9 +165,10 @@ jobs:
       # plugin, and init would fetch a RELEASE of it -- failing before the
       # first one exists, and validating the release rather than this
       # checkout after. bin/dev-install.sh above installs this checkout's
-      # build as 0.0.0-dev, which no version constraint can match. The
-      # constraints repeat required_plugins'; if they drift, validate
-      # below fails naming the plugin it cannot find.
+      # build as 0.<UPSTREAM_VERSION>.<N>-dev, which the templates'
+      # ~> 0.<UPSTREAM_VERSION>.1 takes as it would the release. The qemu
+      # and vagrant constraints repeat required_plugins'; if any drift,
+      # validate below fails naming the plugin it cannot find.
       - name: Install the qemu and vagrant plugins the template requires
         run: |
           packer plugins install github.com/hashicorp/qemu '~> 1'

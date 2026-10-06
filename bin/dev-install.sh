@@ -31,7 +31,14 @@ require_cmd go "$PACKER"
 BIN=${MQG_PLUGIN_BIN:-./packer-plugin-macosx}
 
 log "building $BIN"
-go build -o "$BIN" ./cmd/packer-plugin-macosx
+# The version: this line's, as a release on it would carry it, still
+# -dev. Packer matches a -dev plugin by its version without the -dev,
+# and each template takes ~> 0.<line>.1, so a bare 0.0.0-dev would
+# satisfy neither template (tests/dev_install.bats).
+full=$(VERSION_NO_WRITE=1 sh build/version.sh auto | sed -n 's/^FULL=//p')
+[ -n "$full" ] || die "build/version.sh reported no version"
+go build -ldflags "-X github.com/Mavergreen/packer-plugin-macosx/version.Version=0.$full" \
+    -o "$BIN" ./cmd/packer-plugin-macosx
 
 log "installing with $PACKER plugins install"
 "$PACKER" plugins install --path "$BIN" github.com/mavergreen/macosx

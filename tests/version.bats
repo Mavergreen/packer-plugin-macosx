@@ -1,7 +1,8 @@
 #!/usr/bin/env bats
 #
-# The version scheme: YYYYMMDD.N, the family's self-upstream shape.
-# See docs/decisions/0012-version-scheme.md for why this and not
+# The version scheme: YYYYMMDD.N, the family's self-upstream shape, tagged
+# v0.YYYYMMDD.N, the semver Packer resolves plugins by. See
+# docs/decisions/0012-version-scheme.md for why this and not
 # <upstream>-mavericks.N.
 
 setup() {
@@ -25,12 +26,12 @@ ver() { ( cd "$DIR" && sh build/version.sh "$1" ); }
     run ver auto
     [ "$status" -eq 0 ]
     [[ "$output" == *"FULL=20260922.1"* ]]
-    [[ "$output" == *"TAG=20260922.1"* ]]
+    [[ "$output" == *"TAG=v0.20260922.1"* ]]
     [[ "$output" == *"RELEASE=yes"* ]]
 }
 
 @test "auto on an already-released line reports that version and does NOT release" {
-    tag 20260922.1
+    tag v0.20260922.1
     run ver auto
     [ "$status" -eq 0 ]
     [[ "$output" == *"FULL=20260922.1"* ]]
@@ -38,7 +39,7 @@ ver() { ( cd "$DIR" && sh build/version.sh "$1" ); }
 }
 
 @test "local cuts the next N and releases -- this is the ingredient-bump path" {
-    tag 20260922.1
+    tag v0.20260922.1
     run ver local
     [ "$status" -eq 0 ]
     [[ "$output" == *"FULL=20260922.2"* ]]
@@ -49,26 +50,35 @@ ver() { ( cd "$DIR" && sh build/version.sh "$1" ); }
     # The bug this catches: .10 sorting before .2, so the eleventh release
     # of a day silently reuses .3. sort -V is not available on 10.9
     # (check-shell-portability.sh), so the comparison is arithmetic.
-    tag 20260922.1
-    tag 20260922.2
-    tag 20260922.10
+    tag v0.20260922.1
+    tag v0.20260922.2
+    tag v0.20260922.10
     run ver local
     [[ "$output" == *"FULL=20260922.11"* ]]
 }
 
 @test "tags from another date-line are not counted" {
-    tag 20260801.7
+    tag v0.20260801.7
     run ver auto
     [[ "$output" == *"FULL=20260922.1"* ]]
     [[ "$output" == *"RELEASE=yes"* ]]
 }
 
 @test "a tag with a non-numeric suffix is ignored rather than breaking the count" {
-    tag 20260922.1
-    tag 20260922.rc1
+    tag v0.20260922.1
+    tag v0.20260922.rc1
     run ver local
     [ "$status" -eq 0 ]
     [[ "$output" == *"FULL=20260922.2"* ]]
+}
+
+@test "a tag without the v0. prefix is not one of this line's releases" {
+    # A release is tagged v0.<line>.<N>; a bare <line>.<N> tag is not a
+    # release packer init could ever resolve, so it must not use up an N.
+    tag 20260922.1
+    run ver auto
+    [[ "$output" == *"TAG=v0.20260922.1"* ]]
+    [[ "$output" == *"RELEASE=yes"* ]]
 }
 
 @test "VERSION is written, and is what FULL says" {
@@ -124,4 +134,14 @@ ver() { ( cd "$DIR" && sh build/version.sh "$1" ); }
 @test "UPSTREAM_VERSION in this repository is a bare eight-digit date" {
     run cat "$REPO/UPSTREAM_VERSION"
     [[ "$output" =~ ^[0-9]{8}$ ]]
+}
+
+@test "each template takes its plugin from this version line" {
+    # Templates ship with the plugin release they came with: a template
+    # pinned to another line would refuse its own release, or take an
+    # incompatible one.
+    line=$(tr -d '[:space:]' < "$REPO/UPSTREAM_VERSION")
+    for t in $(grep -l required_plugins "$REPO"/templates/*/*.pkr.hcl); do
+        grep -q "version = \"~> 0.$line.1\"" "$t" || { echo "$t: not pinned to ~> 0.$line.1"; return 1; }
+    done
 }

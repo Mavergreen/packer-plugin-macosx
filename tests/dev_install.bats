@@ -46,3 +46,13 @@ teardown() {
     run cat "$RECORD"
     [ "$output" = "plugins install --path $bin github.com/mavergreen/macosx" ]
 }
+
+@test "a dev build reports this line's version, so a template's ~> constraint takes it" {
+    # Packer matches a -dev plugin by its version without the -dev, so a
+    # bare 0.0.0-dev satisfies no template pinned to 0.<line>.<N>.
+    run env PACKER="$STUB_DIR/packer" "$REPO/bin/dev-install.sh"
+    [ "$status" -eq 0 ]
+    line=$(tr -d '[:space:]' < "$REPO/UPSTREAM_VERSION")
+    run "$REPO/packer-plugin-macosx" describe
+    [[ "$output" == *"\"version\":\"0.$line."*"-dev\""* ]]
+}

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The version scheme: YYYYMMDD.N.
+# The version scheme: YYYYMMDD.N, tagged v0.YYYYMMDD.N.
 #
 # spec: docs/decisions/0012-version-scheme.md
 #
@@ -16,6 +16,12 @@
 # of someone else's release needs. mavericks-porthole inlines the equivalent logic in its
 # release.yml; ours is a committed script instead, so that it can be
 # tested (tests/version.bats).
+#
+# The TAG is that version as Packer's semver: v0.<line>.<N>. packer init
+# resolves a plugin by a three-component semver tag, and a 0 major keeps
+# the date out of the major slot (Go reads a major of 2 or more as a /vN
+# module path). The family version and the tag can never disagree: the
+# tag is "v0." and the version, and N is counted from those tags alone.
 set -eu
 
 MAVERICKS_ROOT=${MAVERICKS_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}
@@ -49,7 +55,7 @@ esac
 # base system lacks (check-shell-portability.sh), and lexical comparison
 # would put .10 before .2.
 maxn=0
-for t in $(git -C "$MAVERICKS_ROOT" tag --list "$base.*" 2>/dev/null); do
+for t in $(git -C "$MAVERICKS_ROOT" tag --list "v0.$base.*" 2>/dev/null); do
     n=${t##*.}
     case $n in
         ''|*[!0-9]*) continue ;;
@@ -74,4 +80,4 @@ full="$base.$n"
 if [ "${VERSION_NO_WRITE:-0}" != 1 ]; then
     printf '%s\n' "$full" > "$MAVERICKS_ROOT/VERSION"
 fi
-printf 'FULL=%s\nTAG=%s\nRELEASE=%s\n' "$full" "$full" "$release"
+printf 'FULL=%s\nTAG=v0.%s\nRELEASE=%s\n' "$full" "$full" "$release"

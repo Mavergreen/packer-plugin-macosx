@@ -1,6 +1,6 @@
 # Builds and packages releases of the Mavericks Packer plugin.
 #
-# Run BY HAND (`goreleaser release --clean`, from a signed `vYYYYMMDD.N.0`
+# Run BY HAND (`goreleaser release --clean`, from a signed `v0.YYYYMMDD.N`
 # tag) -- there is no CI workflow that runs this. A release is published
 # by a person, not by automation (docs/decisions/0012).
 #
@@ -23,8 +23,8 @@
 # two-axis scheme, YYYYMMDD.N (docs/decisions/0012-version-scheme.md) --
 # but `version.NewPluginVersion` (the SDK) and `packer init`'s own
 # resolution want a full three-component semver. The release tag bridges
-# the two: `v<UPSTREAM_VERSION>.<N>.0`, e.g. `v20260927.1.0` for the
-# family's `20260927.1` -- a literal, unmoving ".0" patch component
+# the two: `v0.<UPSTREAM_VERSION>.<N>`, e.g. `v0.20261005.1` for the
+# family's `20261005.1`, which build/version.sh reports as TAG
 # (INGREDIENTS.md's version-scheme deviation carries the same note).
 # goreleaser's {{ .Version }} is that tag with the leading "v" stripped,
 # which is what -ldflags below writes into version.Version.
@@ -39,9 +39,10 @@
 # never verifies a GPG signature, only the sha256 in that plain file.
 # Official releases on releases.hashicorp.com are signed separately, but
 # that is HashiCorp's own registry, not the github.com/mavergreen/macosx
-# source this plugin ships under -- so no `signs:` step here. REASONED,
-# not run: goreleaser is not installed in this sandbox, so this file has
-# not been through `goreleaser check`.
+# source this plugin ships under -- so no `signs:` step here. MEASURED
+# 2026-10-05 with goreleaser v2.18.2: `goreleaser check` passes, and a
+# `--snapshot` build writes the six plugin zips, the two template zips
+# and SHA256SUMS, which `./bin/no-apple-bytes.sh --archives dist` passes.
 #
 # RELEASING. From a clean checkout of the tag:
 #   goreleaser release --clean
@@ -87,7 +88,7 @@ builds:
 archives:
   - id: packer-plugin-macosx
     ids: [packer-plugin-macosx]
-    format: zip
+    formats: [zip]
     name_template: "{{ .Binary }}"
     # The zip packer init fetches carries the one binary file and nothing
     # else -- no default LICENSE/README/CHANGELOG additions, which a
@@ -112,7 +113,7 @@ archives:
   # left off.
   - id: template-mavericks
     meta: true
-    format: zip
+    formats: [zip]
     name_template: "packer-plugin-macosx_v{{ .Version }}_mavericks_template"
     files:
       - src: templates/mavericks/box.Vagrantfile.pkrtpl
@@ -124,7 +125,7 @@ archives:
 
   - id: template-snowleopard
     meta: true
-    format: zip
+    formats: [zip]
     name_template: "packer-plugin-macosx_v{{ .Version }}_snowleopard_template"
     files:
       - src: templates/snowleopard/box.Vagrantfile.pkrtpl
