@@ -1,0 +1,2 @@
+VERSION    # release.yml's "Version (v0.YYYYMMDD.N) + publish decision" step runs build/version.sh, which stamps the resolved version here (a gitignored build product, the family's VERSION)
+dist/    # goreleaser builds into dist/, its default, and release.yml collects the release from there
