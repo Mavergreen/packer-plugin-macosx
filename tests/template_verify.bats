@@ -53,9 +53,9 @@ verify() {  # $1 = UPDATES, or "-" to leave it unset
 @test "verify.sh passes a good guest, and says what it checked" {
     verify security
     [ "$status" -eq 0 ]
-    [[ "$output" == *"verify: ok: 10.9.5, first boot finished, passwordless sudo"* ]]
-    [[ "$output" == *"updates=security"* ]]
-    [[ "$output" != *FAILED* ]]
+    [[ "$output" == *"verify: ok: 10.9.5, first boot finished, passwordless sudo"* ]] || false
+    [[ "$output" == *"updates=security"* ]] || false
+    [[ "$output" != *FAILED* ]] || false
 }
 
 @test "verify.sh wants no update receipt when no updates were asked for" {
@@ -70,7 +70,7 @@ verify() {  # $1 = UPDATES, or "-" to leave it unset
     [ "$status" -ne 0 ]
     for line in "ProductVersion:" "hostname=" "id=" "receipts=" "updatepkgs=" \
         "firstboot-ran=" "diskbus=" "updates-asked=security"; do
-        [[ "$output" == *"$line"* ]]
+        [[ "$output" == *"$line"* ]] || false
     done
 }
 
@@ -78,22 +78,22 @@ verify() {  # $1 = UPDATES, or "-" to leave it unset
     export STUB_VERSION=10.9.4
     verify security
     [ "$status" -eq 1 ]
-    [[ "$output" == *"FAILED: sw_vers -productVersion is '10.9.4', not 10.9.5"* ]]
+    [[ "$output" == *"FAILED: sw_vers -productVersion is '10.9.4', not 10.9.5"* ]] || false
 }
 
 @test "verify.sh fails a guest whose first boot never finished, naming the marker" {
     rm -f "$MARKER"
     verify security
     [ "$status" -eq 1 ]
-    [[ "$output" == *"FAILED: $MARKER does not exist: the first-boot payload never finished"* ]]
+    [[ "$output" == *"FAILED: $MARKER does not exist: the first-boot payload never finished"* ]] || false
 }
 
 @test "verify.sh fails a guest without passwordless sudo, naming shutdown_command" {
     export STUB_SUDO=no
     verify security
     [ "$status" -eq 1 ]
-    [[ "$output" == *"FAILED: 'sudo -n true' fails for"* ]]
-    [[ "$output" == *"shutdown_command 'sudo shutdown -h now' cannot run"* ]]
+    [[ "$output" == *"FAILED: 'sudo -n true' fails for"* ]] || false
+    [[ "$output" == *"shutdown_command 'sudo shutdown -h now' cannot run"* ]] || false
 }
 
 @test "verify.sh fails a guest missing the security update it was asked for" {
@@ -101,19 +101,19 @@ verify() {  # $1 = UPDATES, or "-" to leave it unset
     for updates in security all; do
         verify "$updates"
         [ "$status" -eq 1 ]
-        [[ "$output" == *"FAILED: updates=$updates, but pkgutil --pkgs has no com.apple.pkg.update.security.2016-004Mavericks.* receipt"* ]]
+        [[ "$output" == *"FAILED: updates=$updates, but pkgutil --pkgs has no com.apple.pkg.update.security.2016-004Mavericks.* receipt"* ]] || false
     done
 }
 
 @test "verify.sh fails when nobody said which updates to expect" {
     verify -
     [ "$status" -eq 1 ]
-    [[ "$output" == *"FAILED: UPDATES is not set"* ]]
-    [[ "$output" == *'environment_vars = ["UPDATES=${var.updates}"]'* ]]
+    [[ "$output" == *"FAILED: UPDATES is not set"* ]] || false
+    [[ "$output" == *'environment_vars = ["UPDATES=${var.updates}"]'* ]] || false
 
     verify bogus
     [ "$status" -eq 1 ]
-    [[ "$output" == *"FAILED: UPDATES is 'bogus', not one of none, security, all"* ]]
+    [[ "$output" == *"FAILED: UPDATES is 'bogus', not one of none, security, all"* ]] || false
 }
 
 @test "verify.sh names every failing check, not just the first" {
@@ -122,7 +122,7 @@ verify() {  # $1 = UPDATES, or "-" to leave it unset
     verify security
     [ "$status" -eq 1 ]
     [ "$(grep -c 'verify: FAILED:' <<< "$output")" -eq 4 ]
-    [[ "$output" == *"verify: 4 check(s) failed; this guest will not be packaged as a box"* ]]
+    [[ "$output" == *"verify: 4 check(s) failed; this guest will not be packaged as a box"* ]] || false
 }
 
 @test "the template passes verify.sh the updates it asked for" {

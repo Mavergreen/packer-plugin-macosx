@@ -33,7 +33,7 @@ teardown() {
 @test "dev-install uses PACKER, not a hardcoded name" {
     run env PACKER="$STUB_DIR/nonexistent-packer" "$REPO/bin/dev-install.sh"
     [ "$status" -ne 0 ]
-    [[ "$output" == *"nonexistent-packer"* ]]
+    [[ "$output" == *"nonexistent-packer"* ]] || false
 }
 
 @test "dev-install builds where MQG_PLUGIN_BIN says, so two builds at once never share a binary" {
@@ -54,5 +54,5 @@ teardown() {
     [ "$status" -eq 0 ]
     line=$(tr -d '[:space:]' < "$REPO/UPSTREAM_VERSION")
     run "$REPO/packer-plugin-macosx" describe
-    [[ "$output" == *"\"version\":\"0.$line."*"-dev\""* ]]
+    [[ "$output" == *"\"version\":\"0.$line."*"-dev\""* ]] || false
 }

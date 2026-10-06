@@ -10,7 +10,11 @@ cd "$repo_root"
 status=0
 
 echo "== bats =="
-if ! command -v bats >/dev/null 2>&1; then
+# MQG_SKIP_BATS=1: CI runs the suite through shipyard's run-repo-tests.sh and
+# wants only the lint half from here.
+if [ "${MQG_SKIP_BATS:-0}" = 1 ]; then
+    echo "skipped (MQG_SKIP_BATS=1)"
+elif ! command -v bats >/dev/null 2>&1; then
     echo "bats not found. Install bats-core (e.g. 'sudo apt install bats'," \
         "or see https://github.com/bats-core/bats-core) and re-run." >&2
     status=1
@@ -24,7 +28,7 @@ else
     # desktop window, say -- skips on every host that has not opted in,
     # and reads as a pass unless the skips are reported. The count should
     # stay at zero; this is here so that an opt-in test cannot hide.
-    batslog=$(mktemp)
+    batslog=$(mktemp "${TMPDIR:-/tmp}/run-tests.XXXXXX")
     if ! bats tests/ | tee "$batslog"; then
         status=1
     fi

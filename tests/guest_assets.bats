@@ -100,15 +100,15 @@ run_selection() {
     make_diskutil "disk0 64424509440 0" "disk1 64424509440 0" "disk2 201326592 1"
     run_selection
     [ "$status" -ne 0 ]
-    [[ "$output" == *"REFUSING TO PROCEED"* ]]
-    [[ "$output" == *"more than one"* ]]
+    [[ "$output" == *"REFUSING TO PROCEED"* ]] || false
+    [[ "$output" == *"more than one"* ]] || false
 }
 
 @test "no blank disk erases nothing" {
     make_diskutil "disk0 6686769152 1" "disk1 201326592 1"
     run_selection
     [ "$status" -ne 0 ]
-    [[ "$output" == *"REFUSING TO PROCEED"* ]]
+    [[ "$output" == *"REFUSING TO PROCEED"* ]] || false
 }
 
 @test "a blank disk too small to be the target is not chosen" {
@@ -117,7 +117,7 @@ run_selection() {
     make_diskutil "disk0 268435456 0" "disk1 6686769152 1"
     run_selection
     [ "$status" -ne 0 ]
-    [[ "$output" == *"REFUSING TO PROCEED"* ]]
+    [[ "$output" == *"REFUSING TO PROCEED"* ]] || false
 }
 
 @test "the installer media is never a candidate, whatever its size" {
@@ -125,7 +125,7 @@ run_selection() {
     # size test on its own.
     make_diskutil "disk0 6686769152 1"
     run_selection
-    [[ "$output" == *"already partitioned"* ]]
+    [[ "$output" == *"already partitioned"* ]] || false
     [ "$status" -ne 0 ]
 }
 
@@ -133,6 +133,6 @@ run_selection() {
     make_diskutil "disk0 64424509440 0" "disk1 6686769152 1" "disk2 201326592 1"
     run_selection
     run cat "$BATS_TEST_TMPDIR/auto.log"
-    [[ "$output" == *"disk1: 6686769152 bytes, 1 partitions -- skipped"* ]]
-    [[ "$output" == *"disk0: 64424509440 bytes, unpartitioned -- CANDIDATE"* ]]
+    [[ "$output" == *"disk1: 6686769152 bytes, 1 partitions -- skipped"* ]] || false
+    [[ "$output" == *"disk0: 64424509440 bytes, unpartitioned -- CANDIDATE"* ]] || false
 }

@@ -29,7 +29,7 @@ setup() {
 @test "source_field fails for an unknown source" {
     run source_field "$SOURCES" nosuch url
     [ "$status" -ne 0 ]
-    [[ "$output" == *"nosuch"* ]]
+    [[ "$output" == *"nosuch"* ]] || false
 }
 
 @test "source_field ignores comment lines" {
@@ -47,7 +47,7 @@ setup() {
 @test "pin_checksum refuses to overwrite an already-pinned checksum" {
     run pin_checksum "$SOURCES" thing deadbeef
     [ "$status" -ne 0 ]
-    [[ "$output" == *"already pinned"* ]]
+    [[ "$output" == *"already pinned"* ]] || false
     run source_field "$SOURCES" thing sha256
     [ "$output" = "abc123" ]
 }
@@ -97,7 +97,7 @@ setup() {
         > "$BATS_TEST_TMPDIR/pinned.tsv"
     run fetch_source "$BATS_TEST_TMPDIR/pinned.tsv" thing "$dest"
     [ "$status" -ne 0 ]
-    [[ "$output" == *"checksum mismatch"* ]]
+    [[ "$output" == *"checksum mismatch"* ]] || false
 }
 
 @test "source_field returns empty with status 0 when the sha256 field is missing entirely" {
@@ -124,7 +124,7 @@ setup() {
         > "$BATS_TEST_TMPDIR/trailing.tsv"
     run fetch_source "$BATS_TEST_TMPDIR/trailing.tsv" thing "$BATS_TEST_TMPDIR/destdir"
     [ "$status" -ne 0 ]
-    [[ "$output" == *"cannot derive a filename"* ]]
+    [[ "$output" == *"cannot derive a filename"* ]] || false
 }
 
 @test "fetch_source rejects a bare-host URL with no path at all" {
@@ -132,7 +132,7 @@ setup() {
         > "$BATS_TEST_TMPDIR/barehost.tsv"
     run fetch_source "$BATS_TEST_TMPDIR/barehost.tsv" thing "$BATS_TEST_TMPDIR/destdir"
     [ "$status" -ne 0 ]
-    [[ "$output" == *"cannot derive a filename"* ]]
+    [[ "$output" == *"cannot derive a filename"* ]] || false
 }
 
 @test "fetch_source accepts a URL with a query string, keeping it in the filename" {

@@ -25,25 +25,25 @@ ver() { ( cd "$DIR" && sh build/version.sh "$1" ); }
 @test "a version line with no tag yet is .1, and it releases" {
     run ver auto
     [ "$status" -eq 0 ]
-    [[ "$output" == *"FULL=20260922.1"* ]]
-    [[ "$output" == *"TAG=v0.20260922.1"* ]]
-    [[ "$output" == *"RELEASE=yes"* ]]
+    [[ "$output" == *"FULL=20260922.1"* ]] || false
+    [[ "$output" == *"TAG=v0.20260922.1"* ]] || false
+    [[ "$output" == *"RELEASE=yes"* ]] || false
 }
 
 @test "auto on an already-released line reports that version and does NOT release" {
     tag v0.20260922.1
     run ver auto
     [ "$status" -eq 0 ]
-    [[ "$output" == *"FULL=20260922.1"* ]]
-    [[ "$output" == *"RELEASE=no"* ]]
+    [[ "$output" == *"FULL=20260922.1"* ]] || false
+    [[ "$output" == *"RELEASE=no"* ]] || false
 }
 
 @test "local cuts the next N and releases -- this is the ingredient-bump path" {
     tag v0.20260922.1
     run ver local
     [ "$status" -eq 0 ]
-    [[ "$output" == *"FULL=20260922.2"* ]]
-    [[ "$output" == *"RELEASE=yes"* ]]
+    [[ "$output" == *"FULL=20260922.2"* ]] || false
+    [[ "$output" == *"RELEASE=yes"* ]] || false
 }
 
 @test "N is compared numerically, not lexically" {
@@ -54,14 +54,14 @@ ver() { ( cd "$DIR" && sh build/version.sh "$1" ); }
     tag v0.20260922.2
     tag v0.20260922.10
     run ver local
-    [[ "$output" == *"FULL=20260922.11"* ]]
+    [[ "$output" == *"FULL=20260922.11"* ]] || false
 }
 
 @test "tags from another date-line are not counted" {
     tag v0.20260801.7
     run ver auto
-    [[ "$output" == *"FULL=20260922.1"* ]]
-    [[ "$output" == *"RELEASE=yes"* ]]
+    [[ "$output" == *"FULL=20260922.1"* ]] || false
+    [[ "$output" == *"RELEASE=yes"* ]] || false
 }
 
 @test "a tag with a non-numeric suffix is ignored rather than breaking the count" {
@@ -69,7 +69,7 @@ ver() { ( cd "$DIR" && sh build/version.sh "$1" ); }
     tag v0.20260922.rc1
     run ver local
     [ "$status" -eq 0 ]
-    [[ "$output" == *"FULL=20260922.2"* ]]
+    [[ "$output" == *"FULL=20260922.2"* ]] || false
 }
 
 @test "a tag without the v0. prefix is not one of this line's releases" {
@@ -77,8 +77,8 @@ ver() { ( cd "$DIR" && sh build/version.sh "$1" ); }
     # release packer init could ever resolve, so it must not use up an N.
     tag 20260922.1
     run ver auto
-    [[ "$output" == *"TAG=v0.20260922.1"* ]]
-    [[ "$output" == *"RELEASE=yes"* ]]
+    [[ "$output" == *"TAG=v0.20260922.1"* ]] || false
+    [[ "$output" == *"RELEASE=yes"* ]] || false
 }
 
 @test "VERSION is written, and is what FULL says" {
@@ -94,7 +94,7 @@ ver() { ( cd "$DIR" && sh build/version.sh "$1" ); }
     # writes.
     run env VERSION_NO_WRITE=1 sh -c "cd '$DIR' && sh build/version.sh auto"
     [ "$status" -eq 0 ]
-    [[ "$output" == *"FULL=20260922.1"* ]]
+    [[ "$output" == *"FULL=20260922.1"* ]] || false
     [ ! -e "$DIR/VERSION" ]
 }
 
@@ -104,22 +104,22 @@ ver() { ( cd "$DIR" && sh build/version.sh "$1" ); }
     : > "$DIR/UPSTREAM_VERSION"
     run ver auto
     [ "$status" -ne 0 ]
-    [[ "$output" == *"UPSTREAM_VERSION"* ]]
+    [[ "$output" == *"UPSTREAM_VERSION"* ]] || false
 }
 
 @test "a malformed UPSTREAM_VERSION fails loudly and shows what it read" {
     printf '1.2.3\n' > "$DIR/UPSTREAM_VERSION"
     run ver auto
     [ "$status" -ne 0 ]
-    [[ "$output" == *"1.2.3"* ]]
-    [[ "$output" == *"YYYYMMDD"* ]]
+    [[ "$output" == *"1.2.3"* ]] || false
+    [[ "$output" == *"YYYYMMDD"* ]] || false
 }
 
 @test "an unknown mode is refused rather than guessed at" {
     run ver sometimes
     [ "$status" -ne 0 ]
-    [[ "$output" == *"auto"* ]]
-    [[ "$output" == *"local"* ]]
+    [[ "$output" == *"auto"* ]] || false
+    [[ "$output" == *"local"* ]] || false
 }
 
 @test "VERSION is a build product and is not committed" {
@@ -133,7 +133,7 @@ ver() { ( cd "$DIR" && sh build/version.sh "$1" ); }
 
 @test "UPSTREAM_VERSION in this repository is a bare eight-digit date" {
     run cat "$REPO/UPSTREAM_VERSION"
-    [[ "$output" =~ ^[0-9]{8}$ ]]
+    [[ "$output" =~ ^[0-9]{8}$ ]] || false
 }
 
 @test "each template takes its plugin from this version line" {

@@ -41,7 +41,7 @@ make_repo() {
 
     run bash -c "cd '$dir' && ./bin/verify-changed-sources.sh '$base'"
     [ "$status" -eq 0 ]
-    [[ "$output" == *"verifying thing"* ]]
+    [[ "$output" == *"verifying thing"* ]] || false
 }
 
 @test "verify-changed-sources fails a changed pin whose checksum is wrong" {
@@ -54,7 +54,7 @@ make_repo() {
 
     run bash -c "cd '$dir' && ./bin/verify-changed-sources.sh '$base'"
     [ "$status" -ne 0 ]
-    [[ "$output" == *"checksum mismatch"* ]]
+    [[ "$output" == *"checksum mismatch"* ]] || false
 }
 
 @test "verify-changed-sources fetches nothing when no pin moved" {
@@ -71,5 +71,5 @@ make_repo() {
 
     run bash -c "cd '$dir' && ./bin/verify-changed-sources.sh '$base'"
     [ "$status" -eq 0 ]
-    [[ "$output" == *"nothing to fetch"* ]]
+    [[ "$output" == *"nothing to fetch"* ]] || false
 }

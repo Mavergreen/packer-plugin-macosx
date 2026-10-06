@@ -52,7 +52,7 @@ if [ -z "$base" ] || ! git rev-parse --verify "$base" >/dev/null 2>&1; then
     exit 0
 fi
 
-old=$(mktemp) || die "cannot create a temp file"
+old=$(mktemp "${TMPDIR:-/tmp}/verify-changed-sources.XXXXXX") || die "cannot create a temp file"
 trap 'rm -f "$old"' EXIT
 # A base with no registry at all compares as empty: every pin is new.
 git show "$base:assets/pins/sources.tsv" > "$old" 2>/dev/null || : > "$old"
@@ -79,7 +79,7 @@ fi
 
 require_cmd curl sha256sum
 
-work=$(mktemp -d) || die "cannot create a temp directory"
+work=$(mktemp -d "${TMPDIR:-/tmp}/verify-changed-sources.XXXXXX") || die "cannot create a temp directory"
 trap 'rm -f "$old"; rm -rf "$work"' EXIT
 
 status=0

@@ -61,7 +61,7 @@ make_repo() {
     git -C "$dir" -c commit.gpgsign=false commit -qm planted
     run bash -c "cd '$dir' && ./bin/no-apple-bytes.sh"
     [ "$status" -ne 0 ]
-    [[ "$output" == *"InstallESD.dmg"* ]]
+    [[ "$output" == *"InstallESD.dmg"* ]] || false
 }
 
 @test "a committed flat package is caught by its bytes, not its name" {
@@ -74,7 +74,7 @@ make_repo() {
     git -C "$dir" -c commit.gpgsign=false commit -qm planted
     run bash -c "cd '$dir' && ./bin/no-apple-bytes.sh"
     [ "$status" -ne 0 ]
-    [[ "$output" == *"xar!"* ]]
+    [[ "$output" == *"xar!"* ]] || false
 }
 
 @test "a large committed blob is caught even with neither name nor magic" {
@@ -85,13 +85,13 @@ make_repo() {
     git -C "$dir" -c commit.gpgsign=false commit -qm planted
     run bash -c "cd '$dir' && ./bin/no-apple-bytes.sh"
     [ "$status" -ne 0 ]
-    [[ "$output" == *"docs-appendix"* ]]
+    [[ "$output" == *"docs-appendix"* ]] || false
 }
 
 @test "Apple's media is registered as a URL, never as a path in the tree" {
     run awk -F'\t' '$1 ~ /^apple-/ { print $2 }' "$REPO/assets/pins/sources.tsv"
     [ -n "$output" ]
-    [[ "$output" == http://* || "$output" == https://* ]]
+    [[ "$output" == http://* || "$output" == https://* ]] || false
 }
 
 @test "no-apple-bytes checks a named ref, which is what a release will pass it" {
@@ -112,7 +112,7 @@ make_repo() {
     git -C "$dir" tag 20260922.1
     run bash -c "cd '$dir' && ./bin/no-apple-bytes.sh 20260922.1"
     [ "$status" -ne 0 ]
-    [[ "$output" == *"InstallESD.dmg"* ]]
+    [[ "$output" == *"InstallESD.dmg"* ]] || false
 }
 
 @test "a clean tag passes even when the WORKING TREE has Apple's media beside it" {
@@ -135,7 +135,7 @@ make_repo() {
     [ -n "$dir" ]
     run bash -c "cd '$dir' && ./bin/no-apple-bytes.sh 19700101.1"
     [ "$status" -ne 0 ]
-    [[ "$output" == *"19700101.1"* ]]
+    [[ "$output" == *"19700101.1"* ]] || false
 }
 
 @test "a violation on a TAG is caught even though the same file was removed from the index afterward" {
@@ -154,7 +154,7 @@ make_repo() {
     git -C "$dir" -c commit.gpgsign=false commit -qm removed
     run bash -c "cd '$dir' && ./bin/no-apple-bytes.sh 20260922.2"
     [ "$status" -ne 0 ]
-    [[ "$output" == *"InstallESD.dmg"* ]]
+    [[ "$output" == *"InstallESD.dmg"* ]] || false
     run bash -c "cd '$dir' && ./bin/no-apple-bytes.sh"
     [ "$status" -eq 0 ]
 }
@@ -242,7 +242,7 @@ make_repo() {
     git -C "$dir" tag t1
     run bash -c "cd '$dir' && ./bin/no-apple-bytes.sh t1"
     [ "$status" -ne 0 ]
-    [[ "$output" == *"Mach-O"* ]]
+    [[ "$output" == *"Mach-O"* ]] || false
 }
 
 @test "a Mach-O file well over a pipe buffer is still caught by its bytes, in index mode" {
@@ -253,7 +253,7 @@ make_repo() {
     git -C "$dir" -c commit.gpgsign=false commit -qm planted
     run bash -c "cd '$dir' && ./bin/no-apple-bytes.sh"
     [ "$status" -ne 0 ]
-    [[ "$output" == *"Mach-O"* ]]
+    [[ "$output" == *"Mach-O"* ]] || false
 }
 
 @test "a blob that cannot be read is a failure, not a silent skip" {
@@ -272,8 +272,8 @@ make_repo() {
     rm -f "$obj"
     run bash -c "cd '$dir' && ./bin/no-apple-bytes.sh t1"
     [ "$status" -ne 0 ]
-    [[ "$output" == *"plugin.bin"* ]]
-    [[ "$output" == *"cannot be read"* ]]
+    [[ "$output" == *"plugin.bin"* ]] || false
+    [[ "$output" == *"cannot be read"* ]] || false
 }
 
 @test "index mode with nothing in the index is a failure, not a pass on 0 files" {
@@ -289,8 +289,8 @@ make_repo() {
     [ ! -e "$dir/.git/index" ]
     run bash -c "cd '$dir' && ./bin/no-apple-bytes.sh"
     [ "$status" -ne 0 ]
-    [[ "$output" == *"cannot verify"* ]]
-    [[ "$output" != *"no Apple-derived bytes"* ]]
+    [[ "$output" == *"cannot verify"* ]] || false
+    [[ "$output" != *"no Apple-derived bytes"* ]] || false
 
     dir="$(make_repo)"
     [ -n "$dir" ]
@@ -298,7 +298,7 @@ make_repo() {
     [ -e "$dir/.git/index" ]
     run bash -c "cd '$dir' && ./bin/no-apple-bytes.sh"
     [ "$status" -ne 0 ]
-    [[ "$output" == *"cannot verify"* ]]
+    [[ "$output" == *"cannot verify"* ]] || false
 }
 
 @test "index mode reads the file named 0:evil, not stage 0 of evil" {
@@ -314,12 +314,12 @@ make_repo() {
     git -C "$dir" -c commit.gpgsign=false commit -qm planted
     run bash -c "cd '$dir' && ./bin/no-apple-bytes.sh"
     [ "$status" -ne 0 ]
-    [[ "$output" == *"0:evil"*"Mach-O"* ]]
+    [[ "$output" == *"0:evil"*"Mach-O"* ]] || false
     # Ref mode already read "<sha>:0:evil" as a path; it still does.
     git -C "$dir" tag t1
     run bash -c "cd '$dir' && ./bin/no-apple-bytes.sh t1"
     [ "$status" -ne 0 ]
-    [[ "$output" == *"0:evil"*"Mach-O"* ]]
+    [[ "$output" == *"0:evil"*"Mach-O"* ]] || false
 }
 
 @test "a path holding a space is checked correctly in ref mode" {
@@ -332,7 +332,7 @@ make_repo() {
     git -C "$dir" tag t1
     run bash -c "cd '$dir' && ./bin/no-apple-bytes.sh t1"
     [ "$status" -ne 0 ]
-    [[ "$output" == *"install esd.dmg"* ]]
+    [[ "$output" == *"install esd.dmg"* ]] || false
 }
 
 @test "the byte check runs in ref mode against the ref's own content, not the index" {
@@ -350,7 +350,7 @@ make_repo() {
     git -C "$dir" -c commit.gpgsign=false commit -qm removed
     run bash -c "cd '$dir' && ./bin/no-apple-bytes.sh t1"
     [ "$status" -ne 0 ]
-    [[ "$output" == *"xar!"* ]]
+    [[ "$output" == *"xar!"* ]] || false
     run bash -c "cd '$dir' && ./bin/no-apple-bytes.sh"
     [ "$status" -eq 0 ]
 }
@@ -366,7 +366,7 @@ make_repo() {
     git -C "$dir" -c commit.gpgsign=false commit -qm removed
     run bash -c "cd '$dir' && ./bin/no-apple-bytes.sh t1"
     [ "$status" -ne 0 ]
-    [[ "$output" == *"docs-appendix"* ]]
+    [[ "$output" == *"docs-appendix"* ]] || false
     run bash -c "cd '$dir' && ./bin/no-apple-bytes.sh"
     [ "$status" -eq 0 ]
 }
@@ -383,7 +383,7 @@ make_repo() {
     git -C "$dir" -c commit.gpgsign=false commit -qm reverted
     run bash -c "cd '$dir' && ./bin/no-apple-bytes.sh t1"
     [ "$status" -ne 0 ]
-    [[ "$output" == *"apple-bogus"* ]]
+    [[ "$output" == *"apple-bogus"* ]] || false
     run bash -c "cd '$dir' && ./bin/no-apple-bytes.sh"
     [ "$status" -eq 0 ]
 }
@@ -426,10 +426,10 @@ teardown() {
         run template_srcs "$os"
         [ "$status" -eq 0 ]
         [ -n "$output" ]
-        [[ "$output" != *'*'* ]]
-        [[ "$output" != *'?'* ]]
-        [[ "$output" != *'['* ]]
-        [[ "$output" != *_test.go* ]]
+        [[ "$output" != *'*'* ]] || false
+        [[ "$output" != *'?'* ]] || false
+        [[ "$output" != *'['* ]] || false
+        [[ "$output" != *_test.go* ]] || false
         want=$(git -C "$REPO" ls-files "templates/$os/" | grep -v '_test\.go$' | sort)
         got=$(template_srcs "$os" | sort)
         [ "$got" = "$want" ] || { echo "$os: archive names differ from the tracked files"; false; }
@@ -468,8 +468,8 @@ teardown() {
     zip_from_repo "$BATS_TEST_TMPDIR/dist/t_template.zip" $(template_srcs mavericks)
     run unzip -Z1 "$BATS_TEST_TMPDIR/dist/t_template.zip"
     [ "$status" -eq 0 ]
-    [[ "$output" != *planted-by-release-bats* ]]
-    [[ "$output" == *templates/mavericks/mavericks.pkr.hcl* ]]
+    [[ "$output" != *planted-by-release-bats* ]] || false
+    [[ "$output" == *templates/mavericks/mavericks.pkr.hcl* ]] || false
     run "$REPO/bin/no-apple-bytes.sh" --archives "$BATS_TEST_TMPDIR/dist"
     [ "$status" -eq 0 ]
 
@@ -480,7 +480,7 @@ teardown() {
         "templates/mavericks/output/${PLANTED_BOX##*/}"
     run "$REPO/bin/no-apple-bytes.sh" --archives "$BATS_TEST_TMPDIR/dist"
     [ "$status" -ne 0 ]
-    [[ "$output" == *"planted-by-release-bats-$$.box"* ]]
+    [[ "$output" == *"planted-by-release-bats-$$.box"* ]] || false
 }
 
 @test "archive mode passes the plugin binary, a Mach-O over the size limit, and its zip" {
@@ -502,8 +502,8 @@ teardown() {
     rm -rf "$d/t"
     run "$REPO/bin/no-apple-bytes.sh" --archives "$d"
     [ "$status" -ne 0 ]
-    [[ "$output" == *"template/helper"* ]]
-    [[ "$output" == *"Mach-O"* ]]
+    [[ "$output" == *"template/helper"* ]] || false
+    [[ "$output" == *"Mach-O"* ]] || false
 }
 
 @test "archive mode catches a large member by size, whatever its name and bytes" {
@@ -514,8 +514,8 @@ teardown() {
     rm -rf "$d/t"
     run "$REPO/bin/no-apple-bytes.sh" --archives "$d"
     [ "$status" -ne 0 ]
-    [[ "$output" == *"template/notes.txt"* ]]
-    [[ "$output" == *"3000000 bytes"* ]]
+    [[ "$output" == *"template/notes.txt"* ]] || false
+    [[ "$output" == *"3000000 bytes"* ]] || false
 }
 
 @test "archive mode catches a loose disk image beside the zips" {
@@ -524,7 +524,7 @@ teardown() {
     printf 'x' > "$d/mavericks.qcow2"
     run "$REPO/bin/no-apple-bytes.sh" --archives "$d"
     [ "$status" -ne 0 ]
-    [[ "$output" == *"mavericks.qcow2"* ]]
+    [[ "$output" == *"mavericks.qcow2"* ]] || false
 }
 
 @test "archive mode: a zip it cannot read, an empty directory or a missing one is a failure" {
@@ -533,16 +533,16 @@ teardown() {
     printf 'not a zip\n' > "$d/broken.zip"
     run "$REPO/bin/no-apple-bytes.sh" --archives "$d"
     [ "$status" -ne 0 ]
-    [[ "$output" == *"broken.zip"* ]]
+    [[ "$output" == *"broken.zip"* ]] || false
 
     mkdir -p "$BATS_TEST_TMPDIR/empty"
     run "$REPO/bin/no-apple-bytes.sh" --archives "$BATS_TEST_TMPDIR/empty"
     [ "$status" -ne 0 ]
-    [[ "$output" == *"cannot verify"* ]]
+    [[ "$output" == *"cannot verify"* ]] || false
 
     run "$REPO/bin/no-apple-bytes.sh" --archives "$BATS_TEST_TMPDIR/absent"
     [ "$status" -ne 0 ]
-    [[ "$output" == *"cannot verify"* ]]
+    [[ "$output" == *"cannot verify"* ]] || false
 }
 
 @test "a build's own outputs are git-ignored, the manifest among them" {
@@ -675,10 +675,10 @@ print('ok')
 
 @test "the README leads with what the tool does, not with the host it was built on" {
     run head -12 "$REPO/README.md"
-    [[ "$output" == *"Packer"* ]]
-    [[ "$output" == *"Mavericks"* ]]
-    [[ "$output" != *"Mac mini 2018"* ]]
-    [[ "$output" != *"Linux Mint"* ]]
+    [[ "$output" == *"Packer"* ]] || false
+    [[ "$output" == *"Mavericks"* ]] || false
+    [[ "$output" != *"Mac mini 2018"* ]] || false
+    [[ "$output" != *"Linux Mint"* ]] || false
 }
 
 @test "the README shows the quickstart commands, honestly" {
@@ -686,12 +686,12 @@ print('ok')
     # added from the build's own output/, and a plain `vagrant up` would
     # pick whatever default provider is installed.
     run head -100 "$REPO/README.md"
-    [[ "$output" == *"packer init"* ]]
-    [[ "$output" == *"packer build"* ]]
-    [[ "$output" == *"vagrant plugin install vagrant-qemu"* ]]
-    [[ "$output" == *"vagrant box add --name mavericks output/mavericks-10.9.5-libvirt.box"* ]]
-    [[ "$output" == *"vagrant up --provider qemu"* ]]
-    [[ "$output" == *"vagrant ssh"* ]]
+    [[ "$output" == *"packer init"* ]] || false
+    [[ "$output" == *"packer build"* ]] || false
+    [[ "$output" == *"vagrant plugin install vagrant-qemu"* ]] || false
+    [[ "$output" == *"vagrant box add --name mavericks output/mavericks-10.9.5-libvirt.box"* ]] || false
+    [[ "$output" == *"vagrant up --provider qemu"* ]] || false
+    [[ "$output" == *"vagrant ssh"* ]] || false
 }
 
 @test "the README names the host and its prerequisites before the first build command" {
@@ -714,8 +714,8 @@ print('ok')
 
 @test "the README states the never-publish rule above the fold" {
     run head -12 "$REPO/README.md"
-    [[ "$output" == *"Never publish either one"* ]]
-    [[ "$output" == *"Apple"* ]]
+    [[ "$output" == *"Never publish either one"* ]] || false
+    [[ "$output" == *"Apple"* ]] || false
 }
 
 @test "the README documents the headful escape hatch" {

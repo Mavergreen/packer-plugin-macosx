@@ -31,7 +31,7 @@ _check() {
 @test "bash32-check passes on this repository" {
     run "$REPO/bin/bash32-check.sh"
     [ "$status" -eq 0 ]
-    [[ "$output" == *"nothing newer than bash 3.2"* ]]
+    [[ "$output" == *"nothing newer than bash 3.2"* ]] || false
 }
 
 @test "bash32-check fails on mapfile" {  # bash32-allow (the title names it; bats tolerates this)
@@ -39,8 +39,8 @@ _check() {
     _line bad.sh 'mapfile -t x < <(echo hi)'                   # bash32-allow
     _check
     [ "$status" -ne 0 ]
-    [[ "$output" == *"bad.sh:2"* ]]
-    [[ "$output" == *"read -r"* ]]
+    [[ "$output" == *"bad.sh:2"* ]] || false
+    [[ "$output" == *"read -r"* ]] || false
 }
 
 @test "bash32-check fails on readarray, mapfile's other name" {  # bash32-allow (the title names it; bats tolerates this)
@@ -48,7 +48,7 @@ _check() {
     _line bad.sh 'readarray -t x < f'                          # bash32-allow
     _check
     [ "$status" -ne 0 ]
-    [[ "$output" == *"bad.sh:2"* ]]
+    [[ "$output" == *"bad.sh:2"* ]] || false
 }
 
 @test "bash32-check fails on an associative array" {
@@ -56,7 +56,7 @@ _check() {
     _line bad.sh 'declare -A m=()'                             # bash32-allow
     _check
     [ "$status" -ne 0 ]
-    [[ "$output" == *"associative array"* ]]
+    [[ "$output" == *"associative array"* ]] || false
 }
 
 @test "bash32-check fails on a nameref" {
@@ -64,7 +64,7 @@ _check() {
     _line bad.sh '    local -n ref=$1'                         # bash32-allow
     _check
     [ "$status" -ne 0 ]
-    [[ "$output" == *"nameref"* ]]
+    [[ "$output" == *"nameref"* ]] || false
 }
 
 @test "bash32-check fails on case-modifying expansion" {
@@ -72,7 +72,7 @@ _check() {
     _line bad.sh 'u=${v^^}'                                    # bash32-allow
     _check
     [ "$status" -ne 0 ]
-    [[ "$output" == *"uppercase"* ]]
+    [[ "$output" == *"uppercase"* ]] || false
 }
 
 @test "bash32-check checks .bats files too" {
@@ -83,7 +83,7 @@ _check() {
     _line bad.bats '}'
     _check
     [ "$status" -ne 0 ]
-    [[ "$output" == *"bad.bats"* ]]
+    [[ "$output" == *"bad.bats"* ]] || false
 }
 
 @test "bash32-check ignores a comment that merely mentions mapfile" {  # bash32-allow (the title names it; bats tolerates this)
@@ -132,7 +132,7 @@ _check() {
     _line long.sh 'declare -A late=()'                         # bash32-allow
     _check
     [ "$status" -ne 0 ]
-    [[ "$output" == *"long.sh:2002"* ]]
+    [[ "$output" == *"long.sh:2002"* ]] || false
 }
 
 @test "bash32-check reports every violating file, not just the first" {
@@ -142,8 +142,8 @@ _check() {
     _line two.sh 'declare -A b=()'                             # bash32-allow
     _check
     [ "$status" -ne 0 ]
-    [[ "$output" == *"one.sh"* ]]
-    [[ "$output" == *"two.sh"* ]]
+    [[ "$output" == *"one.sh"* ]] || false
+    [[ "$output" == *"two.sh"* ]] || false
 }
 
 @test "bash32-check fails rather than passing when it checked nothing" {
@@ -151,7 +151,7 @@ _check() {
     # quietly stops guarding anything.
     _check
     [ "$status" -ne 0 ]
-    [[ "$output" == *"nothing was checked"* ]]
+    [[ "$output" == *"nothing was checked"* ]] || false
 }
 
 @test "the test suite runs bash32-check" {

@@ -16,7 +16,7 @@ setup() {
 @test "sha256_file fails loudly on a missing file" {
     run sha256_file "$BATS_TEST_TMPDIR/nope"
     [ "$status" -ne 0 ]
-    [[ "$output" == *"no such file"* ]]
+    [[ "$output" == *"no such file"* ]] || false
 }
 
 @test "sha256_file fails loudly on a file it cannot read" {
@@ -28,7 +28,7 @@ setup() {
     run sha256_file "$BATS_TEST_TMPDIR/unreadable"
     chmod 600 "$BATS_TEST_TMPDIR/unreadable"
     [ "$status" -ne 0 ]
-    [[ "$output" == *"cannot read"* ]]
+    [[ "$output" == *"cannot read"* ]] || false
 }
 
 @test "verify_sha256 accepts a matching checksum" {
@@ -42,8 +42,8 @@ setup() {
     printf 'hello\n' > "$BATS_TEST_TMPDIR/f"
     run verify_sha256 "$BATS_TEST_TMPDIR/f" "0000000000000000000000000000000000000000000000000000000000000000"
     [ "$status" -ne 0 ]
-    [[ "$output" == *"checksum mismatch"* ]]
-    [[ "$output" == *"5891b5b5"* ]]
+    [[ "$output" == *"checksum mismatch"* ]] || false
+    [[ "$output" == *"5891b5b5"* ]] || false
 }
 
 @test "require_cmd succeeds for commands that exist" {
@@ -54,13 +54,13 @@ setup() {
 @test "require_cmd fails and names the missing command" {
     run require_cmd sh definitely-not-a-real-command-xyz
     [ "$status" -ne 0 ]
-    [[ "$output" == *"definitely-not-a-real-command-xyz"* ]]
+    [[ "$output" == *"definitely-not-a-real-command-xyz"* ]] || false
 }
 
 @test "die exits non-zero with its message on stderr" {
     run die "the thing broke"
     [ "$status" -eq 1 ]
-    [[ "$output" == *"the thing broke"* ]]
+    [[ "$output" == *"the thing broke"* ]] || false
 }
 
 @test "repo_root resolves to the actual repository root" {

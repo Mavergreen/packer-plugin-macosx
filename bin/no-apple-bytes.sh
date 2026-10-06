@@ -185,7 +185,7 @@ check_archives() {  # $1 = the directory a release is uploaded from
     [ -d "$dir" ] || die "no such directory: $dir -- cannot verify a release" \
         "that is not there, which is a failure, never a pass"
     require_cmd unzip od head find
-    scratch=$(mktemp -d) || die "cannot create a scratch directory"
+    scratch=$(mktemp -d "${TMPDIR:-/tmp}/no-apple-bytes.XXXXXX") || die "cannot create a scratch directory"
     # shellcheck disable=SC2064  # expand $scratch now, while it is set
     trap "rm -rf '$scratch'" EXIT
     while IFS= read -r -d '' f; do
@@ -287,7 +287,7 @@ blob_exists() {  # $1 = path -- true only if the blob can actually be read
 #      iterate zero times, and the script would exit 0 having "checked" an
 #      empty list -- cannot-verify reading as clean, same failure mode as
 #      the unresolved-ref case above, one layer down.
-MQG_NAB_TMPDIR=$(mktemp -d) || die "cannot create a scratch directory"
+MQG_NAB_TMPDIR=$(mktemp -d "${TMPDIR:-/tmp}/no-apple-bytes.XXXXXX") || die "cannot create a scratch directory"
 trap 'rm -rf "$MQG_NAB_TMPDIR"' EXIT
 MQG_NAB_LIST=$MQG_NAB_TMPDIR/tracked
 if [ -n "$MQG_NAB_REF" ]; then
