@@ -44,7 +44,7 @@ variable "debug" {
 variable "cpu" {
   type        = string
   default     = "Penryn,vendor=GenuineIntel,+ssse3,+sse4.1,+sse4.2"
-  description = "The QEMU -cpu model line. Keep vendor=GenuineIntel on an AMD host."
+  description = "The QEMU -cpu model line. Keep vendor=GenuineIntel on an AMD host. Nehalem and later need kvm.ignore_msrs=Y on the host (docs/decisions/0009)."
 
   # vendor=GenuineIntel: under KVM a guest gets the host's own CPU vendor
   # unless this line names one, and 10.9's kernel hangs on AuthenticAMD

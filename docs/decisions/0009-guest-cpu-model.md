@@ -72,7 +72,7 @@ only way in.
 | `Penryn,+ssse3,+sse4.1,+sse4.2` (default) | **VERIFIED** | complete installs on the primary host (QEMU 8.2.2) and `squirrel-zapper` (QEMU 11.1.1) |
 | `Conroe` | **VERIFIED** | a complete install on `ap-juicer` (QEMU 11.0.2), 2026-09-21 |
 | `Penryn` | BOOTED | an installed guest booted, primary host, 2026-09-21 |
-| `Nehalem` | BOOTED | an installed guest booted, primary host, 2026-09-21 |
+| `Nehalem` | BOOTED 13F34; **LOOPS on 13F1911** | a 13F34 guest booted, primary host, 2026-09-21. A 13F1911 guest (Security Update 2016-004) resets in a loop, on the primary host and on GitHub's Intel and AMD runners alike, 2026-10-06: its kernel reads `MSR_FLEX_RATIO` (`0x194`), which KVM emulates on neither vendor, and the read faults (the `kvm_msr` tracepoint showed no other). With `kvm.ignore_msrs=Y` it boots. Whether 13F34's kernel never reads `0x194`, or something else changed, is not measured |
 | `Westmere`, `SandyBridge`, `IvyBridge`, `Haswell-noTSX`, `host`, `qemu64` | NOT TESTED | never booted |
 
 VERIFIED and BOOTED are kept apart on purpose. `docs/decisions/0008`

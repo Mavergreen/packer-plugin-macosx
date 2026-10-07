@@ -209,7 +209,7 @@ no installer media, asked over SSH what it is, and discarded:
 | 1 CPU | 40 s | `hw=iMac14,2 1cpu 4294967296` | correct |
 | 2048 MB | 40 s | `hw=iMac14,2 2cpu 2147483648` | correct |
 | 1024 MB | 40 s | `hw=iMac14,2 2cpu 1073741824` | correct |
-| `-cpu Nehalem` | 40 s | `Intel Core i7 9xx (Nehalem Class Core i7)`, `POPCNT` gained | correct |
+| `-cpu Nehalem` | 40 s | `Intel Core i7 9xx (Nehalem Class Core i7)`, `POPCNT` gained (13F34; a 13F1911 guest needs `kvm.ignore_msrs=Y`, `docs/decisions/0009`) | correct |
 
 All four also reported `diskbus=SATA`, 10.9.5 (13F34), the first-boot
 daemon removed and `OpenSSH_10.5p1`. The correct hash is
