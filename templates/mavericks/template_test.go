@@ -202,3 +202,28 @@ func TestTheDefaultCPUSaysGenuineIntel(t *testing.T) {
 		t.Fatalf("cpu does not default to Penryn with vendor=GenuineIntel:\n%s", block)
 	}
 }
+
+// TestTheLastProvisionerZeroFillsFreeSpace: the image a box carries is
+// compressed, so zeroing the guest's free space before shutdown makes it
+// smaller: 6.83 GB to 6.03 GB with zstd -10, for about 136 s more build
+// (measured 2026-10-06 on the primary host). It runs last, once the box's
+// Vagrantfile has been collected and the guest has nothing more to write.
+func TestTheLastProvisionerZeroFillsFreeSpace(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join(templatetest.RepoRoot(t), "templates", osName, osName+".pkr.hcl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(b)
+	last := strings.LastIndex(s, "\n  provisioner \"")
+	if last < 0 {
+		t.Fatal("no provisioner")
+	}
+	block := s[last:]
+	block = block[:strings.Index(block, "\n  }\n")]
+	if !strings.Contains(block, "sudo diskutil secureErase freespace 0 /") {
+		t.Fatalf("the last provisioner does not zero free space:\n%s", block)
+	}
+	if collect := strings.LastIndex(s[:last], "local.box_vagrantfile"); collect < 0 {
+		t.Fatal("the zero-fill does not come after the box's Vagrantfile is collected")
+	}
+}
