@@ -227,3 +227,25 @@ func TestTheLastProvisionerZeroFillsFreeSpace(t *testing.T) {
 		t.Fatal("the zero-fill does not come after the box's Vagrantfile is collected")
 	}
 }
+
+// TestTheTargetDriveStoresZerosAsHoles: the zero-fill writes zeros over
+// all of the guest's free space, which a plain qcow2 drive stores: the
+// image grew to 51.7 GB before compaction, and a GitHub runner's build
+// peaked at 80 GiB of its 85 GiB free (Mavergreen/mavericks-vm Actions run
+// 37635562340). With detect-zeroes=unmap the same zero-fill grew it by
+// 344 MB, and finished in 184 s instead of 296 (measured 2026-10-07).
+func TestTheTargetDriveStoresZerosAsHoles(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join(templatetest.RepoRoot(t), "templates", osName, osName+".pkr.hcl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, line := range strings.Split(string(b), "\n") {
+		if strings.Contains(line, `"id=target,`) {
+			if !strings.Contains(line, "detect-zeroes=unmap") || !strings.Contains(line, "discard=unmap") {
+				t.Fatalf("the target drive does not store zeros as holes:\n%s", line)
+			}
+			return
+		}
+	}
+	t.Fatal("no target drive")
+}

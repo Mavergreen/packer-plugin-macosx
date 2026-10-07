@@ -194,7 +194,9 @@ source "qemu" "mavericks" {
     ["-device", "ich9-usb-uhci3,masterbus=usb.0,firstport=4,bus=pcie.0,addr=0x1d.2"],
     ["-drive", "id=opencore,if=none,format=raw,snapshot=on,file=${data.macosx-mavericks-firmware.fw.opencore_image}"],
     ["-device", "usb-storage,bus=usb.0,drive=opencore"],
-    ["-drive", "id=target,if=none,format=qcow2,file={{ .OutputDir }}/{{ .Name }}"],
+    # detect-zeroes: the zero-fill provisioner's zeros become holes, not 50 GB of stored zeros
+    # (TestTheTargetDriveStoresZerosAsHoles).
+    ["-drive", "id=target,if=none,format=qcow2,detect-zeroes=unmap,discard=unmap,file={{ .OutputDir }}/{{ .Name }}"],
     ["-device", "ide-hd,bus=ide.0,drive=target"],
     ["-drive", "id=installer,if=none,format=raw,snapshot=on,file=${data.macosx-mavericks-media.media.path}"],
     ["-device", "ide-hd,bus=ide.1,drive=installer"],
