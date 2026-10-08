@@ -93,6 +93,40 @@ fresh: **21m53s**, exit 0; `verify.sh` "ok: 10.9.5, first boot
 finished, passwordless sudo for vagrant, updates=security as asked";
 13F1911, the 2016-004 receipt.
 
+**The instruction-set levels through the box, 2026-10-08**, primary host,
+`kvm.ignore_msrs=Y`. Cold cache: `packer init` and `packer build` in
+**29m28s**, exit 0. The plugin was v0.20261005.4, the released one,
+because `packer init` installed it beside the checkout's dev build. The
+template was the checkout's, at the commit that added
+`MAVERICKS_CPU_ISA`. The box's Vagrantfile was then given the later
+`ignore_msrs` warning by hand, and its code compared equal to what the
+template renders (`measuredBoxVagrantfile`). `vagrant box add` took
+1m43s.
+
+For each value, `vagrant up --provider qemu` took 64 s. QEMU's `-cpu`
+was the level's line (`docs/decisions/0009`). In the guest, `isa-probe.py`
+ran avx, avx2, fma, bmi1 and bmi2:
+
+| `MAVERICKS_CPU_ISA` | brand | probe exit statuses (avx avx2 fma bmi1 bmi2) |
+|---|---|---|
+| unset | Penryn | 132 132 132 0 0 |
+| `none` | Penryn | 132 132 132 0 0 |
+| `avx` | Sandy Bridge | 0 0 0 0 0 |
+| `avx2` | Ivy Bridge | 0 0 0 0 0 |
+
+What 10.9 reported:
+- `avx`: `OSXSAVE AVX1.0`, with an empty `leaf7_features`.
+- `avx2`: `FMA OSXSAVE AVX1.0`, with `leaf7_features` `SMEP ENFSTRG
+  RDWRFSGS BMI1 AVX2 BMI2`.
+
+No `ignore_msrs` warning was printed with `Y`. `MAVERICKS_CPU_ISA=bogus`
+made `vagrant up` exit 1 with "want none, avx or avx2 (got 'bogus')"
+before any QEMU started. With it still set, every other `vagrant`
+command refuses the same way, so unset it first.
+
+Not measured through the box: the warning with `ignore_msrs=N`. That is
+covered by `TestBoxVagrantfileIsRuby`, against a stand-in parameter file.
+
 ## The hosts
 
 ### `pet-power-plant`: Mac mini 2018, Linux Mint 22.3, primary
