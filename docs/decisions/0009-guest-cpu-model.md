@@ -125,7 +125,8 @@ on, and AVX, AVX2 and FMA share one state component (YMM). A guest told
 "no AVX" never enables it, so on `none` the whole AVX family faults. A
 guest told "AVX" enables YMM for all three. BMI needs no state at all. So
 on an AVX2 host, `none` still runs BMI, and `avx` runs everything. The same
-holds for any hardware accelerator: HVF, NVMM, WHPX.
+holds, REASONED from VT-x and AMD-V rather than measured, for any hardware
+accelerator: HVF, NVMM, WHPX.
 
 TCG, QEMU's emulator, implements only what the model says, so there the
 levels are exact. It costs about 4-6x on CPU-bound work: SHA-256 of 128 MiB
@@ -154,7 +155,7 @@ fallback, and a site it misses: those run natively.
 ### 3. One table for every engine
 
 `enforce` makes QEMU refuse a feature it cannot give, instead of starting a
-guest that quietly tests as a lower level. TCG cannot give `x2apic` or
+guest that quietly tests as a lower level. QEMU 8.2.2's TCG cannot give `x2apic` or
 `tsc-deadline` (nor Haswell's `pcid` and `invpcid`), and none of them is
 part of the instruction set. So the lines drop them, and the same line
 starts under KVM and TCG with `enforce` (checked against paused VMs). HVF

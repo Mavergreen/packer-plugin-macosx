@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -421,6 +422,10 @@ const measuredBoxVagrantfile = `Vagrant.configure("2") do |config|
       when "avx2" then "IvyBridge,vendor=GenuineIntel,-x2apic,-tsc-deadline,+avx2,+fma,+bmi1,+bmi2,+movbe,+abm,enforce"
       else raise "MAVERICKS_CPU_ISA: want none, avx or avx2 (got '#{isa}')"
       end
+    msrs = "/sys/module/kvm/parameters/ignore_msrs"
+    if "kvm" == "kvm" && %w(avx avx2).include?(isa) && File.readable?(msrs) && File.read(msrs).strip != "Y"
+      $stderr.puts "MAVERICKS_CPU_ISA=#{isa} needs kvm.ignore_msrs=Y on this host, or 10.9 resets in a loop: echo Y | sudo tee #{msrs}"
+    end
     qe.smp = "2"
     qe.memory = "4G"
     qe.net_device = "e1000-82545em"
@@ -738,6 +743,49 @@ func TestBoxVagrantfileIsRuby(t *testing.T) {
 		got, err := run(bad, true)
 		if err == nil || !strings.Contains(got, "want none, avx or avx2") {
 			t.Errorf("MAVERICKS_CPU_ISA=%q: got %q, %v; want a failure naming none, avx and avx2", bad, got, err)
+		}
+	}
+
+	// The ignore_msrs warning, run against a stand-in for the kvm parameter.
+	var warn []string
+	for _, l := range codeLines(renderBoxVagrantfile(t, nil)) {
+		if strings.HasPrefix(strings.TrimSpace(l), "msrs = ") || len(warn) > 0 {
+			warn = append(warn, l)
+			if strings.TrimSpace(l) == "end" {
+				break
+			}
+		}
+	}
+	if len(warn) == 0 {
+		t.Fatal("the box Vagrantfile has no ignore_msrs warning")
+	}
+	param := filepath.Join(t.TempDir(), "ignore_msrs")
+	for _, c := range []struct {
+		isa, param string
+		warns      bool
+	}{
+		{"avx", "N", true},
+		{"avx2", "N", true},
+		{"avx", "Y", false},
+		{"none", "N", false},
+		{"", "N", false},
+		{"avx", "", false}, // no such parameter: not a KVM host to judge
+	} {
+		code := strings.Replace(strings.Join(warn, "\n"), "/sys/module/kvm/parameters/ignore_msrs", param, 1)
+		os.Remove(param)
+		if c.param != "" {
+			if err := os.WriteFile(param, []byte(c.param+"\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		cmd := exec.Command(ruby, "-e", "isa = "+strconv.Quote(c.isa)+"\n"+code)
+		cmd.Env = []string{"PATH=" + os.Getenv("PATH")}
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Errorf("isa %q, ignore_msrs %q: %v\n%s", c.isa, c.param, err, out)
+		}
+		if got := strings.Contains(string(out), "needs kvm.ignore_msrs=Y"); got != c.warns {
+			t.Errorf("isa %q, ignore_msrs %q: warned %v, want %v: %q", c.isa, c.param, got, c.warns, out)
 		}
 	}
 }

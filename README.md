@@ -83,9 +83,10 @@ AVX2, FMA or BMI) or `avx2` (AVX2, FMA, BMI1 and BMI2 too):
 MAVERICKS_CPU_ISA=avx vagrant up --provider qemu
 ```
 
-`avx` and `avx2` need `kvm.ignore_msrs=Y` on the host. Under KVM a level is
-what the guest is *told*: on a host with AVX2, the instructions above the
-level still run (`docs/decisions/0009`).
+`avx` and `avx2` need `kvm.ignore_msrs=Y` on the host, and the box warns
+when it is not. Under KVM a level is what the guest is *told*: `none` makes
+the AVX family fault, but on a host with AVX2 every other instruction above
+a level still runs (`docs/decisions/0009`).
 
 Snow Leopard's window shows the screen but takes no keyboard or mouse;
 use `vagrant ssh`.
