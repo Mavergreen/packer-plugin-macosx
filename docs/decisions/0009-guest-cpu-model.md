@@ -73,8 +73,8 @@ only way in.
 | `Conroe` | **VERIFIED** | a complete install on `ap-juicer` (QEMU 11.0.2), 2026-09-21 |
 | `Penryn` | BOOTED | an installed guest booted, primary host, 2026-09-21 |
 | `Nehalem` | BOOTED 13F34; **LOOPS on 13F1911** | a 13F34 guest booted, primary host, 2026-09-21. A 13F1911 guest (Security Update 2016-004) resets in a loop, on the primary host and on GitHub's Intel and AMD runners alike, 2026-10-06: its kernel reads `MSR_FLEX_RATIO` (`0x194`), which KVM emulates on neither vendor, and the read faults (the `kvm_msr` tracepoint showed no other). With `kvm.ignore_msrs=Y` it boots. Whether 13F34's kernel never reads `0x194`, or something else changed, is not measured |
-| `SandyBridge,vendor=GenuineIntel,-x2apic,-tsc-deadline,enforce` (`avx`) | **VERIFIED** through the box | primary host, KVM with `kvm.ignore_msrs=Y`, and TCG, 2026-10-08 (below); `vagrant up` with `MAVERICKS_CPU_ISA=avx`, 2026-10-08 (`docs/test-hosts.md`) |
-| `IvyBridge,vendor=GenuineIntel,-x2apic,-tsc-deadline,+avx2,+fma,+bmi1,+bmi2,+movbe,+abm,enforce` (`avx2`) | **VERIFIED** through the box | primary host, KVM with `kvm.ignore_msrs=Y`, and TCG, 2026-10-08 (below); `vagrant up` with `MAVERICKS_CPU_ISA=avx2`, 2026-10-08 (`docs/test-hosts.md`) |
+| `SandyBridge,vendor=GenuineIntel,-x2apic,-tsc-deadline,enforce` (`avx`) | **VERIFIED** through the box | primary host, KVM with `kvm.ignore_msrs=Y`, and TCG, 2026-10-08 (below); `vagrant up` with `MAVERICKS_CPU_ISA=avx`, 2026-10-08 (`docs/test-hosts.md`); BOOTED on GitHub's runners through mavericks-vm's self-test, Intel (Xeon Platinum 8370C) and AMD (EPYC 7763, 9V74), runs 37833815882 and 37836734837 |
+| `IvyBridge,vendor=GenuineIntel,-x2apic,-tsc-deadline,+avx2,+fma,+bmi1,+bmi2,+movbe,+abm,enforce` (`avx2`) | **VERIFIED** through the box | primary host, KVM with `kvm.ignore_msrs=Y`, and TCG, 2026-10-08 (below); `vagrant up` with `MAVERICKS_CPU_ISA=avx2`, 2026-10-08 (`docs/test-hosts.md`); BOOTED on GitHub's runners through mavericks-vm's self-test, Intel (Xeon Platinum 8573C) and AMD (EPYC 7763, 9V45), runs 37833815882 and 37836734837 |
 | `Haswell-noTSX` | **HANGS 13F1911** | no SSH in 180 s under KVM with `kvm.ignore_msrs=Y`, nor in 15 minutes under TCG, primary host, 2026-10-08 (below) |
 | `Westmere`, `host`, `qemu64` | NOT TESTED | never booted |
 
@@ -190,6 +190,7 @@ table for every engine").
 
 - **`Nehalem`, `Westmere`, `SandyBridge`, `IvyBridge`** installing. The levels
   are runtime only: the image is installed on the default line.
-- **The levels under HVF and NVMM**, and on AMD hosts (GitHub's runners
-  will answer AMD).
+- **The levels under HVF and NVMM.** AMD hosts are answered: both levels
+  booted and proved themselves on GitHub's AMD runners, with
+  `vendor=GenuineIntel` (above).
 - **Throughput per model.** Only KVM against TCG was compared (above), not one model against another.
