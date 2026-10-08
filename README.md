@@ -75,5 +75,17 @@ It runs headless. To see its screen:
 MAVERICKS_DISPLAY=gtk vagrant up --provider qemu
 ```
 
+To ask for a guest CPU by the instructions it has, set `MAVERICKS_CPU_ISA`
+to `none` (no AVX, the default's CPU), `avx` (Sandy Bridge: AVX but not
+AVX2, FMA or BMI) or `avx2` (AVX2, FMA, BMI1 and BMI2 too):
+
+```sh
+MAVERICKS_CPU_ISA=avx vagrant up --provider qemu
+```
+
+`avx` and `avx2` need `kvm.ignore_msrs=Y` on the host. Under KVM a level is
+what the guest is *told*: on a host with AVX2, the instructions above the
+level still run (`docs/decisions/0009`).
+
 Snow Leopard's window shows the screen but takes no keyboard or mouse;
 use `vagrant ssh`.

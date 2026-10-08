@@ -395,7 +395,9 @@ func codeLines(text string) []string {
 // measured builds of 2026-09-27 (docs/test-hosts.md) booted, logged in
 // to and halted, less its comments -- with the cpu line's
 // vendor=GenuineIntel, which the 2026-10-06 builds on GitHub's Intel and
-// AMD runners carried (TestTheDefaultCPUSaysGenuineIntel).
+// AMD runners carried (TestTheDefaultCPUSaysGenuineIntel), and the
+// MAVERICKS_CPU_ISA switch, whose unset arm is that same line
+// (TestBoxVagrantfileOffersTheThreeLevels).
 // Rendered with the template's defaults, the box's Vagrantfile must be
 // this code exactly.
 const measuredBoxVagrantfile = `Vagrant.configure("2") do |config|
@@ -411,7 +413,14 @@ const measuredBoxVagrantfile = `Vagrant.configure("2") do |config|
   config.vm.provider "qemu" do |qe|
     qe.arch = "x86_64"
     qe.machine = "q35,vmport=off,accel=kvm"
-    qe.cpu = "Penryn,vendor=GenuineIntel,+ssse3,+sse4.1,+sse4.2"
+    isa = ENV["MAVERICKS_CPU_ISA"].to_s
+    qe.cpu = case isa
+      when "" then "Penryn,vendor=GenuineIntel,+ssse3,+sse4.1,+sse4.2"
+      when "none" then "Penryn,vendor=GenuineIntel,+ssse3,+sse4.1,+sse4.2"
+      when "avx" then "SandyBridge,vendor=GenuineIntel,-x2apic,-tsc-deadline,enforce"
+      when "avx2" then "IvyBridge,vendor=GenuineIntel,-x2apic,-tsc-deadline,+avx2,+fma,+bmi1,+bmi2,+movbe,+abm,enforce"
+      else raise "MAVERICKS_CPU_ISA: want none, avx or avx2 (got '#{isa}')"
+      end
     qe.smp = "2"
     qe.memory = "4G"
     qe.net_device = "e1000-82545em"
@@ -509,7 +518,8 @@ func TestBoxVagrantfileSource(t *testing.T) {
 		"boxdir}/opencore.img",
 		`config.vm.guest = :darwin`,
 		`config.ssh.username = "${user}"`,
-		`qe.cpu = "${cpu}"`,
+		`when "" then "${cpu}"`,
+		`ENV["MAVERICKS_CPU_ISA"]`,
 		`qe.smp = "${cpus}"`,
 		`accel=${accelerator}`,
 		`${memory / 1024}G`,
@@ -566,7 +576,7 @@ func TestBoxVagrantfileCarriesTheBuildsSettings(t *testing.T) {
 			want: []string{
 				`  config.ssh.username = "alice"`,
 				`    qe.machine = "q35,vmport=off,accel=tcg"`,
-				`    qe.cpu = "Haswell-noTSX,vendor=GenuineIntel"`,
+				`      when "" then "Haswell-noTSX,vendor=GenuineIntel"`,
 				`    qe.smp = "4"`,
 				`    qe.memory = "3000M"`,
 				`    qe.net_device = "e1000-82545em"`,
@@ -628,6 +638,45 @@ func TestBoxVagrantfileCarriesTheBuildsSettings(t *testing.T) {
 	}
 }
 
+// theLevels are the instruction-set levels, each a measured -cpu line
+// (docs/decisions/0009, "The instruction-set levels").
+var theLevels = []struct{ name, line string }{
+	{"none", "Penryn,vendor=GenuineIntel,+ssse3,+sse4.1,+sse4.2"},
+	{"avx", "SandyBridge,vendor=GenuineIntel,-x2apic,-tsc-deadline,enforce"},
+	{"avx2", "IvyBridge,vendor=GenuineIntel,-x2apic,-tsc-deadline,+avx2,+fma,+bmi1,+bmi2,+movbe,+abm,enforce"},
+}
+
+// TestBoxVagrantfileOffersTheThreeLevels: whatever the build's own cpu,
+// MAVERICKS_CPU_ISA offers none, avx and avx2 as their measured lines,
+// and unset it keeps the build's cpu.
+func TestBoxVagrantfileOffersTheThreeLevels(t *testing.T) {
+	for name, o := range map[string]map[string]cty.Value{
+		"defaults": nil,
+		"conroe":   {"cpu": cty.StringVal("Conroe,vendor=GenuineIntel")},
+	} {
+		t.Run(name, func(t *testing.T) {
+			code := codeLines(renderBoxVagrantfile(t, o))
+			has := func(want string) {
+				t.Helper()
+				for _, l := range code {
+					if l == want {
+						return
+					}
+				}
+				t.Errorf("rendered box Vagrantfile lacks the line %q", want)
+			}
+			for _, lv := range theLevels {
+				has(`      when "` + lv.name + `" then "` + lv.line + `"`)
+			}
+			build := "Penryn,vendor=GenuineIntel,+ssse3,+sse4.1,+sse4.2"
+			if o != nil {
+				build = o["cpu"].AsString()
+			}
+			has(`      when "" then "` + build + `"`)
+		})
+	}
+}
+
 // TestBoxVagrantfileIsRuby: every rendering parses as Ruby, when a ruby
 // is on PATH to ask (Vagrant's own embedded one works: set PATH to
 // include /opt/vagrant/embedded/bin).
@@ -647,6 +696,48 @@ func TestBoxVagrantfileIsRuby(t *testing.T) {
 		}
 		if out, err := exec.Command(ruby, "-c", f).CombinedOutput(); err != nil {
 			t.Errorf("%s: ruby -c: %v\n%s", name, err, out)
+		}
+	}
+
+	// The MAVERICKS_CPU_ISA switch itself, run: its lines from `isa =` to
+	// the case's end, printing the cpu line it picks.
+	var sw []string
+	for _, l := range codeLines(renderBoxVagrantfile(t, nil)) {
+		if strings.HasPrefix(strings.TrimSpace(l), "isa = ") || len(sw) > 0 {
+			sw = append(sw, strings.Replace(l, "qe.cpu = ", "puts ", 1))
+			if strings.TrimSpace(l) == "end" {
+				break
+			}
+		}
+	}
+	run := func(isa string, set bool) (string, error) {
+		cmd := exec.Command(ruby, "-e", strings.Join(sw, "\n"))
+		cmd.Env = []string{"PATH=" + os.Getenv("PATH")}
+		if set {
+			cmd.Env = append(cmd.Env, "MAVERICKS_CPU_ISA="+isa)
+		}
+		out, err := cmd.CombinedOutput()
+		return strings.TrimSpace(string(out)), err
+	}
+	for _, c := range []struct {
+		isa  string
+		set  bool
+		want string
+	}{
+		{"", false, theLevels[0].line},
+		{"", true, theLevels[0].line},
+		{"none", true, theLevels[0].line},
+		{"avx", true, theLevels[1].line},
+		{"avx2", true, theLevels[2].line},
+	} {
+		if got, err := run(c.isa, c.set); err != nil || got != c.want {
+			t.Errorf("MAVERICKS_CPU_ISA=%q (set %v): got %q, %v; want %q", c.isa, c.set, got, err, c.want)
+		}
+	}
+	for _, bad := range []string{"AVX", "avx512", "bogus"} {
+		got, err := run(bad, true)
+		if err == nil || !strings.Contains(got, "want none, avx or avx2") {
+			t.Errorf("MAVERICKS_CPU_ISA=%q: got %q, %v; want a failure naming none, avx and avx2", bad, got, err)
 		}
 	}
 }

@@ -138,6 +138,14 @@ locals {
     cpus        = var.cpus
     nic         = var.nic
     accelerator = var.accelerator
+
+    # The instruction-set levels the box's MAVERICKS_CPU_ISA offers, each
+    # a -cpu line measured on this image (docs/decisions/0009, "The
+    # instruction-set levels"). They leave out x2apic and tsc-deadline,
+    # which TCG cannot give, so one line serves every accelerator.
+    cpu_none = "Penryn,vendor=GenuineIntel,+ssse3,+sse4.1,+sse4.2"
+    cpu_avx  = "SandyBridge,vendor=GenuineIntel,-x2apic,-tsc-deadline,enforce"
+    cpu_avx2 = "IvyBridge,vendor=GenuineIntel,-x2apic,-tsc-deadline,+avx2,+fma,+bmi1,+bmi2,+movbe,+abm,enforce"
   })
 
   # Where box_vagrantfile passes through the guest on its way to the

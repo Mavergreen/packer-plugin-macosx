@@ -8,10 +8,11 @@
 # RENDERED FROM THE BUILD'S OWN SETTINGS. mavericks.pkr.hcl renders this
 # file from box.Vagrantfile.pkrtpl, a Packer templatefile(), with the
 # build's user, cpu, memory, cpus, nic and accelerator, so the box logs
-# in and boots the way its image was built. A project Vagrantfile can
-# still override any of it. The rendering is HCL's: in the template, a
-# dollar sign or a percent sign directly before an open brace starts an
-# interpolation or a directive.
+# in and boots the way its image was built, and with the instruction-set
+# levels' cpu lines. A project Vagrantfile can still override any of it.
+# The rendering is HCL's: in the template, a dollar sign or a percent
+# sign directly before an open brace starts an interpolation or a
+# directive.
 #
 # NOT THE WHOLE VAGRANTFILE. The box's Vagrantfile is the stock vagrant
 # post-processor's own libvirt stanza (`config.vm.provider :libvirt`,
@@ -46,7 +47,23 @@ Vagrant.configure("2") do |config|
   config.vm.provider "qemu" do |qe|
     qe.arch = "x86_64"
     qe.machine = "q35,vmport=off%{ if accelerator != "none" },accel=${accelerator}%{ endif }"
-    qe.cpu = "${cpu}"
+    # The CPU. Unset, MAVERICKS_CPU_ISA keeps the build's own cpu line.
+    # Set, it asks for a guest by what it can run: none (no AVX), avx
+    # (Sandy Bridge: AVX, not AVX2, FMA or BMI) or avx2 (Ivy Bridge with
+    # Haswell's AVX2, FMA, BMI1, BMI2, MOVBE and LZCNT), each a line
+    # measured on this image (docs/decisions/0009, "The instruction-set
+    # levels"). Under KVM a level is what the guest is told: on an AVX2
+    # host the instructions above it still run, and only TCG makes them
+    # fault. avx and avx2 need kvm.ignore_msrs=Y on the host, and enforce
+    # makes QEMU refuse, naming the feature, a host that lacks one.
+    isa = ENV["MAVERICKS_CPU_ISA"].to_s
+    qe.cpu = case isa
+      when "" then "${cpu}"
+      when "none" then "${cpu_none}"
+      when "avx" then "${cpu_avx}"
+      when "avx2" then "${cpu_avx2}"
+      else raise "MAVERICKS_CPU_ISA: want none, avx or avx2 (got '#{isa}')"
+      end
     qe.smp = "${cpus}"
     qe.memory = "%{ if memory % 1024 == 0 }${memory / 1024}G%{ else }${memory}M%{ endif }"
     qe.net_device = "${nic}"
