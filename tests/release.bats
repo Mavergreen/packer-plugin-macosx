@@ -706,9 +706,11 @@ print('ok')
 }
 
 @test "the README never teaches a plain vagrant up" {
-    # Every `vagrant up` it shows says --provider qemu.
-    [ "$(grep -cE '^ *(MAVERICKS_DISPLAY=[a-z]+ )?vagrant up' "$REPO/README.md")" -ge 2 ]
-    run grep -nE '^ *(MAVERICKS_DISPLAY=[a-z]+ )?vagrant up *$' "$REPO/README.md"
+    # Every `vagrant up` it shows says --provider qemu, whatever
+    # environment variables come before it (MAVERICKS_DISPLAY,
+    # MAVERICKS_CPU_ISA, ...).
+    [ "$(grep -cE '^ *([A-Z_]+=[a-z0-9]+ )*vagrant up' "$REPO/README.md")" -ge 3 ]
+    run grep -nE '^ *([A-Z_]+=[a-z0-9]+ )*vagrant up *$' "$REPO/README.md"
     [ "$status" -ne 0 ]
 }
 

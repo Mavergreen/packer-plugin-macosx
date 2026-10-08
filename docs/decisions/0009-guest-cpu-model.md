@@ -99,6 +99,11 @@ These are the rows, and the box's `MAVERICKS_CPU_ISA` and mavericks-vm's
 | `avx` | `SandyBridge,vendor=GenuineIntel,-x2apic,-tsc-deadline,enforce` |
 | `avx2` | `IvyBridge,vendor=GenuineIntel,-x2apic,-tsc-deadline,+avx2,+fma,+bmi1,+bmi2,+movbe,+abm,enforce` |
 
+`none` alone has no `enforce`. Its line is the default, unchanged byte
+for byte, so on a host without SSE4.1 or SSE4.2 (`ap-juicer`) QEMU drops
+them with a warning and the guest boots without them. `none` promises only
+no AVX, and that still holds; the default is not refused there either (G3).
+
 All results below were MEASURED 2026-10-08 on the primary host (Coffee Lake
 i7-8700B, which has every one of these instructions; QEMU 8.2.2), against a
 qcow2 overlay on an installed 13F1911 guest. In each guest,
