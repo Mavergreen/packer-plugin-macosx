@@ -94,7 +94,7 @@ jobs:
         env:
           GORELEASER_CURRENT_TAG: ${{ steps.ver.outputs.tag }}
         with:
-          version: v2.18.2
+          version: v2.18.3
           args: release --clean --skip=validate
 
       # The never-publish rule (README, docs/decisions/0007): the tree being released, then the
