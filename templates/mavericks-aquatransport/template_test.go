@@ -460,6 +460,9 @@ func TestThePostRebootPauseIsAHostSideSleepBeforeVerify(t *testing.T) {
 		t.Errorf("the provisioner two before verify is not the reboot:\n%s", text(ps[verify-2]))
 	}
 	pause := ps[verify-1]
+	if len(pause.Labels) == 0 {
+		t.Fatalf("the provisioner just before verify has no type label:\n%s", text(pause))
+	}
 	if pause.Labels[0] != "shell-local" || !strings.Contains(text(pause), `"sleep 30"`) {
 		t.Errorf("the provisioner just before verify is not a shell-local sleep 30:\n%s", text(pause))
 	}
