@@ -18,22 +18,32 @@ guest, on a Linux host.
 
 ## Decision 1 — what a release carries
 
-A release of `packer-plugin-macosx` carries exactly three kinds of
+A release of `packer-plugin-macosx` carries exactly four kinds of
 file, and nothing else:
 
 1. **The plugin binaries**, `packer-plugin-macosx_v<ver>_x5.0_<os>_<arch>`,
-   zipped, for linux, darwin and netbsd on amd64 and arm64: the names
-   `packer init` expects for the plugin source
+   zipped, for linux on amd64, the one host `internal/hostcheck`
+   supports (CI still cross-builds the others, `docs/decisions/0005`):
+   the names `packer init` expects for the plugin source
    `github.com/mavergreen/macosx`.
-2. **The template**, `templates/mavericks/` as one zip: `mavericks.pkr.hcl`,
-   `variables.pkr.hcl`, the box's Vagrantfile template, the two guest-side
-   scripts the build runs, and Vagrant's insecure private key. A build
-   needs this directory and the plugin, not a checkout.
-3. **A `SHA256SUMS`** over both. `packer init` checks the plugin binary
-   against it.
+2. **The templates, one zip per template**: `templates/mavericks/`,
+   `templates/snowleopard/` and `templates/mavericks-aquatransport/`, the
+   layer over the Mavericks box (`docs/decisions/0016`). Each zip holds its
+   directory's `.pkr.hcl` files, the guest-side scripts its build runs and
+   Vagrant's insecure private key, and a base template's holds its box's
+   Vagrantfile template too. A build needs one directory and the plugin,
+   not a checkout.
+3. **The base recipe**, `packer-plugin-macosx_<tag>_mavericks_base_recipe.txt`:
+   one SHA-256 over what the Mavericks base image is built from
+   (`bin/base-recipe.sh`), so a consumer that caches the base image
+   rebuilds it only when that moves, and not for a release that changes
+   only the layer.
+4. **A `SHA256SUMS`** over all of them. `packer init` checks the plugin
+   binary against it.
 
-`.goreleaser.yml` produces all three. The version scheme is
-`docs/decisions/0012`.
+`.goreleaser.yml` produces the zips and the `SHA256SUMS`;
+`.github/workflows/release.yml` adds the base recipe and its line in the
+`SHA256SUMS`. The version scheme is `docs/decisions/0012`.
 
 ## Decision 2 — never publish Apple's bytes
 

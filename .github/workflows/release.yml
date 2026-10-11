@@ -1,6 +1,6 @@
 name: release
 
-# Builds the plugin for every host it names, with both templates, gates what it built, and --
+# Builds the plugin for every host it names, with its templates, gates what it built, and --
 # only when asked -- publishes it. Entry points:
 #   - push to main / PR to main: build + gate, never publish (the PR build is a status check
 #     Renovate automerge waits on)

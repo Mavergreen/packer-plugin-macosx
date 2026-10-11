@@ -99,9 +99,9 @@ archives:
     files:
       - none*
 
-  # The template, attached to every release (docs/decisions/0007) -- its own
-  # archive, never inside a per-OS/arch plugin zip, which packer init's
-  # own comment says holds exactly one file.
+  # The templates, attached to every release (docs/decisions/0007) -- each
+  # its own archive, never inside a per-OS/arch plugin zip, which packer
+  # init's own comment says holds exactly one file.
   #
   # EVERY FILE BY NAME, NEVER A GLOB. goreleaser's file globs include a
   # matched directory's whole contents, and a checkout that has run the

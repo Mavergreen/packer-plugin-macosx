@@ -42,6 +42,35 @@ packer init .
 packer build .
 ```
 
+### Mavericks with Aqua Transport
+
+A stock 10.9.5 guest can't verify most of today's HTTPS sites: its `curl`
+fails on github.com with "Invalid certificate chain". This template builds
+a box over the Mavericks box you've already built, with Wowfunhappy's
+[Aqua Transport](https://mavericksforever.com/) and its modern root
+certificates installed, so the guest's own `curl`, and everything else that
+uses the system's TLS, gets through.
+
+Download and extract the `mavericks-aquatransport` template, and `cd` into
+it. Unpack your Mavericks box, then build the layer over it:
+
+```sh
+mkdir mavericks-base
+tar -xzf /path/to/output/mavericks-10.9.5-libvirt.box -C mavericks-base
+packer init .
+packer build -var base_box=mavericks-base .
+```
+
+That makes `output/mavericks-10.9.5-aquatransport-libvirt.box` in a few
+minutes. The build restarts the guest, checks it, and makes no box unless
+`/usr/bin/curl` reaches github.com, GitHub's release downloads and
+downloads.claude.ai.
+
+Aqua Transport is downloaded at build time from its one URL, which each new
+version replaces, and the build accepts only the version its template pins.
+So once Aqua Transport moves on, an older plugin release can no longer build
+the layer: the build fails, naming both checksums. Use the latest release.
+
 ### Snow Leopard
 
 Bring your own retail 10.6 install DVD image.
@@ -60,6 +89,7 @@ For example, with Vagrant:
 ```sh
 vagrant plugin install vagrant-qemu
 vagrant box add --name mavericks output/mavericks-10.9.5-libvirt.box
+# or: vagrant box add --name mavericks output/mavericks-10.9.5-aquatransport-libvirt.box
 # or: vagrant box add --name snowleopard output/snowleopard-10.6-libvirt.box
 mkdir ~/mavericks-vm
 cd ~/mavericks-vm

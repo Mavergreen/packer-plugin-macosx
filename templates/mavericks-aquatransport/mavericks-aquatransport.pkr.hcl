@@ -32,11 +32,12 @@
 # -xzf` the .box, or Vagrant's own copy under ~/.vagrant.d/boxes); its
 # validation names each of the five files used here, and wants the
 # Vagrantfile to be one templates/mavericks/mavericks.pkr.hcl rendered,
-# so a Snow Leopard box, which holds the same five names, is refused. Its box_0.img is the
-# qemu builder's iso_url with disk_image = true, so the builder converts
-# it into this build's own output directory and the base box is never
-# written to (use_backing_file = false: the box is standalone, with no
-# backing file to carry). skip_resize_disk keeps the base's disk size.
+# so a Snow Leopard box, which holds the same five names, is refused.
+# Its box_0.img is the qemu builder's iso_url with disk_image = true, so
+# the builder converts it into this build's own output directory and the
+# base box is never written to (use_backing_file = false: the box is
+# standalone, with no backing file to carry). skip_resize_disk keeps the
+# base's disk size.
 #
 # DRIVES ARE IN qemuargs, as in templates/mavericks/mavericks.pkr.hcl,
 # whose header says why; these are its qemuargs with no installer drive,
@@ -48,7 +49,9 @@
 # THE REBOOT. Aqua Transport's postinstall patches Security.framework, and
 # a process that loaded Security before it keeps the old one: the pkg asks
 # for a restart for that alone. verify.sh runs after it, in a fresh boot,
-# as every later boot of the box will be.
+# as every later boot of the box will be. MEASURED 2026-10-11: the new
+# boot's kernel started 31 s after `shutdown -r`, and SSH answered 48 s
+# after it (docs/decisions/0016).
 #
 # THE BOX'S VAGRANTFILE is the base box's own: it was rendered for the
 # base's user, cpu, memory, cpus, nic and accelerator, which this build
