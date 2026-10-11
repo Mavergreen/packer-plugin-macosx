@@ -137,6 +137,20 @@ archives:
       - src: templates/snowleopard/variables.pkr.hcl
       - src: templates/snowleopard/verify.sh
 
+  # The Aqua Transport layer over the Mavericks base box. Its DMG is never
+  # in it: the template's data source fetches that at build time.
+  - id: template-mavericks-aquatransport
+    meta: true
+    formats: [zip]
+    name_template: "packer-plugin-macosx_v{{ .Version }}_mavericks-aquatransport_template"
+    files:
+      - src: templates/mavericks-aquatransport/aquatransport.pkr.hcl
+      - src: templates/mavericks-aquatransport/install.sh
+      - src: templates/mavericks-aquatransport/mavericks-aquatransport.pkr.hcl
+      - src: templates/mavericks-aquatransport/vagrant-standard-insecure-first-boot-only.key.rsa
+      - src: templates/mavericks-aquatransport/variables.pkr.hcl
+      - src: templates/mavericks-aquatransport/verify.sh
+
 checksum:
   name_template: "{{ .ProjectName }}_v{{ .Version }}_SHA256SUMS"
   algorithm: sha256

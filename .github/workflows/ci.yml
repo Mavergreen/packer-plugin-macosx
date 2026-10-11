@@ -189,6 +189,15 @@ jobs:
       - name: packer validate templates/snowleopard/
         run: packer validate -var installer=/your/own/disc.iso templates/snowleopard/
 
+      # base_box is a directory holding the five files its validation
+      # names; validate executes no data source and boots nothing, so
+      # empty ones will do.
+      - name: packer validate templates/mavericks-aquatransport/
+        run: |
+          box=$(mktemp -d)
+          touch "$box/box_0.img" "$box/OVMF_CODE.fd" "$box/OVMF_VARS.fd" "$box/opencore.img" "$box/Vagrantfile"
+          packer validate -var "base_box=$box" templates/mavericks-aquatransport/
+
       - name: go test ./templates/... (TestValidate, not skipped)
         run: go test -race ./templates/...
 

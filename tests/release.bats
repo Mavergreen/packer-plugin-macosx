@@ -421,8 +421,16 @@ teardown() {
     fi
 }
 
+# Each template's name: the directories under templates/, one per line.
+template_oses() {
+    for d in "$REPO"/templates/*/; do
+        d=${d%/}
+        echo "${d##*/}"
+    done
+}
+
 @test "each template archive names each tracked template file, no glob and no test" {
-    for os in mavericks snowleopard; do
+    for os in $(template_oses); do
         run template_srcs "$os"
         [ "$status" -eq 0 ]
         [ -n "$output" ]
@@ -437,7 +445,7 @@ teardown() {
 }
 
 @test "each OS's template archive is named for its OS" {
-    for os in mavericks snowleopard; do
+    for os in $(template_oses); do
         run grep -c "name_template: \"packer-plugin-macosx_v{{ .Version }}_${os}_template\"" "$REPO/.goreleaser.yml"
         [ "$output" = "1" ]
     done
