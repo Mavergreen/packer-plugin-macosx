@@ -1,0 +1,17 @@
+    <choices-outline>
+        <line choice="installer_choice_1"/>
+        <line choice="installer_choice_2"/>
+        <line choice="installer_choice_3"/>
+    </choices-outline>
+    <choice id="installer_choice_1" title="AquaTransport" description="">
+        <pkg-ref id="Wowfunhappy.AquaTransport"/>
+    </choice>
+    <choice id="installer_choice_2" title="Modern Root Certificates" description="INSTALLER_CHOICE_2_DESCRIPTION">
+        <pkg-ref id="Wowfunhappy.AquaTransport.ModernRootCertificates"/>
+    </choice>
+    <choice id="installer_choice_3" start_visible="installer_choice_3_requirement(true,false)" start_enabled="installer_choice_3_requirement(false,true)" start_selected="installer_choice_3_requirement(false,false)" title="INSTALLER_CHOICE_3_TITLE" description="INSTALLER_CHOICE_3_DESCRIPTION">
+        <pkg-ref id="net.sf.tuntaposx.tap"/>
+    </choice>
+    <pkg-ref id="net.sf.tuntaposx.tap" version="20150118.0.0" auth="Root" installKBytes="57">#tap.pkg</pkg-ref>
+    <pkg-ref id="Wowfunhappy.AquaTransport.ModernRootCertificates" version="2026.09.03" auth="Root" installKBytes="0">#Modern_Root_Certificates.pkg</pkg-ref>
+    <pkg-ref id="Wowfunhappy.AquaTransport" version="2026.10.09" auth="Root" installKBytes="25826" onConclusion="RequireRestart">#AquaTransport.pkg</pkg-ref>
