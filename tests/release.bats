@@ -757,3 +757,10 @@ print('ok')
         grep -q "$target" "$REPO/.github/workflows/ci.yml" || { echo "ci.yml does not cross-build $target"; return 1; }
     done
 }
+
+@test "the release publishes the base recipe and lists it in the SHA256SUMS" {
+    f="$REPO/.github/workflows/release.yml"
+    grep -q 'bin/base-recipe.sh' "$f"
+    grep -q '_mavericks_base_recipe.txt' "$f"
+    grep -A12 'base recipe' "$f" | grep -q 'SHA256SUMS'
+}

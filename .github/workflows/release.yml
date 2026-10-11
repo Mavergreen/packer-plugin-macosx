@@ -130,6 +130,21 @@ jobs:
           cp dist/*.zip dist/*_SHA256SUMS release/
           ls -l release
 
+      # The base recipe: what the base image is built from, so mavericks-vm re-keys its cached
+      # base only when that moved. Computed from HEAD's git objects (bin/base-recipe.sh), after
+      # goreleaser, and appended to goreleaser's SHA256SUMS in its own `<sha256>  <name>` format.
+      - name: Publish the base recipe
+        run: |
+          set -eu
+          tag='${{ steps.ver.outputs.tag }}'
+          name="packer-plugin-macosx_${tag}_mavericks_base_recipe.txt"
+          sh bin/base-recipe.sh HEAD > "release/$name"
+          cat "release/$name"
+          sums="$(ls release/*_SHA256SUMS)"
+          sum="$(sha256sum "release/$name" | cut -d' ' -f1)"
+          printf '%s  %s\n' "$sum" "$name" >> "$sums"
+          cat "$sums"
+
       - uses: actions/upload-artifact@v7
         with:
           name: packer-plugin-macosx
