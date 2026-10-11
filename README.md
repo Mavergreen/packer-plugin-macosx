@@ -44,8 +44,9 @@ packer build .
 
 ### Mavericks with Aqua Transport
 
-A stock 10.9.5 guest can't verify most of today's HTTPS sites: its `curl`
-fails on github.com with "Invalid certificate chain". This template builds
+A stock 10.9.5 guest's `curl` fails on github.com and GitHub's release
+downloads with "Invalid certificate chain" (downloads.claude.ai works).
+This template builds
 a box over the Mavericks box you've already built, with Wowfunhappy's
 [Aqua Transport](https://mavericksforever.com/) and its modern root
 certificates installed, so the guest's own `curl`, and everything else that

@@ -57,10 +57,25 @@ content is Wowfunhappy's Aqua Transport with its ModernRootCertificates.
 
 ## Context
 
-A stock 10.9.5 guest cannot verify most of today's HTTPS. Its System
-keychain lacks the roots that github.com (USERTrust ECC, through Sectigo
-Public Server Authentication Root E46) and GitHub's release downloads
-(ISRG Root X1, through Let's Encrypt's Root YR) chain to.
+A stock 10.9.5 guest's `/usr/bin/curl` refuses github.com and GitHub's
+release downloads with "Invalid certificate chain" (measured below), while
+downloads.claude.ai gets through. The chains the three hosts served on
+2026-10-11, from `openssl s_client -connect HOST:443 -servername HOST
+-showcerts` on the build host, each certificate's subject, then the issuer
+of the last:
+
+| Host | Chain served |
+|---|---|
+| `github.com` | `github.com`, Sectigo Public Server Authentication CA DV E36, Sectigo Public Server Authentication Root E46; issued by USERTrust ECC Certification Authority |
+| `release-assets.githubusercontent.com` | `*.github.io`, Let's Encrypt YR1, ISRG Root YR; issued by ISRG Root X1 |
+| `downloads.claude.ai` | `downloads.claude.ai`, Google Trust Services WR3, GTS Root R1; issued by GlobalSign Root CA |
+
+The base guest accepted the third chain and refused the first two. Both
+top issuers it refused, USERTrust ECC Certification Authority and ISRG Root
+X1, are among the 14 `.pem` files under `trust/` in
+`Modern_Root_Certificates.pkg`'s scripts, in the pinned DMG (unpacked on
+the build host, 2026-10-11).
+
 Mavergreen/claude-code's first end-to-end run on `mavericks-vm@v1` (run
 38093897958, 2026-10-10) failed at its first fetch with "SSL certificate
 problem: Invalid certificate chain".
@@ -115,8 +130,8 @@ verify: FAILED: /usr/bin/curl -sS -o /dev/null https://release-assets.githubuser
 verify: 4 check(s) failed; this guest will not be packaged as a box
 ```
 
-`downloads.claude.ai` passed on the bare base. It serves GTS Root R1
-cross-signed by GlobalSign Root CA, which 10.9 already trusts. The first
+`downloads.claude.ai` passed on the bare base: its chain ends in a GTS
+Root R1 issued by GlobalSign Root CA (Context's table). The first
 run printed curl 7.30's paragraph of CA-bundle advice after each error,
 so `verify.sh` now keeps curl's first line.
 
@@ -153,9 +168,11 @@ three times, each a new VM. The first came up in 55 s. In the first and
 the third, `/usr/bin/curl -sS -o /dev/null` exited 0 for all three URLs.
 `github.com` and `downloads.claude.ai` answered 200, and
 `release-assets.githubusercontent.com/` 404, past a verified handshake.
-The first `vagrant destroy -f` printed a Ruby backtrace and left the
-machine stopped, not destroyed; the second destroyed it. Two more
-up-and-destroy runs did not repeat it.
+The first `vagrant destroy -f` printed a Ruby backtrace, from Vagrant's
+`machine.rb` `action`, and left the machine stopped, not destroyed; a
+second `vagrant destroy -f` destroyed it. Only the backtrace's tail was
+kept, and two more up-and-destroy runs did not repeat it. Its cause is
+unknown: an unexplained one-off, not shown to be harmless.
 
 ## Alternatives considered
 
@@ -165,10 +182,11 @@ up-and-destroy runs did not repeat it.
 - **Installing it when a CI job boots.** An install and a restart on every
   boot, about a minute each time, where the layer costs that once.
 - **The family's own ca-certs as the trust source.** It is unreleased, and
-  a real user's Mac does not have it. Roots alone would likely pass the
-  three fetches, since 10.9's curl speaks TLS 1.2. Aqua Transport adds
-  TLS 1.3 and modern ciphers for every Secure Transport client, and is
-  what real users install.
+  a real user's Mac does not have it. Untested reasoning, not a
+  measurement: the failures measured were chain errors, not protocol
+  errors, and 10.9's curl speaks TLS 1.2, so roots alone might pass the
+  three fetches. Aqua Transport adds TLS 1.3 and modern ciphers for every
+  Secure Transport client, and is what real users install.
 - **A box that keeps the base as its backing file.** It would be smaller,
   but a Vagrant box must stand alone. A consumer that wants a thin delta,
   such as `mavericks-vm`'s cache, can make one from the two disks.
