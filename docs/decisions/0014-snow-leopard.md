@@ -77,6 +77,12 @@ disc (sha256 `cbeeb237...`, `docs/test-hosts.md`):
   With OpenCore on `qemu-xhci` and no UHCI, none wedged.
 - With two CPUs: under host load, spinlock and `pmap_flush_tlbs`
   timeout panics; pinned to cores, none. With one CPU, none.
+  Measured again 2026-10-11 with 0015's RTC patch, under host load: both
+  builds at two CPUs panicked in 10.6.0, on CPU 1, one in the installer
+  (`Spinlock acquisition timed out` from `pmap_enter`) and one at its
+  first boot's login window (a double fault in `IOConfigThread`'s
+  `doServiceMatch`). The 2026-10-06 build's 10.6.8 disk at two CPUs
+  answered SSH on 19 boots of 20; at one CPU, on 20 of 20 (0015).
 - The combo's packages installed one at a time on a running 10.6.0 break
   it: `SUBaseSystemCombo` brings a new `libSystem` while `dyld` stays
   10.6.0's, and every process after it crashes. The catalogue's other
