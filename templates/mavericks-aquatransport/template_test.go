@@ -17,6 +17,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
@@ -245,6 +246,48 @@ func variableShape(src []byte, b *hclsyntax.Block) map[string]string {
 // how to log in -- are the base's, defaults and validations included. A
 // default changed in one and not the other would boot the layer a way the
 // base never was.
+// TestBaseBoxMarkerIsInTheBaseTemplatesVagrantfile ties base_box's
+// validation to the text it depends on: the header of the Vagrantfile
+// that templates/mavericks renders. The variable accepts a base box whose
+// Vagrantfile matches the pattern it names, which must match the Mavericks
+// template and not the Snow Leopard one; and the line the validation
+// tests use as a "real" Mavericks Vagrantfile must be in the template. An
+// edit to either header that broke this would otherwise refuse every new
+// base box with a misleading error, or let a Snow Leopard one through.
+func TestBaseBoxMarkerIsInTheBaseTemplatesVagrantfile(t *testing.T) {
+	root := templatetest.RepoRoot(t)
+	read := func(rel string) string {
+		b, err := os.ReadFile(filepath.Join(root, rel))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+
+	// The pattern, as base_box's validation spells it: regexall("...", file(...)).
+	m := regexp.MustCompile(`regexall\("((?:[^"\\]|\\.)*)"`).FindStringSubmatch(read("templates/mavericks-aquatransport/variables.pkr.hcl"))
+	if m == nil {
+		t.Fatal("variables.pkr.hcl: no regexall(\"...\") in base_box's validation")
+	}
+	pattern, err := strconv.Unquote(`"` + m[1] + `"`)
+	if err != nil {
+		t.Fatalf("unquoting %s: %v", m[1], err)
+	}
+	marker := regexp.MustCompile(pattern)
+
+	mav := read("templates/mavericks/box.Vagrantfile.pkrtpl")
+	sl := read("templates/snowleopard/box.Vagrantfile.pkrtpl")
+	if !marker.MatchString(mav) {
+		t.Errorf("base_box's marker /%s/ is not in templates/mavericks/box.Vagrantfile.pkrtpl: every Mavericks base box would be refused", pattern)
+	}
+	if marker.MatchString(sl) {
+		t.Errorf("base_box's marker /%s/ is in templates/snowleopard/box.Vagrantfile.pkrtpl: Snow Leopard boxes would pass", pattern)
+	}
+	if !strings.Contains(mav, mavericksVagrantfile) {
+		t.Errorf("the validation tests' Mavericks Vagrantfile line %q is not in box.Vagrantfile.pkrtpl", mavericksVagrantfile)
+	}
+}
+
 func TestTheBootVariablesMatchTheBaseTemplate(t *testing.T) {
 	shared := []string{"cpu", "memory", "cpus", "nic", "accelerator", "headless", "user", "ssh_private_key_file"}
 	baseSrc, base := parseHCL(t, "templates", "mavericks", "variables.pkr.hcl")
@@ -340,6 +383,75 @@ func TestTheLastProvisionerZeroFillsFreeSpace(t *testing.T) {
 	if !regexp.MustCompile(`(?m)^\s*script\s*=\s*"\$\{path\.root\}/verify\.sh"$`).MatchString(s[:last]) {
 		t.Fatal("the zero-fill does not come after the verify.sh provisioner")
 	}
+}
+
+// TestTheGuestScriptsAreTimeBounded: a hung installer, or a curl that hangs
+// on a broken Security patch, would otherwise hang `packer build` forever.
+// Packer's per-provisioner timeout wraps the start retries too, so
+// verify.sh's must exceed its pause_before plus its start_retry_timeout, or
+// a slow reboot is cut short by the very bound meant for a hang.
+func TestTheGuestScriptsAreTimeBounded(t *testing.T) {
+	_, body := parseHCL(t, "templates", osName, osName+".pkr.hcl")
+	var build *hclsyntax.Block
+	for _, b := range body.Blocks {
+		if b.Type == "build" {
+			build = b
+		}
+	}
+	if build == nil {
+		t.Fatal("no build block")
+	}
+	dur := func(b *hclsyntax.Block, name string) time.Duration {
+		a, ok := b.Body.Attributes[name]
+		if !ok {
+			return 0
+		}
+		v, diags := a.Expr.Value(nil)
+		if diags.HasErrors() || v.Type() != cty.String {
+			t.Fatalf("%s is not a literal string: %v", name, diags)
+		}
+		d, err := time.ParseDuration(v.AsString())
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		return d
+	}
+	seen := map[string]bool{}
+	for _, b := range build.Body.Blocks {
+		if b.Type != "provisioner" {
+			continue
+		}
+		a, ok := b.Body.Attributes["script"]
+		if !ok {
+			continue
+		}
+		src := string(a.Expr.Range().SliceBytes(mustRead(t, "templates", osName, osName+".pkr.hcl")))
+		for _, name := range []string{"install.sh", "verify.sh"} {
+			if !strings.Contains(src, name) {
+				continue
+			}
+			seen[name] = true
+			timeout := dur(b, "timeout")
+			if timeout <= 0 {
+				t.Errorf("the %s provisioner has no timeout", name)
+			}
+			if need := dur(b, "pause_before") + dur(b, "start_retry_timeout"); timeout <= need {
+				t.Errorf("the %s provisioner's timeout %v does not exceed pause_before + start_retry_timeout, %v", name, timeout, need)
+			}
+		}
+	}
+	if !seen["install.sh"] || !seen["verify.sh"] {
+		t.Fatalf("found script provisioners %v, want install.sh and verify.sh", seen)
+	}
+}
+
+func mustRead(t *testing.T, elem ...string) []byte {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join(append([]string{templatetest.RepoRoot(t)}, elem...)...))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
 }
 
 // TestThePinIsWellFormed: aquatransport.pkr.hcl is the pin and nothing

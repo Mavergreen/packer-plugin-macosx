@@ -1,7 +1,9 @@
 # The Aqua Transport layer: a Mavericks base box, as templates/mavericks/
 # builds it, with Wowfunhappy's Aqua Transport and its
 # ModernRootCertificates installed, so that the guest's own /usr/bin/curl
-# -- and every other Secure Transport client -- reaches today's HTTPS.
+# -- and every other Secure Transport client -- reaches github.com and
+# GitHub's release downloads (the done-check's hosts, MEASURED 2026-10-11:
+# docs/decisions/0016), which a stock 10.9.5 guest's cannot.
 # It boots the base box's own disk, firmware and OpenCore image, uploads
 # the pinned DMG, installs it without tap.kext, reboots, verifies, zeroes
 # free space and packages a box. The base is never rebuilt for it: a new
@@ -53,11 +55,14 @@
 # boot's kernel started 31 s after `shutdown -r`, and SSH answered 48 s
 # after it (docs/decisions/0016).
 #
-# THE BOX'S VAGRANTFILE is the base box's own: it was rendered for the
-# base's user, cpu, memory, cpus, nic and accelerator, which this build
-# shares with it (variables.pkr.hcl), and it names OVMF_CODE.fd,
-# OVMF_VARS.fd and opencore.img beside itself, which `include` copies from
-# the base box. The OVMF_VARS.fd the box carries is therefore the base
+# THE BOX'S VAGRANTFILE is the vagrant post-processor's own libvirt
+# stanza, in front of the base box's Vagrantfile (vagrantfile_template),
+# so the base's stanza comes along: one more, inert under vagrant-qemu,
+# for every layer. The base's was rendered for its user, cpu, memory,
+# cpus, nic and accelerator, which this build shares with it
+# (variables.pkr.hcl), and it names OVMF_CODE.fd, OVMF_VARS.fd and
+# opencore.img beside itself, which `include` copies from the base box.
+# The OVMF_VARS.fd the box carries is therefore the base
 # box's, not this build's efivars.fd, as the base template's box carries
 # the firmware data source's pristine copy.
 #
@@ -169,8 +174,11 @@ build {
   }
 
   # Installs AquaTransport.pkg with tap.kext deselected, then removes the
-  # DMG, which it is told the path of.
+  # DMG, which it is told the path of. timeout: a hung `installer` must not
+  # hang the build forever. MEASURED 2026-10-11: 12 s with the upload
+  # (docs/decisions/0016); 15m is over seventy times that.
   provisioner "shell" {
+    timeout          = "15m"
     script           = "${path.root}/install.sh"
     environment_vars = ["AQUATRANSPORT_DMG=${local.aquatransport_guest_dmg}"]
     execute_command  = "chmod +x {{ .Path }}; {{ .Vars }} sh {{ .Path }}"
@@ -194,11 +202,15 @@ build {
   # start the script while SSH is not back up (packer v1.16.1,
   # provisioner/shell/provisioner.go: StartRetryTimeout, "can be set high
   # to allow for reboots", 5m by default) -- 30m, the same as ssh_timeout,
-  # for a slow boot. There is no max_retries: that re-runs a verify.sh
+  # for a slow boot. timeout bounds a verify.sh that hangs (a curl on a
+  # broken Security patch, say) and wraps those start retries too, so it
+  # must exceed 30s + 30m: 45m leaves 14.5 minutes for a script MEASURED at
+  # 4 s. There is no max_retries: that re-runs a verify.sh
   # that ran and failed, and a failing verdict is the verdict.
   provisioner "shell" {
     pause_before        = "30s"
     start_retry_timeout = "30m"
+    timeout             = "45m"
 
     script           = "${path.root}/verify.sh"
     environment_vars = ["AQUATRANSPORT_VERSION=${local.aquatransport_version}"]

@@ -11,12 +11,12 @@
 # out: they are not in the image. The inputs: go.mod, go.sum, embed.go, cmd, components (which
 # pins the OpenSSH baked into the base), datasource, internal, assets and templates/mavericks.
 #
-# usage: base-recipe.sh [REF]
+# usage: base-recipe.sh [REF]   (from anywhere inside the checkout)
 set -eu
 
 ref="${1:-HEAD}"
 
-listing="$(git ls-tree -r "$ref" -- go.mod go.sum embed.go cmd components datasource internal assets templates/mavericks)" || {
+listing="$(git ls-tree --full-tree -r "$ref" -- go.mod go.sum embed.go cmd components datasource internal assets templates/mavericks)" || {
     echo "base-recipe: cannot list $ref" >&2
     exit 1
 }

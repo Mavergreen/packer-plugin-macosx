@@ -101,3 +101,10 @@ change() { # change FILE: edit it and commit
     before="$(recipe)"; change embed.go
     [ "$(recipe)" != "$before" ]
 }
+
+@test "run from a subdirectory, it prints the same recipe" {
+    top="$(recipe)"
+    run bash -c "cd '$T/templates/mavericks-aquatransport' && sh '$BATS_TEST_TMPDIR/base-recipe.sh'"
+    [ "$status" -eq 0 ]
+    [ "$output" = "$top" ]
+}

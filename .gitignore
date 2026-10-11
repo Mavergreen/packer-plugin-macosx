@@ -34,6 +34,7 @@ __pycache__/
 # are relative to the working directory, not the template.
 /output/
 /output-mavericks/
+/output-mavericks-aquatransport/
 /packer-manifest.json
 /.superpowers/
 /.idea/

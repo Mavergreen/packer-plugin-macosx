@@ -70,6 +70,11 @@ func TestAMismatchedDownloadNeverTakesItsFinalName(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "checksum mismatch") {
 		t.Fatalf("err = %v", err)
 	}
+	// The datasource keys "the bytes at the URL moved" off this type.
+	var mm *DownloadMismatchError
+	if !errors.As(err, &mm) {
+		t.Fatalf("a download mismatch is a *DownloadMismatchError, got %T: %v", err, err)
+	}
 	if _, err := os.Stat(g.Paths.CacheFile(want, "x.zip")); !os.IsNotExist(err) {
 		t.Fatal("an unverified download was renamed into place")
 	}
@@ -171,6 +176,11 @@ func TestARotCachedFileIsAnErrorNotARedownload(t *testing.T) {
 	_, err := g.Get(context.Background(), Item{Name: "x", URL: "http://127.0.0.1:1/x.zip", SHA256: want})
 	if err == nil || !strings.Contains(err.Error(), dest) {
 		t.Fatalf("err = %v", err)
+	}
+	// Rot in the cache is not "the URL's bytes moved".
+	var mm *DownloadMismatchError
+	if errors.As(err, &mm) {
+		t.Fatalf("a corrupt cache entry must not be a *DownloadMismatchError: %v", err)
 	}
 }
 
