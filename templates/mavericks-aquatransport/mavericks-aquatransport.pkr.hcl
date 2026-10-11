@@ -8,7 +8,10 @@
 # the pinned DMG, installs it without tap.kext, reboots, verifies, zeroes
 # free space and packages a box. The base is never rebuilt for it: a new
 # Aqua Transport is a new pin here (aquatransport.pkr.hcl), and a new
-# layer over the same base box.
+# layer over the same base box. Nothing in this directory is in the base
+# recipe (bin/base-recipe.sh), so a release that changes only this
+# directory moves mavericks-vm's layer key and not its base key: it pulls
+# the cached base and builds only the layer.
 #
 # NO APPLE BYTES. Like the base template, this one names local paths and
 # contains none of Apple's software. Its box holds Apple's operating
