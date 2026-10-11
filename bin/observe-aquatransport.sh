@@ -1,5 +1,5 @@
 #!/bin/sh
-# platform: Linux and ubuntu-latest only (needs curl, sha256sum, 7z and python3); never run on 10.9
+# Runs on Linux (ubuntu-latest) only: it needs curl, sha256sum, 7z and python3. Never on 10.9.
 #
 # Observe Wowfunhappy's Aqua Transport. https://mavericksforever.com/downloads/AquaTransport.dmg is
 # overwritten in place, with no versioned releases, so a scheduled workflow downloads it, reads
@@ -32,7 +32,7 @@ observe_fail() {
 observe() {
     out=$1
     url=${AQUATRANSPORT_URL:-https://mavericksforever.com/downloads/AquaTransport.dmg}
-    work=$(mktemp -d) || exit 1
+    work=$(mktemp -d "${TMPDIR:-/tmp}/observe-aquatransport.XXXXXX") || exit 1
     trap 'rm -rf "$work"' EXIT
     mkdir "$work/dmg" "$work/pkg" || exit 1
 
@@ -58,7 +58,7 @@ observe() {
 
 merge() {
     existing=$1 new=$2 out=$3
-    tmp=$(mktemp) || exit 1
+    tmp=$(mktemp "${TMPDIR:-/tmp}/observe-aquatransport-merge.XXXXXX") || exit 1
     if python3 -I -c '
 import json, os, re, sys
 existing, new = sys.argv[1], sys.argv[2]

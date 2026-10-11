@@ -1,6 +1,4 @@
 #!/bin/sh
-# platform: host-agnostic
-#
 # Print the base recipe: the SHA-256 of what the base image is built from, as of REF (default
 # HEAD). Every release publishes it as packer-plugin-macosx_<tag>_mavericks_base_recipe.txt, so
 # mavericks-vm can re-key its cached base image only when this value moves. A release that

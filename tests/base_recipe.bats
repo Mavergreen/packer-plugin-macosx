@@ -35,7 +35,7 @@ change() { # change FILE: edit it and commit
 @test "the recipe is 64 hex digits" {
     run recipe
     [ "$status" -eq 0 ]
-    [[ "$output" =~ ^[0-9a-f]{64}$ ]]
+    [[ "$output" =~ ^[0-9a-f]{64}$ ]] || false
 }
 
 @test "REF defaults to HEAD and can name another commit" {
@@ -87,9 +87,16 @@ change() { # change FILE: edit it and commit
     [ "$status" -ne 0 ]
 }
 
-@test "the script is POSIX sh and carries the platform header" {
-    head -3 "$REPO/bin/base-recipe.sh" | grep -q '^#!/bin/sh'
-    grep -q '^# platform: host-agnostic' "$REPO/bin/base-recipe.sh"
+@test "the script is POSIX sh" {
+    head -1 "$REPO/bin/base-recipe.sh" | grep -q '^#!/bin/sh$'
+}
+
+# One "# platform:" header opts the whole repo into the family's check 22, which then
+# requires one in every script, the guest assets included; changing those rebuilds every
+# cached media. Adopting it is a decision of its own, not a side effect of a new script.
+@test "no tracked script declares a platform, so check 22 stays unadopted" {
+    run git -C "$REPO" grep -lE '^# platform: (host-agnostic|macOS-only)' -- .
+    [ "$status" -eq 1 ]
 }
 
 @test "a commit that changes components/openssh/version changes it" {
