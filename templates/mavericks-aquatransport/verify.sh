@@ -114,9 +114,12 @@ for kext in $TAP_KEXTS; do
     fi
 done
 
+# A failed fetch is named by curl's first line, its error: 10.9.5's curl
+# 7.30 follows a certificate error with a paragraph of advice on CA
+# bundles, which would bury the other verdicts.
 for url in $URLS; do
     if ! err=$("$CURL" -sS -o /dev/null "$url" 2>&1); then
-        fail "/usr/bin/curl -sS -o /dev/null $url fails: $err"
+        fail "/usr/bin/curl -sS -o /dev/null $url fails: $(printf '%s\n' "$err" | head -n 1)"
     fi
 done
 

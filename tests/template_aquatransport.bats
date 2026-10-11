@@ -69,8 +69,10 @@ for k in $STUB_KEXTS; do
     i=$((i + 1))
 done
 EOF
-    # curl: fails for the URL in $STUB_CURL_FAIL, as curl does when it
-    # cannot verify a peer; -V says what it is.
+    # curl: fails for the URL in $STUB_CURL_FAIL, as 10.9.5's curl 7.30
+    # does when it cannot verify a peer -- the error, then its paragraph
+    # of advice (measured on the base box, 2026-10-11) -- and -V says
+    # what it is.
     cat > "$STUB/curl" <<'EOF'
 #!/bin/sh
 [ "${1:-}" = -V ] && { echo "curl 7.30.0 (stub)"; exit 0; }
@@ -78,6 +80,9 @@ for url; do :; done
 echo "curl $*" >> "$LOG"
 if [ "$url" = "${STUB_CURL_FAIL:-}" ]; then
     echo "curl: (60) SSL certificate problem: Invalid certificate chain" >&2
+    echo "More details here: http://curl.haxx.se/docs/sslcerts.html" >&2
+    echo "" >&2
+    echo "curl performs SSL certificate verification by default, using a \"bundle\"" >&2
     exit 60
 fi
 EOF
@@ -246,6 +251,15 @@ URLS="https://github.com/ https://release-assets.githubusercontent.com/ https://
         [[ "$output" == *"verify: FAILED: /usr/bin/curl -sS -o /dev/null $url fails: curl: (60) SSL certificate problem"* ]] || false
         [ "$(grep -c 'verify: FAILED:' <<< "$output")" -eq 1 ]
     done
+}
+
+@test "verify.sh names a failed fetch by curl's first line, not its advice" {
+    export STUB_CURL_FAIL=https://github.com/
+    verify 2026.10.09
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"fails: curl: (60) SSL certificate problem: Invalid certificate chain"* ]] || false
+    [[ "$output" != *"More details here"* ]] || false
+    [[ "$output" != *"verification by default"* ]] || false
 }
 
 @test "verify.sh fails a guest that is not 10.9.5, naming the version" {
