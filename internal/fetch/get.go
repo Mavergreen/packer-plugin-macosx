@@ -51,6 +51,13 @@ type Item struct {
 	noFetch bool
 }
 
+// DownloadMismatchError is Get's error when freshly downloaded bytes do
+// not match the pinned checksum: the file at the URL is not the one that
+// was pinned. (A corrupt cache entry is a different, untyped error.)
+type DownloadMismatchError struct{ msg string }
+
+func (e *DownloadMismatchError) Error() string { return e.msg }
+
 // errNotCached is Get's result with Item.noFetch set, when nothing cached
 // satisfies the item.
 var errNotCached = errors.New("not in the cache")
@@ -383,7 +390,7 @@ func (g *Getter) attempt(ctx context.Context, it Item, cd *cacheDir, name, dest 
 	}
 	got := hex.EncodeToString(h.Sum(nil))
 	if got != it.SHA256 {
-		return false, fmt.Errorf("checksum mismatch for %s: want %s, got %s; nothing was renamed into place", it.URL, it.SHA256, got)
+		return false, &DownloadMismatchError{msg: fmt.Sprintf("checksum mismatch for %s: want %s, got %s; nothing was renamed into place", it.URL, it.SHA256, got)}
 	}
 	if err := os.Rename(tmp, dest); err != nil {
 		return false, err

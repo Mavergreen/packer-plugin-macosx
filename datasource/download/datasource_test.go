@@ -77,8 +77,11 @@ func TestDownloadRefusesAMovedFile(t *testing.T) {
 			t.Errorf("error %q lacks %q", err, want)
 		}
 	}
-	filepath.WalkDir(cache, func(p string, de os.DirEntry, _ error) error {
-		if !de.IsDir() {
+	filepath.WalkDir(cache, func(p string, de os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if de != nil && !de.IsDir() {
 			t.Errorf("file left behind: %s", p)
 		}
 		return nil
@@ -111,5 +114,41 @@ func TestDownloadReusesTheCache(t *testing.T) {
 	}
 	if _, err := os.Stat(out(t, v).Path); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestDownloadCorruptCacheEntryIsNotAMovedFile(t *testing.T) {
+	s := serve(t)
+	cache := t.TempDir()
+	url := s.URL + "/x.dmg"
+	v, err := configured(t, url, sum(body), cache).Execute()
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := out(t, v).Path
+	os.Chmod(p, 0o644)
+	if err := os.WriteFile(p, []byte("corrupt"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err = configured(t, url, sum(body), cache).Execute()
+	if err == nil {
+		t.Fatal("a corrupt cache entry must be refused")
+	}
+	if strings.Contains(err.Error(), "has changed since it was pinned") {
+		t.Errorf("a corrupt cache entry is not a moved file: %v", err)
+	}
+}
+
+func TestDownloadNormalisesAndValidatesSHA256(t *testing.T) {
+	var d Datasource
+	if err := d.Configure(map[string]interface{}{"url": "https://h/x.dmg", "sha256": strings.ToUpper(sum(body))}); err != nil {
+		t.Fatal(err)
+	}
+	if d.config.SHA256 != sum(body) {
+		t.Errorf("sha256 = %s, want lowercased", d.config.SHA256)
+	}
+	err := new(Datasource).Configure(map[string]interface{}{"url": "https://h/x.dmg", "sha256": "abc"})
+	if err == nil || !strings.Contains(err.Error(), "sha256") {
+		t.Errorf("short sha256: error = %v", err)
 	}
 }

@@ -9,8 +9,10 @@ package download
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
+	"regexp"
 	"strings"
 
 	"github.com/hashicorp/hcl/v2/hcldec"
@@ -53,6 +55,7 @@ func (d *Datasource) Configure(raws ...interface{}) error {
 	if err := configHelper.Decode(&d.config, nil, raws...); err != nil {
 		return err
 	}
+	d.config.SHA256 = strings.ToLower(d.config.SHA256)
 	var missing []string
 	if d.config.URL == "" {
 		missing = append(missing, "url")
@@ -63,8 +66,13 @@ func (d *Datasource) Configure(raws ...interface{}) error {
 	if len(missing) > 0 {
 		return fmt.Errorf("macosx-download: %s required", strings.Join(missing, " and "))
 	}
+	if !sha256Hex.MatchString(d.config.SHA256) {
+		return fmt.Errorf("macosx-download: sha256 %q must be 64 hex characters", d.config.SHA256)
+	}
 	return nil
 }
+
+var sha256Hex = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
 func (d *Datasource) OutputSpec() hcldec.ObjectSpec {
 	return new(DatasourceOutput).FlatMapstructure().HCL2Spec()
@@ -95,7 +103,8 @@ func (d *Datasource) Execute() (cty.Value, error) {
 		Filename: name,
 	})
 	if err != nil {
-		if strings.Contains(err.Error(), "checksum mismatch") {
+		var moved *fetch.DownloadMismatchError
+		if errors.As(err, &moved) {
 			err = fmt.Errorf("%w: the file at this URL has changed since it was pinned; a newer release of packer-plugin-macosx may pin it", err)
 		}
 		return null, err

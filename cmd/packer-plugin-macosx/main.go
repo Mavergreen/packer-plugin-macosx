@@ -29,12 +29,13 @@ import (
 func main() {
 	pps := plugin.NewSet()
 	pps.RegisterDatasource("mavericks-installesd", new(installesd.Datasource))
-	pps.RegisterDatasource("download", new(download.Datasource))
 	pps.RegisterDatasource("mavericks-firmware", new(firmware.Datasource))
 	pps.RegisterDatasource("mavericks-media", new(media.Datasource))
 	pps.RegisterDatasource("snowleopard-installer", new(snowleopardinstaller.Datasource))
 	pps.RegisterDatasource("snowleopard-firmware", &firmware.Datasource{Release: fw.SnowLeopard})
 	pps.RegisterDatasource("snowleopard-media", new(snowleopardmedia.Datasource))
+	// The generic pinned download, not tied to a release.
+	pps.RegisterDatasource("download", new(download.Datasource))
 	pps.SetVersion(version.PluginVersion)
 	if err := pps.Run(); err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
