@@ -16,6 +16,7 @@ import (
 
 	"github.com/hashicorp/packer-plugin-sdk/plugin"
 
+	"github.com/Mavergreen/packer-plugin-macosx/datasource/download"
 	"github.com/Mavergreen/packer-plugin-macosx/datasource/firmware"
 	"github.com/Mavergreen/packer-plugin-macosx/datasource/installesd"
 	"github.com/Mavergreen/packer-plugin-macosx/datasource/media"
@@ -28,6 +29,7 @@ import (
 func main() {
 	pps := plugin.NewSet()
 	pps.RegisterDatasource("mavericks-installesd", new(installesd.Datasource))
+	pps.RegisterDatasource("download", new(download.Datasource))
 	pps.RegisterDatasource("mavericks-firmware", new(firmware.Datasource))
 	pps.RegisterDatasource("mavericks-media", new(media.Datasource))
 	pps.RegisterDatasource("snowleopard-installer", new(snowleopardinstaller.Datasource))
