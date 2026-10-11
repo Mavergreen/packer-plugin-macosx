@@ -33,7 +33,10 @@ content is Wowfunhappy's Aqua Transport with its ModernRootCertificates.
      verdict fails the build before anything is packaged.
    - It zeroes free space and packages a standalone box,
      `output/mavericks-10.9.5-aquatransport-libvirt.box`, carrying the base
-     box's own Vagrantfile and firmware files.
+     box's firmware files and its Vagrantfile, behind the vagrant
+     post-processor's own libvirt stanza: one more such stanza for each
+     layer, which vagrant-qemu ignores (the box's Vagrantfile has
+     `config.vm.provider :libvirt` at lines 5 and 17).
 3. **The pin lives in the template's directory**, which ships alone:
    `aquatransport.pkr.hcl` holds the URL, version and SHA-256. The data
    source `macosx-download` fetches the DMG into the builder's Packer
@@ -168,8 +171,8 @@ three times, each a new VM. The first came up in 55 s. In the first and
 the third, `/usr/bin/curl -sS -o /dev/null` exited 0 for all three URLs.
 `github.com` and `downloads.claude.ai` answered 200, and
 `release-assets.githubusercontent.com/` 404, past a verified handshake.
-The first `vagrant destroy -f` printed a Ruby backtrace, from Vagrant's
-`machine.rb` `action`, and left the machine stopped, not destroyed; a
+The first `vagrant destroy -f` printed a Ruby backtrace (its origin in
+Vagrant was not recorded) and left the machine stopped, not destroyed; a
 second `vagrant destroy -f` destroyed it. Only the backtrace's tail was
 kept, and two more up-and-destroy runs did not repeat it. Its cause is
 unknown: an unexplained one-off, not shown to be harmless.

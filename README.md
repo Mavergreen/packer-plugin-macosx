@@ -58,9 +58,13 @@ it. Unpack your Mavericks box, then build the layer over it:
 ```sh
 mkdir mavericks-base
 tar -xzf /path/to/output/mavericks-10.9.5-libvirt.box -C mavericks-base
-packer init .
+packer init -upgrade .
 packer build -var base_box=mavericks-base .
 ```
+
+`-upgrade` matters here: the layer needs the plugin release its template came
+with, and a plain `packer init` keeps the older plugin you built the base box
+with, which fails with "Unknown data type macosx-download".
 
 That makes `output/mavericks-10.9.5-aquatransport-libvirt.box` in a few
 minutes. The build restarts the guest, checks it, and makes no box unless

@@ -692,7 +692,9 @@ print('ok')
     # The forms measured on 2026-09-27 (docs/test-hosts.md): the box is
     # added from the build's own output/, and a plain `vagrant up` would
     # pick whatever default provider is installed.
-    run head -100 "$REPO/README.md"
+    # (The first 110 lines: the quickstart sits after the Snow Leopard and
+    # Aqua Transport build sections.)
+    run head -110 "$REPO/README.md"
     [[ "$output" == *"packer init"* ]] || false
     [[ "$output" == *"packer build"* ]] || false
     [[ "$output" == *"vagrant plugin install vagrant-qemu"* ]] || false
