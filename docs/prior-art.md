@@ -142,6 +142,27 @@ infinitemac.org runs classic Mac OS and PowerPC Mac OS X, up to 10.4, in
 a browser (INHERITED, not verified here). Prior art for a PowerPC Tiger,
 not for an Intel 10.6 under KVM.
 
+### The RTC's I/O length: QEMU's source, and a 2017 forum post
+
+Read 2026-10-10, after the cause was found here (`docs/decisions/0015`),
+which is again the wrong order.
+
+- **QEMU** (`hw/rtc/mc146818rtc.c`, `rtc_build_aml`, v8.2.2) says it
+  outright: "Reserving 8 io ports here, following what physical hardware
+  does, even though qemu only responds to the first two ports." Its CMOS
+  is `cmos_data[128]`, one bank.
+- **vandroiy2012 on InsanelyMac, 2017-11-14** ("need cmos reset after
+  sleep only after login"): for a real PC that needed a CMOS reset after
+  sleep, a DSDT edit giving the RTC's `IO` a length of `0x02` (INHERITED,
+  not verified here). The same edit, for another reason. That post also changes the
+  alignment to `0x00`; this project changes only the length.
+- **Dortania's OpenCore Post-Install guide** ("Fixing RTC write issues")
+  covers the other route, `RTCMemoryFixup` and `rtc-blacklist`, which
+  stop `AppleRTC` writing chosen offsets. It does not address reads from
+  a bank that is not there, and it needs a kext.
+
+None of them mentions 10.6's `configd` crash, or a QEMU guest.
+
 ## Installer media
 
 ### Mavericks Forever `get.sh`

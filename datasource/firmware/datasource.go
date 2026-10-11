@@ -78,7 +78,7 @@ type DatasourceOutput struct {
 // The goldens part is the digest of that code's goldens (recipe_test.go's
 // recipeGoldens), and TestRecipePinsTheGoldens fails when they change
 // and this does not.
-const recipe = "1 goldens:956c273101856ce4"
+const recipe = "2 goldens:66c6b9e67118289c"
 
 // Datasource is a release's firmware data source: mavericks-firmware
 // when Release is zero, snowleopard-firmware with firmware.SnowLeopard.

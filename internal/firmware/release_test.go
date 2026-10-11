@@ -3,6 +3,7 @@ package firmware
 import (
 	"context"
 	"io/fs"
+	"reflect"
 	"regexp"
 	"strings"
 	"testing"
@@ -55,6 +56,44 @@ func TestSnowLeopardConfigDiffersOnlyAsDocumented(t *testing.T) {
 	}
 	if normalize(mav) != normalize(sl) {
 		t.Fatal("10.6's config.plist differs from 10.9's beyond the documented changes")
+	}
+}
+
+// TestEveryReleaseShrinksTheRTCToTheBankQEMUHas: QEMU's DSDT gives the
+// RTC (PNP0B00) ports 0x70 through 0x77, but QEMU answers only 0x70 and
+// 0x71, one 128-byte CMOS bank. Told of eight ports, AppleRTC reads its
+// sleep trace point from a second bank nothing answers, gets all ones,
+// and every boot reports a sleep failure with every PCI device at fault:
+// 10.6's configd then indexes past the end of PCITopLevel and crashes
+// until it happens to survive, so the guest often never configures its
+// network (MEASURED 2026-10-10, docs/decisions/0015). Every release carries the one DSDT patch that
+// shortens the RTC's I/O descriptor to two ports, and nothing else in
+// ACPI>Patch.
+func TestEveryReleaseShrinksTheRTCToTheBankQEMUHas(t *testing.T) {
+	for _, r := range []Release{Mavericks, SnowLeopard} {
+		patches, ok := plistPath(t, parsePlist(t, releasePlist(t, r)), "ACPI", "Patch").([]any)
+		if !ok || len(patches) != 1 {
+			t.Errorf("%s: ACPI>Patch has %d entries; want exactly the RTC one", r.Name, len(patches))
+			continue
+		}
+		p, _ := patches[0].(map[string]any)
+		// IO (Decode16, 0x0070, 0x0070, 0x01, Length): the length is the last byte.
+		want := map[string]any{
+			"Enabled":        true,
+			"TableSignature": []byte("DSDT"),
+			"Find":           []byte{0x47, 0x01, 0x70, 0x00, 0x70, 0x00, 0x01, 0x08},
+			"Replace":        []byte{0x47, 0x01, 0x70, 0x00, 0x70, 0x00, 0x01, 0x02},
+			"Count":          int64(1),
+			"Skip":           int64(0),
+			"Limit":          int64(0),
+			"Mask":           []byte{},
+			"ReplaceMask":    []byte{},
+		}
+		for k, v := range want {
+			if !reflect.DeepEqual(p[k], v) {
+				t.Errorf("%s: ACPI>Patch[0]>%s = %v; want %v", r.Name, k, p[k], v)
+			}
+		}
 	}
 }
 

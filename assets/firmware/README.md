@@ -102,6 +102,35 @@ is the list.
 
 ---
 
+## ACPI
+
+### `ACPI > Patch` — the RTC's I/O length, 8 to 2
+
+**Evidence: observation, and QEMU's own source.** One DSDT patch, in
+both this file and `snowleopard/config.plist`: find
+`47 01 70 00 70 00 01 08`, replace with `47 01 70 00 70 00 01 02`, once.
+Those eight bytes are the RTC's (`PNP0B00`) `IO (Decode16, 0x0070,
+0x0070, 0x01, 0x08)`, and the last one is its length. They occur once in
+QEMU's q35 DSDT for both releases.
+
+QEMU declares eight ports, "following what physical hardware does, even
+though qemu only responds to the first two" (`hw/rtc/mc146818rtc.c`,
+`rtc_build_aml`, in 8.2.2): one 128-byte CMOS bank. Apple's `AppleRTC`
+takes eight ports to mean two banks, and keeps its sleep trace point in
+the second, where every read from the unanswered ports `0x72`/`0x73`
+returns `0xFF`. So every boot, the kernel logs `Sleep failure code
+0xffffffff 0xffffffff` and publishes `PMStatusCode` as all ones: a sleep
+failure in every phase, with every PCI device to blame. 10.6.0's
+`configd` indexes past the end of `PCITopLevel` by those bits and crashes,
+over and over, so the guest never configures its network; 10.9's `powerd`
+bounds its loop and survives, but publishes a bogus
+`PriorBootSleepFailure` every boot. With two ports, `AppleRTC` uses the one
+bank there is, and none of it happens (`docs/decisions/0015`).
+
+The same edit has been made on real PCs: an InsanelyMac post of
+2017-11-14 shortens the RTC's `IO` to two ports for one that needed a
+CMOS reset after sleep (`docs/prior-art.md`).
+
 ## Kernel
 
 ### `Kernel > Add` — `Lilu.kext`, then `VirtualSMC.kext`

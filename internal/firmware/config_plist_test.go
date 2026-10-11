@@ -2,6 +2,7 @@ package firmware
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/xml"
 	"strconv"
 	"strings"
@@ -14,9 +15,10 @@ import (
 // (smbios_test.go) already holds it.
 
 // parsePlist decodes an Apple XML property list's root <dict> into plain
-// Go values: string, int64, bool, map[string]any (dict) and []any
-// (array). Only the shapes config.plist actually uses are handled; any
-// other element (<real>, <date>, <data>, ...) is skipped, not decoded.
+// Go values: string, int64, bool, map[string]any (dict), []any (array)
+// and []byte (data). Only the shapes config.plist actually uses are
+// handled; any other element (<real>, <date>, ...) is skipped, not
+// decoded.
 func parsePlist(t *testing.T, b []byte) map[string]any {
 	t.Helper()
 	dec := xml.NewDecoder(bytes.NewReader(b))
@@ -112,6 +114,16 @@ func decodePlistValue(t *testing.T, dec *xml.Decoder, start xml.StartElement) an
 			t.Fatalf("config.plist: integer %q: %v", s, err)
 		}
 		return n
+	case "data":
+		var s string
+		if err := dec.DecodeElement(&s, &start); err != nil {
+			t.Fatalf("config.plist: %v", err)
+		}
+		b, err := base64.StdEncoding.DecodeString(strings.Join(strings.Fields(s), ""))
+		if err != nil {
+			t.Fatalf("config.plist: data %q: %v", s, err)
+		}
+		return b
 	case "true", "false":
 		if err := dec.Skip(); err != nil {
 			t.Fatalf("config.plist: %v", err)

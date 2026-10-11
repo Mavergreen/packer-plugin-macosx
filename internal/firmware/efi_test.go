@@ -326,7 +326,7 @@ func TestEFIImageLayout(t *testing.T) {
 // (a known answer). It moves only with a deliberate change to the
 // image's format or to assets/firmware/config.plist; say which in the
 // commit.
-const goldenEFIImage = "3056088d56ce9cf53030b98e6d9888c67bec8feaa94306af3fb1dc5cb64198b4"
+const goldenEFIImage = "1434acd99cb2001c7e31e3fc03d0c7ea00396e907f9e50a0ce21e00fc21fd5c5"
 
 func TestEFIImageIsDeterministic(t *testing.T) {
 	f := newFixture(t)

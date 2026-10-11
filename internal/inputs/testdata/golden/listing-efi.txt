@@ -1,4 +1,4 @@
-config.plist	49f4bcfd6d7e5e4f706820c2d495bf596044adab122a865e35b4f6b627aba4d8
+config.plist	ff489532e44bd93754fca2ac4caf8c268eb55d6ea7c2e52c4a370eab98967a87
 opencore-artifacts	absent
 smbios	iMac14,2
 source:lilu-release	53967d7dcfaab01023a33df2e969a89522f13d6654a6a56ac4711b62dabf3ab8
