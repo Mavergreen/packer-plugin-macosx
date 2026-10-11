@@ -762,5 +762,7 @@ print('ok')
     f="$REPO/.github/workflows/release.yml"
     grep -q 'bin/base-recipe.sh' "$f"
     grep -q '_mavericks_base_recipe.txt' "$f"
-    grep -A12 'base recipe' "$f" | grep -q 'SHA256SUMS'
+    step="$(awk '/- name: Publish the base recipe/{on=1;next} on&&/^      - /{exit} on' "$f")"
+    [ -n "$step" ]
+    [[ "$step" == *SHA256SUMS* ]] || false
 }

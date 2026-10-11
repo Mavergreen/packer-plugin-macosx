@@ -11,13 +11,13 @@ setup() {
     (
         cd "$T" || exit 1
         git init -q . && git config user.email t@example.com && git config user.name t
-        mkdir -p go-dir cmd/x internal/fetch datasource/y assets/pins templates/mavericks \
+        mkdir -p components/openssh cmd/x internal/fetch datasource/y assets/pins templates/mavericks \
             templates/mavericks-aquatransport docs
         echo mod > go.mod; echo sum > go.sum
         echo a > cmd/x/main.go; echo a > cmd/x/main_test.go
         echo a > internal/fetch/get.go; echo a > datasource/y/y.go
         mkdir -p internal/fetch/testdata; echo a > internal/fetch/testdata/f
-        echo a > assets/pins/sources.tsv
+        echo a > assets/pins/sources.tsv; echo 1 > components/openssh/version; echo a > embed.go
         echo a > templates/mavericks/verify.sh
         echo a > templates/mavericks-aquatransport/layer.sh
         echo a > docs/d.md; echo a > README.md
@@ -90,4 +90,14 @@ change() { # change FILE: edit it and commit
 @test "the script is POSIX sh and carries the platform header" {
     head -3 "$REPO/bin/base-recipe.sh" | grep -q '^#!/bin/sh'
     grep -q '^# platform: host-agnostic' "$REPO/bin/base-recipe.sh"
+}
+
+@test "a commit that changes components/openssh/version changes it" {
+    before="$(recipe)"; change components/openssh/version
+    [ "$(recipe)" != "$before" ]
+}
+
+@test "a commit that changes embed.go changes it" {
+    before="$(recipe)"; change embed.go
+    [ "$(recipe)" != "$before" ]
 }
