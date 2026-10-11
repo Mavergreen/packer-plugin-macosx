@@ -25,6 +25,7 @@ moving must never cut a release.
 - openssh: components/openssh/version
 - opencore-config: assets/firmware/config.plist
 - opencore-config-snowleopard: assets/firmware/snowleopard/config.plist
+- aquatransport: templates/mavericks-aquatransport/aquatransport.pkr.hcl
 
 ## What a bump does here is not what it does in a sibling
 
@@ -103,6 +104,7 @@ untouched by any of this: they were never an argument about publishing.
 | **ocbuild `efibuild.sh`** (Tier 0, build script) | `assets/pins/sources.tsv` `ocbuild-efibuild` | ❌ **untrackable.** A `raw.githubusercontent.com` URL at a commit on `master`; there are no releases and no tags to track. Upstream's `build_oc.tool` fetches it off `master` and `eval`s it. **Compensates:** pinned commit and checksum, and `assets/firmware/patches/0001-*` makes `build_oc.tool` read the pinned copy rather than fetch one | Deliberate, alongside OpenCore |
 | **Lilu** (SMC injection, Tier 1 release binary) | `assets/pins/sources.tsv` `lilu-release` | ✅ `github-releases` on `acidanthera/Lilu`, with an `autoReplaceStringTemplate` — the version appears **twice** in one URL and a manager that rewrote only the captured occurrence would leave a half-updated URL that 404s. **Automerge off** | A new kext in every future guest. Re-pin the checksum; re-read `assets/firmware/README.md`, which records how each version's 10.9 (Darwin 13) support was checked |
 | **VirtualSMC** (Tier 1 release binary) | `assets/pins/sources.tsv` `virtualsmc-release` | ✅ as Lilu | as Lilu |
+| **Aqua Transport** (Mavericks Forever; outbound TLS for the guest, installed by `templates/mavericks-aquatransport`) | `templates/mavericks-aquatransport/aquatransport.pkr.hcl` `aquatransport_version`, `aquatransport_sha256` | ✅ a `regex` manager on the `custom.aquatransport` datasource, name `Wowfunhappy/AquaTransport`. The download's one URL is **overwritten in place**, so there is no feed to track: `aquatransport-observer.yml` records each version and digest on the `aquatransport-observed` branch and Renovate reads that, moving the version and the SHA-256 in one match. **Automerge off** — see below | Future layered guests install the new Aqua Transport. By hand: read what changed upstream, boot a guest on it, then merge. The data source refuses any bytes but the pinned SHA-256, so a stale pin fails the build rather than installing something unreviewed |
 | **`assets/firmware/config.plist`** (OpenCore's configuration) | ours, in-tree | n/a — we author it | Changes how every future guest boots. Its sha256 is a row of the firmware's input listing, so a change rebuilds the EFI image |
 | **Apple's `InstallESD.dmg`, 10.9.5** | `assets/pins/sources.tsv` `apple-installesd-10.9.5` | ❌ **untrackable, and deliberately so.** Apple publishes no feed, and the pin names one immutable build: 10.9.5 is 10.9.5 forever. **Compensates:** the transfer is plain HTTP after an `osrecovery.apple.com` AssetToken handshake, so the checksum is the only integrity there is, and `mavericks-installesd` enforces it | Never bumps. **Never enters the repository, in any form** — `bin/no-apple-bytes.sh` is the gate |
 | **Apple's 10.6.8 combo update and Security Update 2013-004**, the last ones shipped for 10.6 (`snowleopard-media`'s `updates = "security"`, the default) | `assets/pins/sources.tsv` `apple-*-combo-10.6.8`, `apple-secupd-2013-004-snowleopard` | ❌ **untrackable, and deliberately so**, as for 10.9's: frozen artifacts of a discontinued product line. **Compensates:** each sha256 is the identity, verified on every fetch, and the pins are rows of the media's input listing | Never bumps. **Never enters the repository** -- fetched at build time from Apple's CDN on the user's machine |
@@ -135,6 +137,11 @@ a repo to state a reason wherever it restricts that. Ours:
   failure in someone's build into a red PR.
 - **It changes what every future guest boots**, per the section above — a
   human should see that happen.
+- **Aqua Transport is the same shape.** It patches `Security.framework`
+  on the guest, so a bump that downloads and hashes correctly can still
+  leave a guest that cannot make an outbound TLS connection, and nothing in
+  CI boots one. Its digest does arrive with the bump, because the observer
+  records it, but a correct digest is not a working guest. It lands by hand.
 
 ## Conformance deviations
 

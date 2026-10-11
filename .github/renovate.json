@@ -1,6 +1,12 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["github>Mavergreen/shipyard"],
+  "customDatasources": {
+    "aquatransport": {
+      "defaultRegistryUrlTemplate": "https://raw.githubusercontent.com/Mavergreen/packer-plugin-macosx/aquatransport-observed/aquatransport.json",
+      "format": "json"
+    }
+  },
   "customManagers": [
     {
       "customType": "regex",
@@ -65,6 +71,17 @@
       "datasourceTemplate": "github-releases",
       "versioningTemplate": "hashicorp",
       "extractVersionTemplate": "^v(?<version>.*)$"
+    },
+    {
+      "customType": "regex",
+      "description": "Aqua Transport (Mavericks Forever), the guest's outbound TLS. Its one download URL is overwritten in place, so no feed names a release: aquatransport-observer.yml watches the live download and records each version and digest on the aquatransport-observed branch, and this reads that branch. The version and the SHA-256 are captured in one match, so they move together; a bump that changes only the bytes arrives as a digest-only update.",
+      "managerFilePatterns": ["/^templates/mavericks-aquatransport/aquatransport\\.pkr\\.hcl$/"],
+      "matchStrings": [
+        "aquatransport_version\\s*=\\s*\"(?<currentValue>[^\"]+)\"[\\s\\S]*?aquatransport_sha256\\s*=\\s*\"(?<currentDigest>[0-9a-f]{64})\""
+      ],
+      "datasourceTemplate": "custom.aquatransport",
+      "depNameTemplate": "Wowfunhappy/AquaTransport",
+      "versioningTemplate": "regex:^(?<major>\\d{4})\\.(?<minor>\\d{2})\\.(?<patch>\\d{2})$"
     }
   ],
   "packageRules": [
@@ -75,6 +92,11 @@
         "acidanthera/Lilu",
         "acidanthera/VirtualSMC"
       ],
+      "automerge": false
+    },
+    {
+      "description": "Aqua Transport patches Security.framework on the guest. Nothing in CI boots a guest yet, so a green bump proves only that the pin parses. This lands by hand, after a person reads what changed and boots a guest on it, until CI can.",
+      "matchDepNames": ["Wowfunhappy/AquaTransport"],
       "automerge": false
     }
   ]

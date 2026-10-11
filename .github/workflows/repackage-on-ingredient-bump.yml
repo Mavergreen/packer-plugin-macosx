@@ -12,6 +12,7 @@ on:
       - components/**
       - assets/firmware/config.plist
       - assets/firmware/snowleopard/config.plist
+      - templates/mavericks-aquatransport/aquatransport.pkr.hcl
 jobs:
   repackage:
     permissions:
