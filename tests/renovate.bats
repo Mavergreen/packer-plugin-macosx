@@ -10,32 +10,49 @@ setup() {
     REPO="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
 }
 
-# pyget EXPR: evaluate a Python expression over c (the renovate.json) and
-# print it.
+# pyget WHAT: print one field of renovate.json. WHAT is a fixed key:
+# manager.<field>, rule.<field>, or datasource.<field>. A missing manager or
+# rule fails with a readable message, not a traceback.
 pyget() {
     python3 -I -c '
 import json, sys
 c = json.load(open(sys.argv[1]))
-m = [x for x in c["customManagers"] if x.get("depNameTemplate") == "Wowfunhappy/AquaTransport"][0]
-r = [x for x in c["packageRules"] if "Wowfunhappy/AquaTransport" in x.get("matchDepNames", [])][0]
-print(eval(sys.argv[2]))
+what, field = sys.argv[2].split(".", 1)
+dep = "Wowfunhappy/AquaTransport"
+if what == "manager":
+    found = [x for x in c.get("customManagers", []) if x.get("depNameTemplate") == dep]
+elif what == "rule":
+    found = [x for x in c.get("packageRules", []) if dep in x.get("matchDepNames", [])]
+elif what == "datasource":
+    found = [c.get("customDatasources", {}).get("aquatransport", {})] if "aquatransport" in c.get("customDatasources", {}) else []
+else:
+    sys.exit("pyget: unknown selector " + what)
+if not found:
+    sys.exit("renovate.json has no " + what + " for " + dep)
+if field not in found[0]:
+    sys.exit("the " + what + " for " + dep + " has no field " + field)
+print(found[0][field])
 ' "$REPO/.github/renovate.json" "$1"
 }
 
 @test "the manager reads the template's pin file" {
-    [ "$(pyget 'm["managerFilePatterns"][0]')" = '/^templates/mavericks-aquatransport/aquatransport\.pkr\.hcl$/' ]
+    [ "$(pyget manager.managerFilePatterns | python3 -I -c 'import ast,sys;print(ast.literal_eval(sys.stdin.read())[0])')" = '/^templates/mavericks-aquatransport/aquatransport\.pkr\.hcl$/' ]
 }
 
 @test "the manager uses the observer's datasource, name and versioning" {
-    [ "$(pyget 'm["datasourceTemplate"]')" = "custom.aquatransport" ]
-    [ "$(pyget 'm["versioningTemplate"]')" = 'regex:^(?<major>\d{4})\.(?<minor>\d{2})\.(?<patch>\d{2})$' ]
+    [ "$(pyget manager.datasourceTemplate)" = "custom.aquatransport" ]
+    [ "$(pyget manager.versioningTemplate)" = 'regex:^(?<major>\d{4})\.(?<minor>\d{2})\.(?<patch>\d{2})$' ]
 }
 
 @test "the datasource is the observer's branch, exactly" {
-    [ "$(pyget 'c["customDatasources"]["aquatransport"]["defaultRegistryUrlTemplate"]')" = "https://raw.githubusercontent.com/Mavergreen/packer-plugin-macosx/aquatransport-observed/aquatransport.json" ]
+    [ "$(pyget datasource.defaultRegistryUrlTemplate)" = "https://raw.githubusercontent.com/Mavergreen/packer-plugin-macosx/aquatransport-observed/aquatransport.json" ]
+    [ "$(pyget datasource.format)" = "json" ]
 }
 
 @test "the regex captures currentValue and currentDigest, and matches the real pin" {
+    # Python's re proves the pattern's captures against the real pin file;
+    # RE2 (Renovate's engine) acceptance is proved by the local Renovate
+    # lookup recorded in .superpowers/sdd/plan-1-plugin/task-6-report.md.
     run python3 -I -c '
 import json, re, sys
 c = json.load(open(sys.argv[1]))
@@ -52,12 +69,12 @@ assert re.fullmatch(r"[0-9a-f]{64}", g["currentDigest"]), g
 }
 
 @test "Aqua Transport does not automerge, and says why" {
-    [ "$(pyget 'r["automerge"]')" = "False" ]
-    [ -n "$(pyget 'r["description"]')" ]
+    [ "$(pyget rule.automerge)" = "False" ]
+    [ -n "$(pyget rule.description)" ]
 }
 
 @test "the manager says why it exists" {
-    [ -n "$(pyget 'm["description"]')" ]
+    [ -n "$(pyget manager.description)" ]
 }
 
 @test "repackage-on-ingredient-bump watches the pin file" {
