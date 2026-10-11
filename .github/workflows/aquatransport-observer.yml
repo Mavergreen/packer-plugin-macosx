@@ -6,8 +6,9 @@ name: aquatransport-observer
 # SHA-256. Two jobs, so upstream's bytes are never beside a token that can write (the family's rule; see
 # mavergreen-swift's pins-bot.yml header):
 # - observe (contents: read) downloads the DMG and reads it with 7z -- read, never run -- and uploads only a small
-#   JSON, plus a copy of bin/observe-aquatransport.sh from this checkout of main.
-# - publish (contents: write) touches no upstream byte: it merges that JSON into the branch's aquatransport.json
+#   JSON.
+# - publish (contents: write) touches no upstream byte and runs only code checked out at github.sha, never anything from
+#   the artifact: it merges that JSON into the branch's aquatransport.json
 #   (bin/observe-aquatransport.sh --merge keeps every version seen, each with its last-seen digest), and commits
 #   and pushes only if the file changed. It never checks out or pushes main; the first run creates the branch as
 #   an orphan.
@@ -38,7 +39,6 @@ jobs:
           set -eu
           mkdir out
           sh bin/observe-aquatransport.sh out/observed.json
-          cp bin/observe-aquatransport.sh out/
 
       - uses: actions/upload-artifact@v7
         with:
@@ -57,6 +57,13 @@ jobs:
           name: observed
           path: observed
 
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          path: src
+          persist-credentials: false
+          sparse-checkout: bin/observe-aquatransport.sh
+
       - name: Merge into the branch and push if it changed
         env:
           GH_TOKEN: ${{ github.token }}
@@ -66,15 +73,16 @@ jobs:
           branch=aquatransport-observed
           git init -q branch
           cd branch
-          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git"
-          if git ls-remote --exit-code --heads origin "$branch" >/dev/null; then
-            git fetch -q --depth=1 origin "$branch"
+          url="https://github.com/${REPO}.git"
+          auth="http.https://github.com/.extraheader=AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          if git -c "$auth" ls-remote --exit-code --heads "$url" "$branch" >/dev/null; then
+            git -c "$auth" fetch -q --depth=1 "$url" "$branch"
             git checkout -q -b "$branch" FETCH_HEAD
           else
             git checkout -q --orphan "$branch"
           fi
           [ -f aquatransport.json ] || : > aquatransport.json
-          sh ../observed/observe-aquatransport.sh --merge aquatransport.json ../observed/observed.json ../merged.json
+          sh ../src/bin/observe-aquatransport.sh --merge aquatransport.json ../observed/observed.json ../merged.json
           if cmp -s ../merged.json aquatransport.json; then
             echo "Nothing new."
             exit 0
@@ -84,4 +92,4 @@ jobs:
           git add aquatransport.json
           git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
             commit -q -m "observe: AquaTransport ${version% *} (${version#* })"
-          git push origin "HEAD:refs/heads/${branch}"
+          git -c "$auth" push "$url" "HEAD:refs/heads/${branch}"

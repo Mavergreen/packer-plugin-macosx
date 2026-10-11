@@ -39,6 +39,7 @@ for a in "$@"; do
 done
 case "$cmd:$file" in
 l:*.dmg)
+    head -c 5 "$file" | grep -q '<html' && exit 2
     echo "AquaTransport/Readme.rtf"
     [ "$STUB_DMG_PKG" = yes ] && echo "AquaTransport/AquaTransport.pkg"
     exit 0 ;;
@@ -74,7 +75,20 @@ sha_of_body() { sha256sum "$STUB_BODY" | cut -d' ' -f1; }
 
 @test "an HTML body writes nothing and fails" {
     { echo '<html>'; head -c 2097152 /dev/zero | tr '\0' 'x'; } > "$STUB_BODY"
-    STUB_DMG_PKG=no run "$SCRIPT" "$BATS_TEST_TMPDIR/out.json"
+    run "$SCRIPT" "$BATS_TEST_TMPDIR/out.json"
+    [ "$status" -ne 0 ]
+    [ ! -e "$BATS_TEST_TMPDIR/out.json" ]
+}
+
+@test "an HTTP error (curl -f exits 22) writes nothing and fails" {
+    printf '#!/bin/sh\nexit 22\n' > "$STUBS/curl"
+    run "$SCRIPT" "$BATS_TEST_TMPDIR/out.json"
+    [ "$status" -ne 0 ]
+    [ ! -e "$BATS_TEST_TMPDIR/out.json" ]
+}
+
+@test "observe mode rejects extra arguments" {
+    run "$SCRIPT" "$BATS_TEST_TMPDIR/out.json" extra
     [ "$status" -ne 0 ]
     [ ! -e "$BATS_TEST_TMPDIR/out.json" ]
 }
@@ -113,38 +127,54 @@ merge_versions() {
 }
 
 @test "--merge appends a new version, sorted ascending" {
-    echo '{"releases":[{"version":"2026.10.09","digest":"bb"},{"version":"2026.08.01","digest":"aa"}]}' > "$BATS_TEST_TMPDIR/e.json"
-    echo '{"releases":[{"version":"2026.11.02","digest":"cc"}]}' > "$BATS_TEST_TMPDIR/n.json"
+    echo '{"releases":[{"version":"2026.10.09","digest":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},{"version":"2026.08.01","digest":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]}' > "$BATS_TEST_TMPDIR/e.json"
+    echo '{"releases":[{"version":"2026.11.02","digest":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"}]}' > "$BATS_TEST_TMPDIR/n.json"
     run "$SCRIPT" --merge "$BATS_TEST_TMPDIR/e.json" "$BATS_TEST_TMPDIR/n.json" "$BATS_TEST_TMPDIR/o.json"
     [ "$status" -eq 0 ]
-    [ "$(merge_versions "$BATS_TEST_TMPDIR/o.json")" = "2026.08.01=aa 2026.10.09=bb 2026.11.02=cc" ]
+    [ "$(merge_versions "$BATS_TEST_TMPDIR/o.json")" = "2026.08.01=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa 2026.10.09=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb 2026.11.02=cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc" ]
 }
 
 @test "--merge replaces the same version's digest" {
-    echo '{"releases":[{"version":"2026.10.09","digest":"old"},{"version":"2026.08.01","digest":"aa"}]}' > "$BATS_TEST_TMPDIR/e.json"
-    echo '{"releases":[{"version":"2026.10.09","digest":"new"}]}' > "$BATS_TEST_TMPDIR/n.json"
+    echo '{"releases":[{"version":"2026.10.09","digest":"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"},{"version":"2026.08.01","digest":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]}' > "$BATS_TEST_TMPDIR/e.json"
+    echo '{"releases":[{"version":"2026.10.09","digest":"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"}]}' > "$BATS_TEST_TMPDIR/n.json"
     run "$SCRIPT" --merge "$BATS_TEST_TMPDIR/e.json" "$BATS_TEST_TMPDIR/n.json" "$BATS_TEST_TMPDIR/o.json"
     [ "$status" -eq 0 ]
-    [ "$(merge_versions "$BATS_TEST_TMPDIR/o.json")" = "2026.08.01=aa 2026.10.09=new" ]
+    [ "$(merge_versions "$BATS_TEST_TMPDIR/o.json")" = "2026.08.01=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa 2026.10.09=eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee" ]
 }
 
 @test "--merge with an empty or missing existing file is just the new entry" {
-    echo '{"releases":[{"version":"2026.10.09","digest":"new"}]}' > "$BATS_TEST_TMPDIR/n.json"
+    echo '{"releases":[{"version":"2026.10.09","digest":"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"}]}' > "$BATS_TEST_TMPDIR/n.json"
     : > "$BATS_TEST_TMPDIR/empty.json"
     run "$SCRIPT" --merge "$BATS_TEST_TMPDIR/empty.json" "$BATS_TEST_TMPDIR/n.json" "$BATS_TEST_TMPDIR/o1.json"
     [ "$status" -eq 0 ]
-    [ "$(merge_versions "$BATS_TEST_TMPDIR/o1.json")" = "2026.10.09=new" ]
+    [ "$(merge_versions "$BATS_TEST_TMPDIR/o1.json")" = "2026.10.09=eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee" ]
     run "$SCRIPT" --merge "$BATS_TEST_TMPDIR/absent.json" "$BATS_TEST_TMPDIR/n.json" "$BATS_TEST_TMPDIR/o2.json"
     [ "$status" -eq 0 ]
-    [ "$(merge_versions "$BATS_TEST_TMPDIR/o2.json")" = "2026.10.09=new" ]
+    [ "$(merge_versions "$BATS_TEST_TMPDIR/o2.json")" = "2026.10.09=eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee" ]
 }
 
 @test "--merge with malformed existing JSON fails and writes nothing" {
     echo '{"releases":[' > "$BATS_TEST_TMPDIR/e.json"
-    echo '{"releases":[{"version":"2026.10.09","digest":"new"}]}' > "$BATS_TEST_TMPDIR/n.json"
+    echo '{"releases":[{"version":"2026.10.09","digest":"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"}]}' > "$BATS_TEST_TMPDIR/n.json"
     run "$SCRIPT" --merge "$BATS_TEST_TMPDIR/e.json" "$BATS_TEST_TMPDIR/n.json" "$BATS_TEST_TMPDIR/o.json"
     [ "$status" -ne 0 ]
     [ ! -e "$BATS_TEST_TMPDIR/o.json" ]
+}
+
+@test "--merge refuses an invalid NEW and writes nothing" {
+    good="$(printf 'e%.0s' $(seq 64))"
+    echo '{"releases":[]}' > "$BATS_TEST_TMPDIR/e.json"
+    n=0
+    for bad in '{}' \
+        "{\"releases\":[{\"version\":\"latest\",\"digest\":\"$good\"}]}" \
+        '{"releases":[{"version":"2026.10.09","digest":5}]}' \
+        '{"releases":[{"version":"2026.10.09","digest":"xyz"}]}'; do
+        n=$((n+1))
+        echo "$bad" > "$BATS_TEST_TMPDIR/n.json"
+        run "$SCRIPT" --merge "$BATS_TEST_TMPDIR/e.json" "$BATS_TEST_TMPDIR/n.json" "$BATS_TEST_TMPDIR/o$n.json"
+        [ "$status" -ne 0 ]
+        [ ! -e "$BATS_TEST_TMPDIR/o$n.json" ]
+    done
 }
 
 # The workflow
@@ -184,10 +214,29 @@ print("ok")'
     [ "$status" -ne 0 ]
 }
 
-@test "workflow: triggers are a daily schedule and workflow_dispatch" {
+@test "workflow: triggers are one daily cron and workflow_dispatch" {
     run wf '
 on = w.get("on", w.get(True))
-assert "schedule" in on and "workflow_dispatch" in on
+assert "workflow_dispatch" in on
+cron = [c["cron"] for c in on["schedule"]]
+assert len(cron) == 1 and cron[0].split()[2:] == ["*", "*", "*"], cron
 print("ok")'
+    [ "$status" -eq 0 ]
+    [ "$output" = ok ]
+}
+
+@test "workflow: publish runs nothing from the downloaded artifact and checks out only github.sha" {
+    run wf '
+steps = w["jobs"]["publish"]["steps"]
+for s in steps:
+    run = s.get("run", "")
+    for line in run.splitlines():
+        import re
+        assert not re.search(r"(\bsh|\bbash|\bsource|\bpython3?( -\w+)*|^\s*\.|\./)\s+\S*observed/\S*\.(sh|py)", line), line
+    if "checkout" in s.get("uses", ""):
+        assert s["with"]["ref"] == "${{ github.sha }}" and s["with"]["persist-credentials"] is False, s
+assert any("checkout" in s.get("uses", "") for s in steps)
+print("ok")'
+    [ "$status" -eq 0 ]
     [ "$output" = ok ]
 }

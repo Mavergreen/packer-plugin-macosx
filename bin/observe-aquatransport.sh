@@ -39,7 +39,7 @@ observe() {
     curl -fsSL --retry 3 -o "$work/AquaTransport.dmg" "$url" || observe_fail "download failed: $url"
     size=$(wc -c < "$work/AquaTransport.dmg")
     [ "$size" -ge 1048576 ] || observe_fail "download is only $size bytes"
-    7z l "$work/AquaTransport.dmg" 2>/dev/null | grep -q 'AquaTransport\.pkg' ||
+    7z l "$work/AquaTransport.dmg" 2>/dev/null | grep -Eq '(^|[ /])AquaTransport\.pkg$' ||
         observe_fail "the download lists no AquaTransport.pkg"
     7z x -y "-o$work/dmg" "$work/AquaTransport.dmg" >/dev/null 2>&1 || observe_fail "cannot unpack the DMG"
     pkg=$(find "$work/dmg" -name AquaTransport.pkg -type f | head -n 1)
@@ -72,6 +72,8 @@ def load(path, allow_empty):
     for r in rels:
         if not (isinstance(r["version"], str) and isinstance(r["digest"], str)):
             raise ValueError("bad release")
+        if not re.fullmatch(r"[0-9a-f]{64}", r["digest"]):
+            raise ValueError("bad digest")
         if not re.fullmatch(r"[0-9]{4}\.[0-9]{2}\.[0-9]{2}", r["version"]):
             raise ValueError("bad version")
     return rels
@@ -94,6 +96,7 @@ if [ -z "${OBSERVE_AQUATRANSPORT_LIB:-}" ]; then
         [ $# -eq 4 ] || observe_fail "usage: $0 --merge EXISTING.json NEW.json OUT.json"
         merge "$2" "$3" "$4" ;;
     -*|"") observe_fail "usage: $0 OUT.json | --merge EXISTING.json NEW.json OUT.json" ;;
-    *) observe "$1" ;;
+    *) [ $# -eq 1 ] || observe_fail "usage: $0 OUT.json"
+       observe "$1" ;;
     esac
 fi
