@@ -241,11 +241,6 @@ func variableShape(src []byte, b *hclsyntax.Block) map[string]string {
 	return shape
 }
 
-// TestTheBootVariablesMatchTheBaseTemplate: this template boots the base
-// template's own image, so the variables that say how to boot it -- and
-// how to log in -- are the base's, defaults and validations included. A
-// default changed in one and not the other would boot the layer a way the
-// base never was.
 // TestBaseBoxMarkerIsInTheBaseTemplatesVagrantfile ties base_box's
 // validation to the text it depends on: the header of the Vagrantfile
 // that templates/mavericks renders. The variable accepts a base box whose
@@ -288,6 +283,11 @@ func TestBaseBoxMarkerIsInTheBaseTemplatesVagrantfile(t *testing.T) {
 	}
 }
 
+// TestTheBootVariablesMatchTheBaseTemplate: this template boots the base
+// template's own image, so the variables that say how to boot it -- and
+// how to log in -- are the base's, defaults and validations included. A
+// default changed in one and not the other would boot the layer a way the
+// base never was.
 func TestTheBootVariablesMatchTheBaseTemplate(t *testing.T) {
 	shared := []string{"cpu", "memory", "cpus", "nic", "accelerator", "headless", "user", "ssh_private_key_file"}
 	baseSrc, base := parseHCL(t, "templates", "mavericks", "variables.pkr.hcl")
