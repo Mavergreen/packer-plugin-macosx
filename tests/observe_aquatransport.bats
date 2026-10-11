@@ -240,3 +240,34 @@ print("ok")'
     [ "$status" -eq 0 ]
     [ "$output" = ok ]
 }
+
+@test "workflow: both jobs have a timeout, and the download's curl has a --max-time" {
+    run wf '
+for j in ("observe", "publish"):
+    t = w["jobs"][j].get("timeout-minutes")
+    assert isinstance(t, int) and 0 < t <= 30, (j, t)
+print("ok")'
+    [ "$status" -eq 0 ]
+    [ "$output" = ok ]
+    run grep -nE 'curl .*--max-time [0-9]+' "$REPO/bin/observe-aquatransport.sh"
+    [ "$status" -eq 0 ]
+}
+
+@test "workflow: GH_TOKEN is only in the step that pushes; the merge step never has it" {
+    run wf '
+import re
+steps = w["jobs"]["publish"]["steps"]
+assert "GH_TOKEN" not in str(w["jobs"]["publish"].get("env", {})) and "env" not in w
+merge = [s for s in steps if "--merge" in s.get("run", "")]
+assert len(merge) == 1, merge
+m = merge[0]
+assert "GH_TOKEN" not in str(m.get("env", {})) and "GH_TOKEN" not in m["run"] and "github.token" not in str(m) and "secrets." not in str(m), m
+assert "git push" not in m["run"] and "extraheader" not in m["run"], m
+holders = [s for s in steps if "GH_TOKEN" in str(s.get("env", {}))]
+assert len(holders) == 1 and "git" in holders[0]["run"] and "push" in holders[0]["run"], holders
+assert steps.index(holders[0]) > steps.index(m)
+assert "--merge" not in holders[0]["run"]
+print("ok")'
+    [ "$status" -eq 0 ]
+    [ "$output" = ok ]
+}

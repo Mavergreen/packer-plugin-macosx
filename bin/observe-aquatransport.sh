@@ -36,7 +36,7 @@ observe() {
     trap 'rm -rf "$work"' EXIT
     mkdir "$work/dmg" "$work/pkg" || exit 1
 
-    curl -fsSL --retry 3 -o "$work/AquaTransport.dmg" "$url" || observe_fail "download failed: $url"
+    curl -fsSL --retry 3 --max-time 600 -o "$work/AquaTransport.dmg" "$url" || observe_fail "download failed: $url"
     size=$(wc -c < "$work/AquaTransport.dmg")
     [ "$size" -ge 1048576 ] || observe_fail "download is only $size bytes"
     7z l "$work/AquaTransport.dmg" 2>/dev/null | grep -Eq '(^|[ /])AquaTransport\.pkg$' ||

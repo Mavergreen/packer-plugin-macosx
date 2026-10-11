@@ -10,7 +10,8 @@ name: aquatransport-observer
 # - publish (contents: write) touches no upstream byte and runs only code checked out at github.sha, never anything from
 #   the artifact: it merges that JSON into the branch's aquatransport.json
 #   (bin/observe-aquatransport.sh --merge keeps every version seen, each with its last-seen digest), and commits
-#   and pushes only if the file changed. It never checks out or pushes main; the first run creates the branch as
+#   and pushes only if the file changed. The token is in the environment of that last step alone; the merge
+#   step has none. It never checks out or pushes main; the first run creates the branch as
 #   an orphan.
 
 on:
@@ -27,6 +28,7 @@ concurrency:
 jobs:
   observe:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
     steps:
@@ -49,6 +51,7 @@ jobs:
   publish:
     needs: observe
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write
     steps:
@@ -64,9 +67,10 @@ jobs:
           persist-credentials: false
           sparse-checkout: bin/observe-aquatransport.sh
 
-      - name: Merge into the branch and push if it changed
+      # No token here: this step runs the merge, and a public repo's branch is fetched without one.
+      - name: Merge into the branch
+        id: merge
         env:
-          GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
         run: |
           set -eu
@@ -74,9 +78,8 @@ jobs:
           git init -q branch
           cd branch
           url="https://github.com/${REPO}.git"
-          auth="http.https://github.com/.extraheader=AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
-          if git -c "$auth" ls-remote --exit-code --heads "$url" "$branch" >/dev/null; then
-            git -c "$auth" fetch -q --depth=1 "$url" "$branch"
+          if git ls-remote --exit-code --heads "$url" "$branch" >/dev/null; then
+            git fetch -q --depth=1 "$url" "$branch"
             git checkout -q -b "$branch" FETCH_HEAD
           else
             git checkout -q --orphan "$branch"
@@ -85,8 +88,23 @@ jobs:
           sh ../src/bin/observe-aquatransport.sh --merge aquatransport.json ../observed/observed.json ../merged.json
           if cmp -s ../merged.json aquatransport.json; then
             echo "Nothing new."
-            exit 0
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
+
+      # The only step with the token: it commits the merged file and pushes it.
+      - name: Commit and push
+        if: steps.merge.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -eu
+          branch=aquatransport-observed
+          cd branch
+          url="https://github.com/${REPO}.git"
+          auth="http.https://github.com/.extraheader=AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
           cp ../merged.json aquatransport.json
           version="$(python3 -I -c 'import json,sys; r=json.load(open(sys.argv[1]))["releases"][0]; print(r["version"], r["digest"][:12])' ../observed/observed.json)"
           git add aquatransport.json
