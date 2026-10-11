@@ -9,17 +9,23 @@ variable "base_box" {
   type        = string
   description = "An unpacked Mavericks base box, built by templates/mavericks/: the directory holding box_0.img, OVMF_CODE.fd, OVMF_VARS.fd, opencore.img and Vagrantfile."
 
-  # Each file by name, so a .box tarball, a directory short of a file or
-  # a box from another template is refused at validate time, before QEMU
-  # or the vagrant post-processor fails on one file. try(): fileexists()
+  # Each file by name, so a .box tarball or a directory short of a file
+  # is refused at validate time, before QEMU or the vagrant
+  # post-processor fails on one file. And the Vagrantfile must be one
+  # templates/mavericks/mavericks.pkr.hcl rendered, which says so in its
+  # header comment: a Snow Leopard box holds the same five names, and
+  # its Vagrantfile names snowleopard.pkr.hcl instead. try(): fileexists()
   # is an error, not false, for a path under a file -- base_box naming
-  # the .box itself.
+  # the .box itself -- and file() is one for a file that is not there.
   validation {
-    condition = alltrue([
-      for f in ["box_0.img", "OVMF_CODE.fd", "OVMF_VARS.fd", "opencore.img", "Vagrantfile"] :
-      try(fileexists("${var.base_box}/${f}"), false)
-    ])
-    error_message = "Base_box must be an unpacked Mavericks base box: a directory holding box_0.img, OVMF_CODE.fd, OVMF_VARS.fd, opencore.img and Vagrantfile (tar -xzf the .box, or Vagrant's own copy under ~/.vagrant.d/boxes)."
+    condition = alltrue(concat(
+      [
+        for f in ["box_0.img", "OVMF_CODE.fd", "OVMF_VARS.fd", "opencore.img", "Vagrantfile"] :
+        try(fileexists("${var.base_box}/${f}"), false)
+      ],
+      [try(length(regexall("mavericks\\.pkr\\.hcl", file("${var.base_box}/Vagrantfile"))) > 0, false)],
+    ))
+    error_message = "Base_box must be an unpacked Mavericks base box: a directory holding box_0.img, OVMF_CODE.fd, OVMF_VARS.fd, opencore.img and Vagrantfile (tar -xzf the .box, or Vagrant's own copy under ~/.vagrant.d/boxes), whose Vagrantfile templates/mavericks/mavericks.pkr.hcl rendered: a Snow Leopard box will not do."
   }
 }
 

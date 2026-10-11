@@ -421,12 +421,11 @@ teardown() {
     fi
 }
 
-# Each template's name: the directories under templates/, one per line.
+# Each template's name, one per line: the directories under templates/
+# that git tracks files in -- not a glob, which would also take a
+# directory holding only a build's git-ignored leftovers.
 template_oses() {
-    for d in "$REPO"/templates/*/; do
-        d=${d%/}
-        echo "${d##*/}"
-    done
+    git -C "$REPO" ls-files templates | cut -d/ -f2 | sort -u
 }
 
 @test "each template archive names each tracked template file, no glob and no test" {
@@ -450,7 +449,7 @@ template_oses() {
         [ "$output" = "1" ]
     done
     run grep -c '_template"$' "$REPO/.goreleaser.yml"
-    [ "$output" = "$(ls -d "$REPO"/templates/*/ | wc -l | tr -d ' ')" ]
+    [ "$output" = "$(template_oses | wc -l | tr -d ' ')" ]
 }
 
 @test "a build's box left in templates/mavericks/output/ would not ship in the template archive" {

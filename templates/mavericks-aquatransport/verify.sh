@@ -22,8 +22,11 @@
 #   - Wowfunhappy.AquaTransport.ModernRootCertificates has a receipt: the
 #     roots github.com, GitHub's release downloads and downloads.claude.ai
 #     chain to;
-#   - net.sf.tuntaposx.tap has no receipt, and kextstat lists nothing
-#     matching tap: install.sh deselected tap.kext;
+#   - tap, by its IDs and its paths: net.sf.tuntaposx.tap has no receipt,
+#     kextstat lists no kext of that bundle ID, and there is no tap.kext
+#     in /Library/Extensions or /System/Library/Extensions: install.sh
+#     deselected it. (Not every name holding "tap": 10.9's own
+#     IOATAPIProtocolTransport, say, is no tap.)
 #   - the system's own /usr/bin/curl, which links Secure Transport,
 #     fetches each of the done-check's three URLs.
 #
@@ -31,14 +34,17 @@
 # provisioner's environment_vars. Unset is a failure: this script cannot
 # tell which version it should find.
 
-# MQG_VERIFY_CURL is a test seam (tests/template_aquatransport.bats),
-# never set by the template: the check is of /usr/bin/curl, not of
-# whichever curl is first in PATH.
+# MQG_VERIFY_CURL and MQG_VERIFY_ROOT are test seams
+# (tests/template_aquatransport.bats), never set by the template: the
+# check is of /usr/bin/curl, not of whichever curl is first in PATH, and
+# the files it looks for are the guest's own, under /.
 CURL=${MQG_VERIFY_CURL:-/usr/bin/curl}
+ROOT=${MQG_VERIFY_ROOT:-}
 URLS="https://github.com/ https://release-assets.githubusercontent.com/ https://downloads.claude.ai/claude-code-releases/latest"
 AT_PKG=Wowfunhappy.AquaTransport
 ROOTS_PKG=Wowfunhappy.AquaTransport.ModernRootCertificates
-TAP_PKG=net.sf.tuntaposx.tap
+TAP_ID=net.sf.tuntaposx.tap
+TAP_KEXTS="/Library/Extensions/tap.kext /System/Library/Extensions/tap.kext"
 SECURITY=/System/Library/Frameworks/Security.framework/Versions/A
 
 # pkg_version $1: the version pkgutil records for package $1, or nothing.
@@ -51,8 +57,8 @@ echo "aquatransport-asked=${AQUATRANSPORT_VERSION:-(unset)}"
 echo "aquatransport-version=$(pkg_version "$AT_PKG")"
 echo "modernroots-version=$(pkg_version "$ROOTS_PKG")"
 echo "receipts=$(pkgutil --pkgs 2>/dev/null | grep -E '^(Wowfunhappy\.|net\.sf\.tuntaposx\.)' | xargs echo)"
-echo "tap-kexts=$(kextstat 2>/dev/null | grep tap | xargs echo)"
-echo "security-original=$([ -e "$SECURITY/Security.original" ] && echo yes || echo no)"
+echo "tap-kexts=$(kextstat 2>/dev/null | grep -F "$TAP_ID" | xargs echo)"
+echo "security-original=$([ -e "$ROOT$SECURITY/Security.original" ] && echo yes || echo no)"
 echo "curl=$("$CURL" -V 2>&1 | head -n 1)"
 
 # --- the verdict -------------------------------------------------------------
@@ -94,14 +100,19 @@ if ! printf '%s\n' "$pkgs" | grep -qxF "$ROOTS_PKG"; then
     fail "pkgutil --pkgs has no $ROOTS_PKG receipt: the modern roots are not installed" \
         "(see /var/log/install.log in the guest)"
 fi
-if printf '%s\n' "$pkgs" | grep -qF "$TAP_PKG"; then
-    fail "pkgutil --pkgs has $TAP_PKG: installer_choice_3 was not deselected (install.sh)"
+if printf '%s\n' "$pkgs" | grep -qxF "$TAP_ID"; then
+    fail "pkgutil --pkgs has $TAP_ID: installer_choice_3 was not deselected (install.sh)"
 fi
 
-tap=$(kextstat 2>/dev/null | grep tap)
+tap=$(kextstat 2>/dev/null | grep -F "$TAP_ID")
 if [ -n "$tap" ]; then
-    fail "kextstat lists a tap kext: $(printf '%s\n' "$tap" | xargs echo)"
+    fail "kextstat lists $TAP_ID: $(printf '%s\n' "$tap" | xargs echo)"
 fi
+for kext in $TAP_KEXTS; do
+    if [ -e "$ROOT$kext" ]; then
+        fail "$kext exists: installer_choice_3 was not deselected (install.sh)"
+    fi
+done
 
 for url in $URLS; do
     if ! err=$("$CURL" -sS -o /dev/null "$url" 2>&1); then

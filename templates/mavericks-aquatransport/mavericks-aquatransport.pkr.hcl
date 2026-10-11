@@ -30,7 +30,9 @@
 #
 # THE BASE BOX. base_box is the directory a base box unpacks to (`tar
 # -xzf` the .box, or Vagrant's own copy under ~/.vagrant.d/boxes); its
-# validation names each of the five files used here. Its box_0.img is the
+# validation names each of the five files used here, and wants the
+# Vagrantfile to be one templates/mavericks/mavericks.pkr.hcl rendered,
+# so a Snow Leopard box, which holds the same five names, is refused. Its box_0.img is the
 # qemu builder's iso_url with disk_image = true, so the builder converts
 # it into this build's own output directory and the base box is never
 # written to (use_backing_file = false: the box is standalone, with no
@@ -164,10 +166,11 @@ build {
   }
 
   # Installs AquaTransport.pkg with tap.kext deselected, then removes the
-  # DMG.
+  # DMG, which it is told the path of.
   provisioner "shell" {
-    script          = "${path.root}/install.sh"
-    execute_command = "chmod +x {{ .Path }}; {{ .Vars }} sh {{ .Path }}"
+    script           = "${path.root}/install.sh"
+    environment_vars = ["AQUATRANSPORT_DMG=${local.aquatransport_guest_dmg}"]
+    execute_command  = "chmod +x {{ .Path }}; {{ .Vars }} sh {{ .Path }}"
   }
 
   provisioner "shell" {
@@ -180,11 +183,20 @@ build {
   # guest becomes a box -- unless it is still 10.9.5 (13F1911), the pinned
   # Aqua Transport and ModernRootCertificates are installed, tap is
   # neither installed nor loaded, and the system's own curl reaches all
-  # three of the done-check's hosts. pause_before lets the reboot take
-  # the guest down first; max_retries covers SSH coming back up after it.
+  # three of the done-check's hosts.
+  #
+  # After the reboot: pause_before waits before this provisioner starts,
+  # so the guest is down and SSH is not reached on the old boot.
+  # start_retry_timeout is how long Packer keeps retrying to upload and
+  # start the script while SSH is not back up (packer v1.16.1,
+  # provisioner/shell/provisioner.go: StartRetryTimeout, "can be set high
+  # to allow for reboots", 5m by default) -- 30m, the same as ssh_timeout,
+  # for a slow boot. There is no max_retries: that re-runs a verify.sh
+  # that ran and failed, and a failing verdict is the verdict.
   provisioner "shell" {
-    pause_before     = "30s"
-    max_retries      = 2
+    pause_before        = "30s"
+    start_retry_timeout = "30m"
+
     script           = "${path.root}/verify.sh"
     environment_vars = ["AQUATRANSPORT_VERSION=${local.aquatransport_version}"]
     execute_command  = "chmod +x {{ .Path }}; {{ .Vars }} sh {{ .Path }}"

@@ -13,17 +13,25 @@
 # leave the other two as they are. verify.sh checks the outcome: both
 # receipts there, and no tap receipt or kext.
 #
-# The DMG is mounted read-only, out of the Finder's sight (-nobrowse), at
-# a mount point of its own, and detached, then removed with the choice
-# changes, whether the installer succeeded or not: the guest becomes a
-# box, and nothing of the install stays in it but what installer put
-# there. A failing installer fails the build.
+# The DMG is mounted as root, as installer runs, read-only, out of the
+# Finder's sight (-nobrowse), at a mount point of its own. It is detached
+# and removed with the choice changes whether the installer succeeded or
+# not: the guest becomes a box, and nothing of the install stays in it
+# but what installer put there. A failing installer, or a failing detach,
+# fails the build, and each says so; the installer's status wins.
+#
+# AQUATRANSPORT_DMG is where the template uploaded the DMG, passed in by
+# the provisioner's environment_vars, so the path is written down once,
+# in the template. Unset, this does nothing and fails.
 
 set -eu
 
-# MQG_AQUATRANSPORT_DMG is a test seam (tests/template_aquatransport.bats),
-# never set by the template, which uploads the DMG to this path.
-DMG=${MQG_AQUATRANSPORT_DMG:-/private/tmp/AquaTransport.dmg}
+if [ -z "${AQUATRANSPORT_DMG:-}" ]; then
+    echo "install: AQUATRANSPORT_DMG is not set: the template's install.sh provisioner" \
+        "must pass environment_vars = [\"AQUATRANSPORT_DMG=\${local.aquatransport_guest_dmg}\"]" >&2
+    exit 2
+fi
+DMG=$AQUATRANSPORT_DMG
 tmp=${TMPDIR:-/tmp}
 tmp=${tmp%/}
 
@@ -47,16 +55,21 @@ cat > "$choices" <<'EOF'
 </plist>
 EOF
 
-hdiutil attach -nobrowse -readonly -mountpoint "$mnt" "$DMG"
+sudo hdiutil attach -nobrowse -readonly -mountpoint "$mnt" "$DMG"
 
 status=0
 sudo installer -pkg "$mnt/AquaTransport.pkg" -applyChoiceChangesXML "$choices" -target / || status=$?
 
-hdiutil detach "$mnt"
+detached=0
+sudo hdiutil detach "$mnt" || detached=$?
 rm -f "$DMG" "$choices"
 rmdir "$mnt" 2>/dev/null || true
 
 if [ "$status" -ne 0 ]; then
     echo "install: installer failed (exit $status); see /var/log/install.log in the guest" >&2
+fi
+if [ "$detached" -ne 0 ]; then
+    echo "install: hdiutil detach $mnt failed (exit $detached)" >&2
+    [ "$status" -ne 0 ] || status=$detached
 fi
 exit "$status"

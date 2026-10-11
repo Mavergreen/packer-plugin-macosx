@@ -34,17 +34,28 @@ const osName = "mavericks-aquatransport"
 // template reads.
 var baseBoxFiles = []string{"box_0.img", "OVMF_CODE.fd", "OVMF_VARS.fd", "opencore.img", "Vagrantfile"}
 
+// mavericksVagrantfile is the line of a real Mavericks base box's
+// Vagrantfile that names the template that rendered it (measured on a
+// base box built 2026-10-10); a Snow Leopard box's names
+// snowleopard.pkr.hcl instead, and holds the same five file names.
+const mavericksVagrantfile = "# RENDERED FROM THE BUILD'S OWN SETTINGS. mavericks.pkr.hcl renders this\n"
+
 // fakeBaseBox is a directory holding each of baseBoxFiles, empty except
-// for omit, which it leaves out. packer validate runs no build, so empty
-// files are as good as a real box's.
-func fakeBaseBox(t *testing.T, omit string) string {
+// for omit, which it leaves out, and the Vagrantfile, which holds
+// vagrantfile. packer validate runs no build, so empty files are as good
+// as a real box's.
+func fakeBaseBox(t *testing.T, omit, vagrantfile string) string {
 	t.Helper()
 	dir := t.TempDir()
 	for _, n := range baseBoxFiles {
 		if n == omit {
 			continue
 		}
-		if err := os.WriteFile(filepath.Join(dir, n), nil, 0o644); err != nil {
+		var content []byte
+		if n == "Vagrantfile" {
+			content = []byte(vagrantfile)
+		}
+		if err := os.WriteFile(filepath.Join(dir, n), content, 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -93,7 +104,7 @@ func validator(t *testing.T) (run func(args ...string) (string, error), runIn fu
 
 func TestValidate(t *testing.T) {
 	run, runIn, tmpl, cacheDir := validator(t)
-	box := "base_box=" + fakeBaseBox(t, "")
+	box := "base_box=" + fakeBaseBox(t, "", mavericksVagrantfile)
 
 	t.Run("valid template", func(t *testing.T) {
 		out, err := run("validate", "-var", box)
@@ -159,9 +170,11 @@ func TestValidate(t *testing.T) {
 }
 
 // TestValidateRejectsANonBox: base_box must be what the base template's
-// box unpacks to. The .box tarball itself, or a directory short of a file,
-// is refused at validate time, naming base_box, rather than a build
-// failing later with a QEMU or post-processor error about one file.
+// box unpacks to. The .box tarball itself, a directory short of a file, or
+// a Snow Leopard box -- the same five names, another OS -- is refused at
+// validate time, naming base_box, rather than a build failing later with
+// a QEMU or post-processor error about one file, or verify.sh finding
+// 10.6.
 func TestValidateRejectsANonBox(t *testing.T) {
 	run, _, _, _ := validator(t)
 
@@ -172,7 +185,9 @@ func TestValidateRejectsANonBox(t *testing.T) {
 	for name, dir := range map[string]string{
 		"an empty directory":              t.TempDir(),
 		"the .box file itself":            dotBox,
-		"a directory with no Vagrantfile": fakeBaseBox(t, "Vagrantfile"),
+		"a directory with no Vagrantfile": fakeBaseBox(t, "Vagrantfile", ""),
+		"a Snow Leopard box":              fakeBaseBox(t, "", "# RENDERED FROM THE BUILD'S OWN SETTINGS. snowleopard.pkr.hcl renders this\n"),
+		"an empty Vagrantfile":            fakeBaseBox(t, "", ""),
 	} {
 		t.Run(name, func(t *testing.T) {
 			out, err := run("validate", "-var", "base_box="+dir)
@@ -314,12 +329,16 @@ func TestTheLastProvisionerZeroFillsFreeSpace(t *testing.T) {
 		t.Fatal("no provisioner")
 	}
 	block := s[last:]
-	block = block[:strings.Index(block, "\n  }\n")]
+	end := strings.Index(block, "\n  }\n")
+	if end < 0 {
+		t.Fatal("the last provisioner block does not end")
+	}
+	block = block[:end]
 	if !strings.Contains(block, "sudo diskutil secureErase freespace 0 /") {
 		t.Fatalf("the last provisioner does not zero free space:\n%s", block)
 	}
-	if verify := strings.LastIndex(s[:last], "verify.sh"); verify < 0 {
-		t.Fatal("the zero-fill does not come after verify.sh")
+	if !regexp.MustCompile(`(?m)^\s*script\s*=\s*"\$\{path\.root\}/verify\.sh"$`).MatchString(s[:last]) {
+		t.Fatal("the zero-fill does not come after the verify.sh provisioner")
 	}
 }
 

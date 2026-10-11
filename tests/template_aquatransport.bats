@@ -9,11 +9,12 @@
 # they use.
 #
 # NOTHING HERE REACHES THE HOST. The stubs simulate a guest on this
-# machine, so: the stub sudo runs only the stub installer and refuses
-# everything else; the scripts' PATH is the stubs, /usr/bin and /bin,
+# machine, so: the stub sudo runs only the stub installer and hdiutil and
+# refuses everything else; the scripts' PATH is the stubs, /usr/bin and /bin,
 # never an sbin; shutdown, reboot, halt and poweroff are stubs that fail;
-# and verify.sh's curl is a stub, named through its MQG_VERIFY_CURL seam,
-# so no test fetches anything.
+# verify.sh's curl is a stub, named through its MQG_VERIFY_CURL seam, so
+# no test fetches anything; and the files it looks for are under its
+# MQG_VERIFY_ROOT seam, a directory of the test's own.
 
 setup() {
     REPO="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
@@ -81,7 +82,8 @@ if [ "$url" = "${STUB_CURL_FAIL:-}" ]; then
 fi
 EOF
     # hdiutil: attach "mounts" a volume holding AquaTransport.pkg at the
-    # -mountpoint it was given; detach empties it again.
+    # -mountpoint it was given; detach empties it again, or fails with
+    # $STUB_DETACH_STATUS, leaving it mounted.
     cat > "$STUB/hdiutil" <<'EOF'
 #!/bin/sh
 echo "hdiutil $*" >> "$LOG"
@@ -92,7 +94,10 @@ case $1 in
             shift
         done
         ;;
-    detach) rm -f "$2/AquaTransport.pkg" ;;
+    detach)
+        [ "${STUB_DETACH_STATUS:-0}" -eq 0 ] || { echo "hdiutil: couldn't unmount disk2 - Resource busy" >&2; exit "$STUB_DETACH_STATUS"; }
+        rm -f "$2/AquaTransport.pkg"
+        ;;
 esac
 EOF
     # installer: logs its arguments, and keeps a copy of the choice
@@ -106,12 +111,14 @@ while [ $# -gt 0 ]; do
 done
 exit "${STUB_INSTALLER_STATUS:-0}"
 EOF
-    # sudo: the stub installer, and nothing else.
+    # sudo: the stub installer and hdiutil, and nothing else.
     cat > "$STUB/sudo" <<EOF
 #!/bin/sh
+echo "sudo \$*" >> "\$LOG"
 [ "\$1" = -n ] && shift
 case \$1 in
     installer) shift; exec "$STUB/installer" "\$@" ;;
+    hdiutil) shift; exec "$STUB/hdiutil" "\$@" ;;
     *) echo "stub sudo: refusing \$1" >&2; exit 1 ;;
 esac
 EOF
@@ -121,15 +128,17 @@ EOF
     export STUB_VERSION=10.9.5 STUB_BUILD=13F1911 STUB_AT_VERSION=2026.10.09
     export STUB_PKGS="com.apple.pkg.BaseSystemBinaries Wowfunhappy.AquaTransport Wowfunhappy.AquaTransport.ModernRootCertificates"
     export STUB_KEXTS="com.apple.kpi.bsd com.apple.driver.AppleACPIPlatform"
-    unset STUB_CURL_FAIL STUB_INSTALLER_STATUS
+    unset STUB_CURL_FAIL STUB_INSTALLER_STATUS STUB_DETACH_STATUS
+    ROOT="$BATS_TEST_TMPDIR/root"
+    mkdir -p "$ROOT/Library/Extensions" "$ROOT/System/Library/Extensions"
 }
 
 verify() {  # $1 = AQUATRANSPORT_VERSION, or "-" to leave it unset
     if [ "$1" = - ]; then
-        run env -u AQUATRANSPORT_VERSION PATH="$STUB:/usr/bin:/bin" MQG_VERIFY_CURL="$STUB/curl" \
+        run env -u AQUATRANSPORT_VERSION PATH="$STUB:/usr/bin:/bin" MQG_VERIFY_CURL="$STUB/curl" MQG_VERIFY_ROOT="$ROOT" \
             /bin/sh "$TMPL/verify.sh"
     else
-        run env AQUATRANSPORT_VERSION="$1" PATH="$STUB:/usr/bin:/bin" MQG_VERIFY_CURL="$STUB/curl" \
+        run env AQUATRANSPORT_VERSION="$1" PATH="$STUB:/usr/bin:/bin" MQG_VERIFY_CURL="$STUB/curl" MQG_VERIFY_ROOT="$ROOT" \
             /bin/sh "$TMPL/verify.sh"
     fi
 }
@@ -199,11 +208,34 @@ URLS="https://github.com/ https://release-assets.githubusercontent.com/ https://
     [[ "$output" == *"verify: FAILED: pkgutil --pkgs has net.sf.tuntaposx.tap: installer_choice_3 was not deselected"* ]] || false
 }
 
-@test "verify.sh fails a guest with a tap kext loaded, naming it" {
+@test "verify.sh fails a guest with tap's kext loaded, naming it" {
     export STUB_KEXTS="$STUB_KEXTS net.sf.tuntaposx.tap"
     verify 2026.10.09
     [ "$status" -eq 1 ]
-    [[ "$output" == *"verify: FAILED: kextstat lists a tap kext: "*"net.sf.tuntaposx.tap"* ]] || false
+    [[ "$output" == *"verify: FAILED: kextstat lists net.sf.tuntaposx.tap: "*"net.sf.tuntaposx.tap (1.0)"* ]] || false
+}
+
+@test "verify.sh passes a guest with other kexts whose names hold 'tap' or 'TAP'" {
+    export STUB_KEXTS="$STUB_KEXTS com.apple.iokit.IOATAPIProtocolTransport com.example.tapper"
+    verify 2026.10.09
+    [ "$status" -eq 0 ]
+}
+
+@test "verify.sh fails a guest with tap.kext installed, loaded or not, naming where" {
+    for dir in Library/Extensions System/Library/Extensions; do
+        mkdir "$ROOT/$dir/tap.kext"
+        verify 2026.10.09
+        [ "$status" -eq 1 ]
+        [[ "$output" == *"verify: FAILED: /$dir/tap.kext exists: installer_choice_3 was not deselected"* ]] || false
+        [ "$(grep -c 'verify: FAILED:' <<< "$output")" -eq 1 ]
+        rmdir "$ROOT/$dir/tap.kext"
+    done
+}
+
+@test "verify.sh does not take a receipt whose ID merely starts with tap's for tap's" {
+    export STUB_PKGS="$STUB_PKGS net.sf.tuntaposx.tap.extra"
+    verify 2026.10.09
+    [ "$status" -eq 0 ]
 }
 
 @test "verify.sh fails a guest that cannot fetch any one of the three URLs, naming it" {
@@ -257,7 +289,7 @@ URLS="https://github.com/ https://release-assets.githubusercontent.com/ https://
 run_install() {
     DMG="$BATS_TEST_TMPDIR/AquaTransport.dmg"
     printf 'not really a disk image\n' > "$DMG"
-    run env PATH="$STUB:/usr/bin:/bin" TMPDIR="$BATS_TEST_TMPDIR" MQG_AQUATRANSPORT_DMG="$DMG" \
+    run env PATH="$STUB:/usr/bin:/bin" TMPDIR="$BATS_TEST_TMPDIR" AQUATRANSPORT_DMG="$DMG" \
         /bin/sh "$TMPL/install.sh"
 }
 
@@ -281,9 +313,11 @@ run_install() {
     grep -q '<integer>0</integer>' "$LOG.choices"
 }
 
-@test "install.sh mounts the DMG read-only and out of sight, then detaches it" {
+@test "install.sh mounts the DMG read-only and out of sight, as root, then detaches it" {
     run_install
     [ "$status" -eq 0 ]
+    grep -q '^sudo hdiutil attach ' "$LOG"
+    grep -q '^sudo hdiutil detach ' "$LOG"
     attach=$(grep '^hdiutil attach ' "$LOG")
     [[ "$attach" == *" -nobrowse "* ]] || false
     [[ "$attach" == *" -readonly "* ]] || false
@@ -306,6 +340,42 @@ run_install() {
 @test "install.sh fails when the installer does, and still detaches" {
     export STUB_INSTALLER_STATUS=1
     run_install
-    [ "$status" -ne 0 ]
+    [ "$status" -eq 1 ]
     grep -q '^hdiutil detach ' "$LOG"
+    [[ "$output" == *"install: installer failed (exit 1)"* ]] || false
+}
+
+@test "install.sh reports a failed detach, keeps the installer's failure, and still cleans up" {
+    export STUB_INSTALLER_STATUS=3 STUB_DETACH_STATUS=16
+    run_install
+    [ "$status" -eq 3 ]
+    [[ "$output" == *"install: installer failed (exit 3)"* ]] || false
+    [[ "$output" == *"install: hdiutil detach "*" failed (exit 16)"* ]] || false
+    [ ! -e "$DMG" ]
+    run find "$BATS_TEST_TMPDIR" -maxdepth 1 -name 'aquatransport-choices*'
+    [ -z "$output" ]
+}
+
+@test "install.sh fails when only the detach does" {
+    export STUB_DETACH_STATUS=16
+    run_install
+    [ "$status" -eq 16 ]
+    [[ "$output" == *"install: hdiutil detach "*" failed (exit 16)"* ]] || false
+    [[ "$output" != *"installer failed"* ]] || false
+}
+
+@test "install.sh refuses to run when nobody said where the DMG is, touching nothing" {
+    run env -u AQUATRANSPORT_DMG PATH="$STUB:/usr/bin:/bin" TMPDIR="$BATS_TEST_TMPDIR" /bin/sh "$TMPL/install.sh"
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"install: AQUATRANSPORT_DMG is not set"* ]] || false
+    [ ! -s "$LOG" ]
+}
+
+@test "the template uploads the DMG to the one path it tells install.sh" {
+    hcl="$TMPL/mavericks-aquatransport.pkr.hcl"
+    grep -qF 'destination = local.aquatransport_guest_dmg' "$hcl"
+    grep -qF 'environment_vars = ["AQUATRANSPORT_DMG=${local.aquatransport_guest_dmg}"]' "$hcl"
+    [ "$(grep -c '/private/tmp/AquaTransport.dmg' "$hcl")" -eq 1 ]
+    run grep -c 'AquaTransport.dmg' "$TMPL/install.sh"
+    [ "$output" = 0 ]
 }
