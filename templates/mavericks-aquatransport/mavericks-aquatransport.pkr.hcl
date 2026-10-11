@@ -190,25 +190,33 @@ build {
     execute_command   = "chmod +x {{ .Path }}; {{ .Vars }} sh {{ .Path }}"
   }
 
+  # The post-reboot pause: the guest is down, and SSH must not be reached on
+  # the old boot. A host-side sleep, not verify's pause_before, because
+  # Packer's HCL2 applies only ONE of pause_before and timeout (packer
+  # v1.16.1 hcl2template/types.packer_config.go:562-569: `if pb.PauseBefore
+  # != 0 { PausedProvisioner } else if pb.Timeout != 0 {
+  # TimeoutProvisioner }`), so verify's timeout would be silently dropped.
+  provisioner "shell-local" {
+    inline = ["sleep 30"]
+  }
+
   # verify.sh judges the guest, and fails the build -- before a broken
   # guest becomes a box -- unless it is still 10.9.5 (13F1911), the pinned
   # Aqua Transport and ModernRootCertificates are installed, tap is
   # neither installed nor loaded, and the system's own curl reaches all
   # three of the done-check's hosts.
   #
-  # After the reboot: pause_before waits before this provisioner starts,
-  # so the guest is down and SSH is not reached on the old boot.
   # start_retry_timeout is how long Packer keeps retrying to upload and
   # start the script while SSH is not back up (packer v1.16.1,
   # provisioner/shell/provisioner.go: StartRetryTimeout, "can be set high
   # to allow for reboots", 5m by default) -- 30m, the same as ssh_timeout,
   # for a slow boot. timeout bounds a verify.sh that hangs (a curl on a
   # broken Security patch, say) and wraps those start retries too, so it
-  # must exceed 30s + 30m: 45m leaves 14.5 minutes for a script MEASURED at
-  # 4 s. There is no max_retries: that re-runs a verify.sh
+  # must exceed the 30s pause before it plus 30m: 45m leaves 14.5 minutes
+  # for a script MEASURED at 4 s. There is no pause_before here (see the
+  # pause above), and no max_retries: that re-runs a verify.sh
   # that ran and failed, and a failing verdict is the verdict.
   provisioner "shell" {
-    pause_before        = "30s"
     start_retry_timeout = "30m"
     timeout             = "45m"
 

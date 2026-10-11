@@ -385,58 +385,117 @@ func TestTheLastProvisionerZeroFillsFreeSpace(t *testing.T) {
 	}
 }
 
+// buildProvisioners returns the build block's provisioner blocks, in order.
+func buildProvisioners(t *testing.T) []*hclsyntax.Block {
+	t.Helper()
+	_, body := parseHCL(t, "templates", osName, osName+".pkr.hcl")
+	var out []*hclsyntax.Block
+	for _, b := range body.Blocks {
+		if b.Type != "build" {
+			continue
+		}
+		for _, p := range b.Body.Blocks {
+			if p.Type == "provisioner" {
+				out = append(out, p)
+			}
+		}
+	}
+	if len(out) == 0 {
+		t.Fatal("no provisioners in the build block")
+	}
+	return out
+}
+
+// attrDur is the literal duration string attribute name of b, or 0.
+func attrDur(t *testing.T, b *hclsyntax.Block, name string) time.Duration {
+	t.Helper()
+	a, ok := b.Body.Attributes[name]
+	if !ok {
+		return 0
+	}
+	v, diags := a.Expr.Value(nil)
+	if diags.HasErrors() || v.Type() != cty.String {
+		t.Fatalf("%s is not a literal string: %v", name, diags)
+	}
+	d, err := time.ParseDuration(v.AsString())
+	if err != nil {
+		t.Fatalf("%s: %v", name, err)
+	}
+	return d
+}
+
+// TestNoProvisionerSetsBothPauseBeforeAndTimeout: Packer's HCL2 path applies
+// only ONE of them. packer v1.16.1 hcl2template/types.packer_config.go:562-569
+// is `if pb.PauseBefore != 0 { PausedProvisioner } else if pb.Timeout != 0 {
+// TimeoutProvisioner }`, so a provisioner with both silently loses its
+// timeout (a real build printed no "Setting a ... timeout" line before it).
+func TestNoProvisionerSetsBothPauseBeforeAndTimeout(t *testing.T) {
+	for i, p := range buildProvisioners(t) {
+		_, pause := p.Body.Attributes["pause_before"]
+		_, timeout := p.Body.Attributes["timeout"]
+		if pause && timeout {
+			t.Errorf("provisioner %d sets both pause_before and timeout; Packer drops the timeout", i)
+		}
+	}
+}
+
+// TestThePostRebootPauseIsAHostSideSleepBeforeVerify: the pause after the
+// reboot is a shell-local `sleep` immediately between the reboot provisioner
+// and verify.sh's, because verify.sh's own provisioner cannot carry both a
+// pause_before and a timeout (TestNoProvisionerSetsBothPauseBeforeAndTimeout).
+func TestThePostRebootPauseIsAHostSideSleepBeforeVerify(t *testing.T) {
+	ps := buildProvisioners(t)
+	src := mustRead(t, "templates", osName, osName+".pkr.hcl")
+	text := func(p *hclsyntax.Block) string { return string(p.Range().SliceBytes(src)) }
+	verify := -1
+	for i, p := range ps {
+		if strings.Contains(text(p), "verify.sh") && p.Body.Attributes["script"] != nil {
+			verify = i
+		}
+	}
+	if verify < 2 {
+		t.Fatalf("verify.sh provisioner at index %d, want after a reboot and a pause", verify)
+	}
+	if !strings.Contains(text(ps[verify-2]), "shutdown -r now") {
+		t.Errorf("the provisioner two before verify is not the reboot:\n%s", text(ps[verify-2]))
+	}
+	pause := ps[verify-1]
+	if pause.Labels[0] != "shell-local" || !strings.Contains(text(pause), `"sleep 30"`) {
+		t.Errorf("the provisioner just before verify is not a shell-local sleep 30:\n%s", text(pause))
+	}
+}
+
 // TestTheGuestScriptsAreTimeBounded: a hung installer, or a curl that hangs
 // on a broken Security patch, would otherwise hang `packer build` forever.
 // Packer's per-provisioner timeout wraps the start retries too, so
-// verify.sh's must exceed its pause_before plus its start_retry_timeout, or
-// a slow reboot is cut short by the very bound meant for a hang.
+// verify.sh's must exceed the shell-local pause before it (30s) plus its
+// start_retry_timeout, or a slow reboot is cut short by the very bound
+// meant for a hang.
 func TestTheGuestScriptsAreTimeBounded(t *testing.T) {
-	_, body := parseHCL(t, "templates", osName, osName+".pkr.hcl")
-	var build *hclsyntax.Block
-	for _, b := range body.Blocks {
-		if b.Type == "build" {
-			build = b
-		}
-	}
-	if build == nil {
-		t.Fatal("no build block")
-	}
-	dur := func(b *hclsyntax.Block, name string) time.Duration {
-		a, ok := b.Body.Attributes[name]
-		if !ok {
-			return 0
-		}
-		v, diags := a.Expr.Value(nil)
-		if diags.HasErrors() || v.Type() != cty.String {
-			t.Fatalf("%s is not a literal string: %v", name, diags)
-		}
-		d, err := time.ParseDuration(v.AsString())
-		if err != nil {
-			t.Fatalf("%s: %v", name, err)
-		}
-		return d
-	}
+	const pause = 30 * time.Second // the shell-local `sleep 30`
+	src := mustRead(t, "templates", osName, osName+".pkr.hcl")
 	seen := map[string]bool{}
-	for _, b := range build.Body.Blocks {
-		if b.Type != "provisioner" {
-			continue
-		}
+	for _, b := range buildProvisioners(t) {
 		a, ok := b.Body.Attributes["script"]
 		if !ok {
 			continue
 		}
-		src := string(a.Expr.Range().SliceBytes(mustRead(t, "templates", osName, osName+".pkr.hcl")))
+		expr := string(a.Expr.Range().SliceBytes(src))
 		for _, name := range []string{"install.sh", "verify.sh"} {
-			if !strings.Contains(src, name) {
+			if !strings.Contains(expr, name) {
 				continue
 			}
 			seen[name] = true
-			timeout := dur(b, "timeout")
+			timeout := attrDur(t, b, "timeout")
 			if timeout <= 0 {
 				t.Errorf("the %s provisioner has no timeout", name)
 			}
-			if need := dur(b, "pause_before") + dur(b, "start_retry_timeout"); timeout <= need {
-				t.Errorf("the %s provisioner's timeout %v does not exceed pause_before + start_retry_timeout, %v", name, timeout, need)
+			need := attrDur(t, b, "start_retry_timeout")
+			if name == "verify.sh" {
+				need += pause
+			}
+			if timeout <= need {
+				t.Errorf("the %s provisioner's timeout %v does not exceed its pause plus start_retry_timeout, %v", name, timeout, need)
 			}
 		}
 	}
