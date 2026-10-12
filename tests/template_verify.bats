@@ -1,4 +1,5 @@
 #!/usr/bin/env bats
+# platform: host-agnostic
 #
 # templates/mavericks/verify.sh's verdict. It runs in the guest, over SSH, after the
 # first boot; a wrong verdict either packages a broken guest as a box or

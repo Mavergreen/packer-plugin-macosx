@@ -1,5 +1,5 @@
 #!/bin/sh
-# Runs on Linux (ubuntu-latest) only: it needs curl, sha256sum, 7z and python3. Never on 10.9.
+# platform: host-agnostic -- CI's Linux runner only (curl, sha256sum, 7z, python3), never 10.9
 #
 # Observe Wowfunhappy's Aqua Transport. https://mavericksforever.com/downloads/AquaTransport.dmg is
 # overwritten in place, with no versioned releases, so a scheduled workflow downloads it, reads

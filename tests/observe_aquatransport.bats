@@ -1,4 +1,5 @@
 #!/usr/bin/env bats
+# platform: host-agnostic
 
 # The AquaTransport observer: bin/observe-aquatransport.sh and its workflow. curl and 7z are
 # stubs on PATH inside $BATS_TEST_TMPDIR; no test touches the network.

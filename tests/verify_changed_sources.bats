@@ -1,4 +1,5 @@
 #!/usr/bin/env bats
+# platform: host-agnostic
 #
 # bin/verify-changed-sources.sh diffs assets/pins/sources.tsv against a
 # base ref and re-fetches only the pins that changed.

@@ -1,4 +1,5 @@
 #!/usr/bin/env bats
+# platform: host-agnostic
 #
 # .github/renovate.json's Aqua Transport pin. The download's URL is
 # overwritten in place, so Renovate reads the observer's branch

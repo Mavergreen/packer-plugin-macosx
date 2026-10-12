@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# platform: host-agnostic
 # Run the whole test suite. shellcheck is optional: it is not installed on
 # every host, and needing a package install to run tests is a bad trade.
 # bats is mandatory: it is how this script runs the suite at all.

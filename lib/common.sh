@@ -1,4 +1,5 @@
 # shellcheck shell=bash
+# platform: host-agnostic
 # Shared helpers. Sourced, never executed.
 #
 # Deliberately does not set shell options: a library that mutates the

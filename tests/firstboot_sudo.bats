@@ -1,4 +1,5 @@
 #!/usr/bin/env bats
+# platform: host-agnostic
 #
 # firstboot.sh's sudo_reads_includedir: whether a guest's sudo reads
 # /etc/sudoers.d, which decides between writing a fragment there and

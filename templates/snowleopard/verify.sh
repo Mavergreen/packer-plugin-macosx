@@ -1,4 +1,5 @@
 #!/bin/sh
+# platform: macOS-only -- runs in the guest over SSH, never on the build host
 # Guest-side: what the guest is, printed into the build's log, and then
 # judged. The template runs this over SSH as the build's own user, after
 # firstboot-wait.sh, as `sh verify.sh` -- 10.6's /bin/sh, which is its

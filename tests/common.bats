@@ -1,4 +1,5 @@
 #!/usr/bin/env bats
+# platform: host-agnostic
 
 setup() {
     REPO="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"

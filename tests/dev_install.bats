@@ -1,4 +1,5 @@
 #!/usr/bin/env bats
+# platform: host-agnostic
 #
 # bin/dev-install.sh builds the plugin and hands it to `packer plugins
 # install`. It is exercised here with a stub `packer` that only records

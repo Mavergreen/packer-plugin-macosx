@@ -1,4 +1,5 @@
 # shellcheck shell=sh
+# platform: host-agnostic -- runs under busybox in the privops Linux microVM, never on the build host
 # The user's installer disc, mounted read-only as $MQG_SRC1: its build,
 # then the SHA-256 of every file in its Packages directory, for
 # internal/disc.Verify to hold against assets/pins/snowleopard-packages.sha256.

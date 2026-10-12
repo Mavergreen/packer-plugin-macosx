@@ -1,4 +1,5 @@
 #!/bin/sh
+# platform: macOS-only -- runs in the guest at its first boot, never on the build host
 # What Setup Assistant would have done, done once, with nobody watching.
 #
 # WHERE THIS RUNS

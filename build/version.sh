@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# platform: host-agnostic
 # The version scheme: YYYYMMDD.N, tagged v0.YYYYMMDD.N.
 #
 # spec: docs/decisions/0012-version-scheme.md

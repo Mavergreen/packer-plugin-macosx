@@ -1,4 +1,5 @@
 # shellcheck shell=sh
+# platform: host-agnostic -- runs under busybox in the privops Linux microVM, never on the build host
 # This runs under busybox ash inside the microVM, not under the host's
 # shell, and it is sourced-by-path rather than executed -- hence a shell
 # directive instead of a shebang.

@@ -1,4 +1,5 @@
 #!/usr/bin/env bats
+# platform: host-agnostic
 #
 # assets/guest/autoinstall/autoinstall.sh's own behaviour: it runs inside
 # the OS X Installer environment during an unattended install, so it is a

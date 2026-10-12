@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# platform: host-agnostic
 # Re-fetch and re-verify every assets/pins/sources.tsv entry this branch
 # changed.
 #

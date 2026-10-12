@@ -1,4 +1,5 @@
 #!/bin/busybox sh
+# platform: host-agnostic -- runs under busybox in the privops Linux microVM, never on the build host
 B=/bin/busybox
 $B mount -t proc none /proc
 $B mount -t sysfs none /sys

@@ -1,4 +1,5 @@
 #!/bin/sh
+# platform: macOS-only -- runs in the guest over SSH, never on the build host
 # Guest-side: what Aqua Transport left in the guest, printed into the
 # build's log, and then judged. The template runs this over SSH as the
 # build's own user, after install.sh and a reboot, as `sh verify.sh` --

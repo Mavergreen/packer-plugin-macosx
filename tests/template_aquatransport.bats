@@ -1,4 +1,5 @@
 #!/usr/bin/env bats
+# platform: host-agnostic
 #
 # templates/mavericks-aquatransport/'s two guest scripts. install.sh puts
 # Aqua Transport on the base box's guest, without tap.kext; verify.sh

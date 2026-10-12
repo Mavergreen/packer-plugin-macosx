@@ -1,4 +1,5 @@
 #!/usr/bin/env bats
+# platform: host-agnostic
 #
 # The checks that guard what this project ships, and what it is made of.
 #

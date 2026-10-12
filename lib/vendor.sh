@@ -1,4 +1,5 @@
 # shellcheck shell=bash
+# platform: host-agnostic
 # The third-party artifact registry.
 #
 # assets/pins/sources.tsv is tab-separated: name, url, sha256. A sha256 of TOFU

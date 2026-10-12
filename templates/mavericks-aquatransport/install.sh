@@ -1,4 +1,5 @@
 #!/bin/sh
+# platform: macOS-only -- runs in the guest over SSH, never on the build host
 # Guest-side: install Aqua Transport from the DMG the template uploaded,
 # without tap.kext. The template runs this over SSH as the build's own
 # user, as `sh install.sh` -- 10.9's /bin/sh, which is its bash 3.2 in

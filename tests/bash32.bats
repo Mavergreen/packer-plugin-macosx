@@ -1,4 +1,5 @@
 #!/usr/bin/env bats
+# platform: host-agnostic
 #
 # bin/bash32-check.sh is the gate that keeps this codebase runnable under
 # the bash 3.2 that stock OS X 10.9 ships in /bin. A gate nobody has seen

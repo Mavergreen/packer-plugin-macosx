@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# platform: host-agnostic
 # The one conformance check that is ours alone: A RELEASE MUST CONTAIN NO
 # APPLE-DERIVED BYTES.
 #

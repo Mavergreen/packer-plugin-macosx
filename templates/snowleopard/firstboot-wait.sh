@@ -1,4 +1,5 @@
 #!/bin/sh
+# platform: macOS-only -- runs in the guest over SSH, never on the build host
 # Guest-side: waits, bounded, for the first-boot payload to finish before
 # verify.sh asks the guest what it is. SSH answering is not the same as
 # the first boot being finished -- assets/guest/firstboot.sh turns Remote

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# platform: host-agnostic
 # Build the plugin and install it where a local `packer` will find it.
 #
 # `packer plugins install --path` is how a plugin binary reaches

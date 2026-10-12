@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# platform: host-agnostic
 # Fail if any shell file here uses a bash feature newer than 3.2.
 #
 # WHY 3.2, WHICH IS FROM 2006

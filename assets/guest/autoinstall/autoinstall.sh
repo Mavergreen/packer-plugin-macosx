@@ -1,4 +1,5 @@
 #!/bin/sh
+# platform: macOS-only -- runs in the guest's OS X Installer environment, never on the build host
 # Prepare the target disk for an unattended Mavericks install.
 #
 # WHERE THIS RUNS

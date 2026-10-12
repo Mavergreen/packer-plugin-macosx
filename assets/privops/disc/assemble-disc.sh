@@ -1,4 +1,5 @@
 # shellcheck shell=sh
+# platform: host-agnostic -- runs under busybox in the privops Linux microVM, never on the build host
 # Runs as uid 0 inside the privops microVM: the user's verified installer
 # disc mounted read-only as $MQG_SRC1, the new media's empty volume at
 # $MQG_MNT, and the injectables' tar on the raw disk $MQG_RAW2. A retail

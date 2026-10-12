@@ -1,4 +1,5 @@
 #!/usr/bin/env bats
+# platform: host-agnostic
 #
 # bin/base-recipe.sh names what the base image is built from. A release that changes only the
 # layer template, the docs or the tests must publish the same recipe, so a consumer can leave
@@ -91,12 +92,13 @@ change() { # change FILE: edit it and commit
     head -1 "$REPO/bin/base-recipe.sh" | grep -q '^#!/bin/sh$'
 }
 
-# One "# platform:" header opts the whole repo into the family's check 22, which then
-# requires one in every script, the guest assets included; changing those rebuilds every
-# cached media. Adopting it is a decision of its own, not a side effect of a new script.
-@test "no tracked script declares a platform, so check 22 stays unadopted" {
+# spec: the family's check 22 -- this repo has adopted the host split (every script declares
+#       "# platform: host-agnostic" or "macOS-only -- <why>"), and shipyard's check-host-tools.sh
+#       enforces it only while one script declares; dropping every declaration would turn the
+#       check off without a failure, so that is one here
+@test "check 22 stays adopted: tracked scripts declare their host" {
     run git -C "$REPO" grep -lE '^# platform: (host-agnostic|macOS-only)' -- .
-    [ "$status" -eq 1 ]
+    [ "$status" -eq 0 ]
 }
 
 @test "a commit that changes components/openssh/version changes it" {

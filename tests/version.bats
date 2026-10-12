@@ -1,4 +1,5 @@
 #!/usr/bin/env bats
+# platform: host-agnostic
 #
 # The version scheme: YYYYMMDD.N, the family's self-upstream shape, tagged
 # v0.YYYYMMDD.N, the semver Packer resolves plugins by. See
