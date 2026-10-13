@@ -90,7 +90,7 @@ jobs:
       # goreleaser is told it rather than reading it from git. --skip=validate for the same reason:
       # validation wants that tag at HEAD.
       - name: Build the plugin zips, the template zips and their SHA256SUMS
-        uses: goreleaser/goreleaser-action@v7.2.3
+        uses: goreleaser/goreleaser-action@v7.3.0
         env:
           GORELEASER_CURRENT_TAG: ${{ steps.ver.outputs.tag }}
         with:
