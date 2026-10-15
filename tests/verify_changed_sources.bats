@@ -10,14 +10,15 @@ setup() {
 
 # A throwaway git repository carrying just enough of the tree for
 # bin/verify-changed-sources.sh to run: the script itself, the two lib
-# files it sources, and a registry pinning one file:// "upstream" at the
+# files it sources, build/msc.sh, and a registry pinning one file:// "upstream" at the
 # given checksum.
 make_repo() {
     local dir="$BATS_TEST_TMPDIR/planted"
-    mkdir -p "$dir/bin" "$dir/lib" "$dir/assets/pins"
+    mkdir -p "$dir/bin" "$dir/lib" "$dir/build" "$dir/assets/pins"
     cp "$REPO/bin/verify-changed-sources.sh" "$dir/bin/"
     cp "$REPO/lib/common.sh" "$dir/lib/"
     cp "$REPO/lib/vendor.sh" "$dir/lib/"
+    cp "$REPO/build/msc.sh" "$dir/build/"
     printf '%s\n' \
         "thing	file://$dir/upstream.zip	$1" \
         > "$dir/assets/pins/sources.tsv"

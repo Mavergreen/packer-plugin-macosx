@@ -6,7 +6,13 @@
 # means "not yet known": trust on first use, until fetch_source fetches it
 # once and pin_checksum pins what it got, for a human to review and commit.
 #
-# Requires lib/common.sh to be sourced first.
+# Requires lib/common.sh to be sourced first. Sourcing it locates shipyard
+# (build/msc.sh) and loads its shipyard_curl.
+
+# shellcheck source=../build/msc.sh
+. "$(repo_root)/build/msc.sh" || return 1
+# shellcheck source=/dev/null
+. "$SHIPYARD_SCRIPTS/mavericks_fetch.sh"
 
 # source_field <tsv> <name> <url|sha256>
 source_field() {
@@ -85,10 +91,8 @@ fetch_source() {
 
     if [ ! -f "$dest" ]; then
         log "fetching $name from $url"
-        curl -fSL --retry 3 -o "$dest.part" "$url" \
+        shipyard_curl "$url" "$dest" \
             || die "download failed for $name"
-        mv "$dest.part" "$dest" \
-            || die "cannot move downloaded file into place: $dest"
     else
         log "$name already present at $dest"
     fi
