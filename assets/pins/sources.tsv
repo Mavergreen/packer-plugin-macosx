@@ -11,7 +11,7 @@
 # name	url	sha256
 utm-bundle	https://adam.kostarelas.com/blog/mavericks-in-utm-on-silicon/Mavericks-OSX-10.9-Config.utm.zip	c7990c86c2dda00b5b88c21dd8d9337552d25f9de0b7ea0bb2e24f2cea5dcab3
 opencore-legacy-img	https://raw.githubusercontent.com/khronokernel/khronokernel.github.io/refs/heads/master/Binaries/OpenCore/EFI-LEGACY.img.zip	04d0af359b7db3d7f6f3db8361f7b13f03b79359f6a682e87181e433826ab7c9
-opencorepkg-src	https://github.com/acidanthera/OpenCorePkg/archive/refs/tags/1.0.7.tar.gz	98e4faf7cf0ce4ac89ec2a35fec3671f30b82d101aa573b9016fed95a50c176e
+opencorepkg-src	https://github.com/acidanthera/OpenCorePkg/archive/refs/tags/1.0.8.tar.gz	98e4faf7cf0ce4ac89ec2a35fec3671f30b82d101aa573b9016fed95a50c176e
 
 # The OpenCore build's other inputs. Upstream's build_oc.tool curls
 # ocbuild's efibuild.sh off master and evals it, and that script clones
