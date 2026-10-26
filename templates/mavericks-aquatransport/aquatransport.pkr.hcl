@@ -11,7 +11,7 @@
 # (TestThePinIsWellFormed).
 
 locals {
-  aquatransport_version = "2026.10.09"
+  aquatransport_version = "2026.10.25"
   aquatransport_url     = "https://mavericksforever.com/downloads/AquaTransport.dmg"
-  aquatransport_sha256  = "7b91d3e4531e1f91137dcc050d632db05f577cda3dc8ddd75cad97627685bc36"
+  aquatransport_sha256  = "bee11055fcf0e718b1afcb271f8afb398b29dbb6c3d8c650d93d3ab62be65ab7"
 }
