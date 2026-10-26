@@ -43,7 +43,7 @@ audk-subhook	https://github.com/tianocore/edk2-subhook/archive/83d4e1ebef3588fae
 # We do not build these from source; assets/firmware/README.md records why these
 # versions and how their 10.9 (Darwin 13) support was verified.
 lilu-release	https://github.com/acidanthera/Lilu/releases/download/1.7.2/Lilu-1.7.2-RELEASE.zip	53967d7dcfaab01023a33df2e969a89522f13d6654a6a56ac4711b62dabf3ab8
-virtualsmc-release	https://github.com/acidanthera/VirtualSMC/releases/download/1.3.7/VirtualSMC-1.3.7-RELEASE.zip	12f1d379969f926306fa92d94ddbf33b32b31176589dc42089d864a26b31b700
+virtualsmc-release	https://github.com/acidanthera/VirtualSMC/releases/download/1.3.8/VirtualSMC-1.3.8-RELEASE.zip	12f1d379969f926306fa92d94ddbf33b32b31176589dc42089d864a26b31b700
 
 # Apple. Mavericks 10.9.5 InstallESD.dmg, the one thing here that may not
 # come from anywhere else. lib/vendor.sh's fetch_source cannot fetch it:
