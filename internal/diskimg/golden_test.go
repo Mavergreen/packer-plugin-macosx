@@ -12,18 +12,19 @@ import (
 // The other tests show the output is stable and well-formed; these show
 // it is the SAME output as before, so a change to a single byte of the
 // format fails here, by name. The GUIDs and the GPT's bytes follow from
-// DerivedGUID's seed prefix, "mavericks diskimg ". Regenerate only on a
-// deliberate format change, and say why in the commit.
+// DerivedGUID's seed prefix, "guest-macosx diskimg " (until 2026-10-17,
+// "mavericks diskimg "). Regenerate only on a deliberate format change,
+// and say why in the commit.
 const (
 	// DerivedGUID's answers for the two seeds the EFI image uses.
-	goldenESPGUID  = "EE93D637-9799-4A6A-BB99-D28F87A9C4C6" // "opencore esp"
-	goldenDiskGUID = "C5F5D503-CA42-4983-8B8A-184138CB2AD3" // "opencore disk"
+	goldenESPGUID  = "50701763-A198-4E3E-A526-0808FDF590CD" // "opencore esp"
+	goldenDiskGUID = "DAB0F2D8-F12E-4E1F-A192-D93003A600F3" // "opencore disk"
 
 	// The 40 MiB filesystem TestFATIsDeterministic builds.
 	goldenFAT40 = "e3b0cd527933ecfae3539cb2096390e53496289d50b7ed8c685fe15239b19635"
 	// A 192 MiB disk holding only the GPT: espOn(mib192), disk GUID
 	// DerivedGUID("test disk"), every other byte zero.
-	goldenGPT192 = "8bd36cfbe2bcfc0cec57d70f74af4ba6aeec568310bc1e32296189fcdb6cf702"
+	goldenGPT192 = "2a21a6450e9fecb71c3e6a2e59dc72ca6d64f28c0a042bc6e72b85c05c4a16da"
 )
 
 func sum(b []byte) string {
@@ -32,12 +33,12 @@ func sum(b []byte) string {
 }
 
 // derive is DerivedGUID's rule written out again, from the text end:
-// the first 16 bytes of SHA-256("mavericks diskimg " + seed), version 4 in
+// the first 16 bytes of SHA-256("guest-macosx diskimg " + seed), version 4 in
 // the high nibble of byte 6, the RFC 4122 variant in the top two bits of
 // byte 8, printed 8-4-4-4-12 in upper-case hex. It pins the derivation
 // itself, not just that the answer is stable.
 func derive(seed string) string {
-	s := sha256.Sum256([]byte("mavericks diskimg " + seed))
+	s := sha256.Sum256([]byte("guest-macosx diskimg " + seed))
 	b := s[:16]
 	b[6] = b[6]&0x0f | 0x40
 	b[8] = b[8]&0x3f | 0x80

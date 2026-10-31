@@ -58,6 +58,9 @@ Building them from source would need Xcode.
 | audk's 12 submodules | the commits audk's gitlinks name (`audk-*`); all twelve, because EDK II's `build.py` validates every `[Includes]` path in every `.dec` it parses |
 | `assets/firmware/patches/0001-*` | makes `build_oc.tool` read the pinned `efibuild.sh` instead of fetching one off `master` |
 | `assets/firmware/patches/0002-*`, `0003-*` | state OvmfPkg's C dialect, and stop inheriting upstream's `-Werror` (below) |
+| `assets/firmware/patches/0004-*` | tianocore/edk2's `e4f99a85545f`, which audk lacks: reserves OVMF's IGVM parameter area, so a warm restart does not hang in PEI (`docs/decisions/0018`). Skipped once audk has it |
+| `assets/firmware/patches/0005-*` | ours: OVMF never reads that area, since QEMU here never loads an IGVM file and 10.6's kernel covers the page anyway (`docs/decisions/0018`) |
+| `assets/firmware/patches/0006-*` | ours: OVMF's flash driver programs only the bytes that change, so a variable reclaim no longer holds a boot for most of a minute under QEMU's per-byte pflash writes (`docs/decisions/0032`) |
 
 Every pin lives in `assets/pins/sources.tsv` with its sha256.
 `internal/firmware/pins.go` declares which commit each audk tarball must
@@ -120,6 +123,16 @@ builds before and after `-Wno-error` (identical either way):
 `OVMF_VARS.fd`, which holds no code, is the one row expected to match
 anywhere. The others are a record of one build, useful for comparing a
 build made under the same conditions, and nothing more.
+
+These eight predate `assets/firmware/patches/0004-*` and `0005-*`
+(`docs/decisions/0018`) and `0006-*` (`docs/decisions/0032`), which
+change OvmfPkg's sources. Since then, no
+build of these pins reproduces the `OVMF_CODE.fd` and `OVMF.fd` rows above,
+on any compiler or in any directory. That includes the `195c4dcf…` that
+`internal/firmware/compiler.go`'s above-range warning cites as an
+example. `OVMF_VARS.fd` still matches. 0018 records the firmware it
+measured in one build directory: `afbdc8c0…` before, `37b09daa…` with
+0004, `92e4db1d…` with both.
 
 ## The compiler: a declared range, not a pin
 

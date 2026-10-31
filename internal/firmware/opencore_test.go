@@ -194,8 +194,8 @@ func TestOpenCoreAssemblesTheUDKTree(t *testing.T) {
 	f.mustOpenCore()
 	src := filepath.Join(f.home, "build", "OpenCorePkg-1.0.7")
 	udk := filepath.Join(src, "UDK")
-	if b, _ := os.ReadFile(filepath.Join(udk, ".mqg-prepared")); string(b) != AudkCommit+"\n" {
-		t.Errorf(".mqg-prepared = %q", b)
+	if b, _ := os.ReadFile(filepath.Join(udk, ".guest-macosx-prepared")); string(b) != AudkCommit+"\n" {
+		t.Errorf(".guest-macosx-prepared = %q", b)
 	}
 	for _, r := range []string{"patches.ready", "submodules.ready", "UDK.ready"} {
 		if _, err := os.Stat(filepath.Join(udk, r)); err != nil {
@@ -244,7 +244,7 @@ func TestOpenCoreRebuildsATreeAtAnotherCommit(t *testing.T) {
 	f := newFixture(t)
 	f.mustOpenCore()
 	udk := filepath.Join(f.home, "build", "OpenCorePkg-1.0.7", "UDK")
-	if err := os.WriteFile(filepath.Join(udk, ".mqg-prepared"), []byte("old\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(udk, ".guest-macosx-prepared"), []byte("old\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	sentinel := filepath.Join(udk, "sentinel")
@@ -255,8 +255,8 @@ func TestOpenCoreRebuildsATreeAtAnotherCommit(t *testing.T) {
 	if _, err := os.Stat(sentinel); !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("the tree at another commit was kept: %v", err)
 	}
-	if b, _ := os.ReadFile(filepath.Join(udk, ".mqg-prepared")); string(b) != AudkCommit+"\n" {
-		t.Errorf(".mqg-prepared = %q", b)
+	if b, _ := os.ReadFile(filepath.Join(udk, ".guest-macosx-prepared")); string(b) != AudkCommit+"\n" {
+		t.Errorf(".guest-macosx-prepared = %q", b)
 	}
 }
 
@@ -418,7 +418,7 @@ func TestOpenCoreWithCcache(t *testing.T) {
 	f.mustOpenCore()
 	shims := filepath.Join(f.home, "build", "ccache-bin")
 	b, err := os.ReadFile(filepath.Join(shims, "gcc"))
-	if err != nil || string(b) != "#!/bin/sh\nexec /usr/bin/ccache /usr/bin/gcc \"$@\"\n" {
+	if err != nil || string(b) != string(testdataFile(t, "ccache-shim-gcc.sh")) {
 		t.Errorf("gcc shim = %q, %v", b, err)
 	}
 	env := f.calls("./build_oc.tool")[0].Env
@@ -613,7 +613,7 @@ func TestOpenCoreReadsTheMarkerLessTrailingNewlines(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, marker := range []string{AudkCommit, AudkCommit + "\n\n"} {
-		if err := os.WriteFile(filepath.Join(udk, ".mqg-prepared"), []byte(marker), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(udk, ".guest-macosx-prepared"), []byte(marker), 0o644); err != nil {
 			t.Fatal(err)
 		}
 		f.mustOpenCore()
@@ -627,7 +627,7 @@ func TestOpenCoreReplacesAnUnmarkedTree(t *testing.T) {
 	f := newFixture(t)
 	f.mustOpenCore()
 	udk := filepath.Join(f.home, "build", "OpenCorePkg-1.0.7", "UDK")
-	if err := os.Remove(filepath.Join(udk, ".mqg-prepared")); err != nil {
+	if err := os.Remove(filepath.Join(udk, ".guest-macosx-prepared")); err != nil {
 		t.Fatal(err)
 	}
 	sentinel := filepath.Join(udk, "sentinel")
@@ -638,8 +638,8 @@ func TestOpenCoreReplacesAnUnmarkedTree(t *testing.T) {
 	if _, err := os.Stat(sentinel); !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("a tree without a marker was kept: %v", err)
 	}
-	if b, _ := os.ReadFile(filepath.Join(udk, ".mqg-prepared")); string(b) != AudkCommit+"\n" {
-		t.Errorf(".mqg-prepared = %q", b)
+	if b, _ := os.ReadFile(filepath.Join(udk, ".guest-macosx-prepared")); string(b) != AudkCommit+"\n" {
+		t.Errorf(".guest-macosx-prepared = %q", b)
 	}
 }
 
@@ -651,7 +651,7 @@ func TestOpenCoreAFailedUpstreamPatchLeavesNoMarker(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 	udk := filepath.Join(f.home, "build", "OpenCorePkg-1.0.7", "UDK")
-	if _, err := os.Stat(filepath.Join(udk, ".mqg-prepared")); !errors.Is(err, fs.ErrNotExist) {
+	if _, err := os.Stat(filepath.Join(udk, ".guest-macosx-prepared")); !errors.Is(err, fs.ErrNotExist) {
 		t.Fatalf("a marker after a failed patch: %v", err)
 	}
 	before := len(f.applies(udk, "--ignore-whitespace"))

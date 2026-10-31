@@ -24,7 +24,7 @@ model set) and refuses a config it rejects. By hand, from the firmware
 workspace in Packer's cache (`docs/decisions/0003`):
 
 ```
-<cache>/mavericks/firmware-build/build/OpenCorePkg-1.0.7/Utilities/ocvalidate/ocvalidate assets/firmware/config.plist
+<cache>/guest-macosx/firmware-build/build/OpenCorePkg-1.0.7/Utilities/ocvalidate/ocvalidate assets/firmware/config.plist
 ```
 
 It announces that it is "only compatible with OpenCore version 1.0.7", which
@@ -276,13 +276,20 @@ one at a time.
 `OC_SCAN_DEVICE_LOCK` (`0x2`) + `OC_SCAN_ALLOW_FS_HFS` (`0x200`) +
 `OC_SCAN_ALLOW_DEVICE_SATA` (`0x10000`): **HFS+ volumes on SATA devices
 only**, which is exactly the macOS disk and the installer media, both
-attached `ide-hd` on q35's AHCI.
+attached `ide-hd` on q35's AHCI. OpenCore's own disk is a `virtio-blk`
+device (`docs/decisions/0035`), excluded twice over: not SATA, and FAT.
+MEASURED 2026-10-27/28: the same entries with it on virtio-blk, pinned to
+slot 0x10, as with it on USB or AHCI: "Mavericks" (the default) and
+"Recovery 10.9.5" on a 10.9.5 box, "Snow Leopard" alone on a 10.6.0 box
+(the final review's boots). `internal/firmware`'s ScanPolicy test refuses
+`OC_SCAN_ALLOW_DEVICE_PCI`, the class OpenCore gives a virtio-blk disk, so
+the device lock keeps it out as well as the filesystem bit.
 
 With `0` (scan everything) and an empty NVRAM, the picker listed the
 OpenCore disk itself, made it the default, timed out into it, re-entered
 `BOOTx64.efi`, got `EFI_ALREADY_STARTED` and hung, so every boot needed a
-keypress. The OpenCore image is FAT on `usb-storage`, excluded twice over,
-so the picker has the one entry that should boot, and the timeout
+keypress. The OpenCore image is FAT, which the policy excludes, so the
+picker has the one entry that should boot, and the timeout
 boots it. That is declarative about what is meant to boot, where hiding
 the entry or remembering a choice would patch a symptom; an unexpected
 volume cannot become the default either.
@@ -380,6 +387,12 @@ persistence, but every build starts from its own fresh copy of the variable
 store, and the box attaches its copy `snapshot=on`, so no variable outlives
 a run for a stale `boot-args` to come from.
 
+**No `platform-uuid`.** A default host UUID here would be one constant for
+every machine whose hypervisor gives no UUID, whatever its NIC, and distinct
+machines must have distinct UUIDs. The host UUID comes from whatever runs the
+box (`SystemUUID`, below), and every launcher this project owns gives QEMU a
+`-uuid` of its own (`docs/decisions/0024`).
+
 The sample's other variables are left out, each for a reason:
 
 - **`csr-active-config`** — System Integrity Protection arrived in 10.11.
@@ -403,12 +416,26 @@ own tables are not Apple-shaped.
 `Automatic` is `true`, so the `Generic` section is what takes effect.
 
 **The identity fields are left at the sample's obvious placeholders** —
-`SystemSerialNumber` `W00000000001`, `SystemUUID` all zeroes, `MLB`
-`M0000000000000001`, `ROM` `112233445566`. This is deliberate, not an
-oversight. Generating a plausible serial number is what you do when you want
-a VM to pass for a real Mac to Apple's servers; we want the opposite, and
-nothing in this project logs into anything. A reader who sees a real-looking
-serial number in a future diff should ask why it changed.
+`SystemSerialNumber` `W00000000001`, `MLB` `M0000000000000001`, `ROM`
+`112233445566`. This is deliberate, not an oversight. Generating a plausible
+serial number is what you do when you want a VM to pass for a real Mac to
+Apple's servers; we want the opposite, and nothing in this project logs into
+anything. A reader who sees a real-looking serial number in a future diff
+should ask why it changed.
+
+**`SystemUUID` is `OEM`**, not the sample's all-zero placeholder: OpenCore
+takes the UUID the firmware holds (a `system-id` NVRAM variable if the
+firmware keeps one, as a real Mac's does, else its SMBIOS Type 1 table), that
+is, from whatever runs the box (QEMU's `-uuid`, libvirt's domain UUID,
+VMware, VirtualBox, a real Mac), and sets `system-id`, from which the kernel
+derives `IOPlatformUUID` before any daemon starts. It mints nothing. OpenCore
+ignores a UUID with four or more 0x00 or 0xFF bytes: QEMU's without `-uuid`
+(all zeroes), and some PC boards' placeholders. Then the guest derives its
+UUID from its NIC's MAC, as a real Mac with no firmware UUID would, but only
+once configd has named the NIC: 10.9 waits 30 s for it at every cold boot,
+and keys that boot's root `ByHost` preferences by zeros. The zero placeholder
+this replaced set no `system-id` at all (OpenCore skips a zero GUID), so every
+cold boot was that case (`docs/decisions/0024`).
 
 ---
 
@@ -431,8 +458,8 @@ not measured: a guest with no graphics acceleration draws every pixel on
 the CPU.
 
 The rest are sample defaults, including `Input > KeySupport: true` (the
-guest's keyboard is USB through the firmware, `usb-kbd` in the template's
-machine), `ConnectDrivers: true`, and `Quirks > RequestBootVarRouting:
+guest's keyboard is USB through the firmware, `usb-kbd` on EHCI in the
+template's machine), `ConnectDrivers: true`, and `Quirks > RequestBootVarRouting:
 true` (which pairs with `OpenRuntime.efi`). `ReservedMemory` and `Unload`
 are emptied of the sample's examples.
 

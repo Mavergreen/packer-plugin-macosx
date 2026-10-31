@@ -1,0 +1,130 @@
+Program only the flash bytes that change: a variable reclaim no longer
+holds a boot for most of a minute.
+
+Our own patch. OVMF's QemuFlashWrite programs every byte it is given,
+each as two writes to QEMU's pflash device: the program command, then
+the byte. Under KVM both writes leave the guest, and QEMU's pflash_cfi01
+(8.2.2, and master on 2026-10-25) writes the byte's 512-byte sector of
+the varstore file synchronously from the vCPU thread before the guest
+runs on: 47-69 us a byte on this project's host, idle (docs/decisions/0032).
+
+That is harmless for the few kilobytes a boot writes, and not for a
+reclaim. OVMF's own boot manager rewrites ConOut, ConIn and ErrOut 14
+times every boot (it adds its platform consoles, then drops those that
+do not connect), so about 3.6 KiB of superseded variables pile up per
+boot in the 256 KiB store. A warm restart keeps the store (the box
+attaches it snapshot=on, so it lives as long as the QEMU process), and
+at the 61st warm restart fewer than 33 KiB (PcdMaxAuthVariableSize) are
+left, so at ReadyToBoot the variable driver reclaims (ReclaimForOS): it
+rewrites the whole store through the fault-tolerant-write spare,
+798,300 programmed bytes, 98.9 % of them 0xFF onto blocks just erased.
+That held a warm restart 41-57 s in the firmware, before OpenCore
+started, on an idle host, and for minutes on a busy one.
+
+What it changes: QemuFlashWrite compares the buffer with what the flash
+already holds and programs only the runs of bytes that differ, each run
+through at most 16 unchanged bytes, with the same two writes per byte as
+before, and returns the device to read-array mode after each run, as it
+did after each call. A byte left alone holds the value programming it
+would have stored, so the flash ends exactly as before. The comparison
+reads the array, which the device returns only in read-array mode, and
+an erase leaves it in status mode, where a read returns the status
+register: so QemuFlashEraseBlock now ends with the read-array command
+too. Nothing else in the driver, the FVB protocol or the variable driver
+changes.
+
+Upstream has no such change (tianocore/edk2 history of this file to
+2026-10-25), and QEMU still writes per programmed byte.
+
+Applied by internal/firmware's OVMF build after 0005, unless QemuFlash.c
+already carries this file's marker comment. Its hunks keep upstream's
+CRLF line endings.
+
+diff --git a/OvmfPkg/QemuFlashFvbServicesRuntimeDxe/QemuFlash.c b/OvmfPkg/QemuFlashFvbServicesRuntimeDxe/QemuFlash.c
+--- a/OvmfPkg/QemuFlashFvbServicesRuntimeDxe/QemuFlash.c
++++ b/OvmfPkg/QemuFlashFvbServicesRuntimeDxe/QemuFlash.c
+@@ -194,6 +194,8 @@ QemuFlashWrite (
+ {
+   volatile UINT8  *Ptr;
+   UINTN           Loop;
++  UINTN           End;
++  UINTN           Same;
+ 
+   //
+   // Only write to the first 64k. We don't bother saving the FTW Spare
+@@ -203,22 +205,50 @@ QemuFlashWrite (
+     return EFI_INVALID_PARAMETER;
+   }
+ 
+-  //
+-  // Program flash
+-  //
+-  Ptr = QemuFlashPtr (Lba, Offset);
+-  for (Loop = 0; Loop < *NumBytes; Loop++) {
+-    QemuFlashPtrWrite (Ptr, WRITE_BYTE_CMD);
+-    QemuFlashPtrWrite (Ptr, Buffer[Loop]);
+-
+-    Ptr++;
++  if (*NumBytes == 0) {
++    return EFI_SUCCESS;
+   }
+ 
+   //
+-  // Restore flash to read mode
++  // packer-plugin-macosx: assets/firmware/patches/0006-ovmf-program-only-the-flash-bytes-that-change.patch
++  // Program only the bytes that change. QEMU's pflash traps both writes
++  // of every programmed byte and writes its backing file once per byte,
++  // so a variable reclaim, which rewrites the whole store through the
++  // FTW spare, some 800,000 bytes, nearly all 0xFF onto erased blocks,
++  // held a boot 41-57 s. A byte that already holds its value is left
++  // alone, which leaves the flash exactly as programming it would. The
++  // comparison reads the array, which the device returns only in
++  // read-array mode: this function and QemuFlashEraseBlock both leave it
++  // there. Runs of changed bytes are programmed together, through up to
++  // 16 unchanged ones, so each run leaves read-array mode once.
+   //
+-  if (*NumBytes > 0) {
+-    QemuFlashPtrWrite (Ptr - 1, READ_ARRAY_CMD);
++  Ptr  = QemuFlashPtr (Lba, Offset);
++  Loop = 0;
++  while (Loop < *NumBytes) {
++    if (Ptr[Loop] == Buffer[Loop]) {
++      Loop++;
++      continue;
++    }
++
++    Same = 0;
++    for (End = Loop + 1; End < *NumBytes && Same < 16; End++) {
++      Same = (Ptr[End] == Buffer[End]) ? Same + 1 : 0;
++    }
++
++    End -= Same;
++
++    //
++    // Program flash
++    //
++    for ( ; Loop < End; Loop++) {
++      QemuFlashPtrWrite (Ptr + Loop, WRITE_BYTE_CMD);
++      QemuFlashPtrWrite (Ptr + Loop, Buffer[Loop]);
++    }
++
++    //
++    // Restore flash to read mode
++    //
++    QemuFlashPtrWrite (Ptr + End - 1, READ_ARRAY_CMD);
+   }
+ 
+   return EFI_SUCCESS;
+@@ -244,6 +274,12 @@ QemuFlashEraseBlock (
+   Ptr = QemuFlashPtr (Lba, 0);
+   QemuFlashPtrWrite (Ptr, BLOCK_ERASE_CMD);
+   QemuFlashPtrWrite (Ptr, BLOCK_ERASE_CONFIRM_CMD);
++
++  //
++  // packer-plugin-macosx: assets/firmware/patches/0006 (see QemuFlashWrite)
++  // Restore flash to read mode: QemuFlashWrite reads the array.
++  //
++  QemuFlashPtrWrite (Ptr, READ_ARRAY_CMD);
+   return EFI_SUCCESS;
+ }
+ 

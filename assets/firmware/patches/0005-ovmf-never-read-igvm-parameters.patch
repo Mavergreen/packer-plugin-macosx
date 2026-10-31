@@ -1,0 +1,57 @@
+Never take OVMF's IGVM parameter area: no memory map and no vCPU count
+from it, whatever bytes are at 0x812000.
+
+Our own patch, on top of upstream's 0004, which stays. Upstream will
+never carry it: it is right only where no IGVM loader runs. This project
+boots OVMF under QEMU 8.2.2, which has no IGVM loader at all
+(`qemu-system-x86_64 -object help` lists no igvm-cfg), and the plugin
+never passes one. So the area at PcdOvmfIgvmParamBase can hold nothing
+but what was in RAM before a reset.
+
+Why 0004 is not enough (docs/decisions/0018): 0004 reserves the page, so
+an OS that honours the firmware's memory map leaves it zero, as 10.9
+does. 10.6 does not get the choice. Its kernel sits at fixed low
+physical memory, and OpenCore's relocation block copies it there at
+ExitBootServices, over whatever the firmware reserved. Under 10.6 the
+page holds the kernel's own bytes, and whether a warm restart hangs
+depends on the kernel build. 10.6.8's happens to be safe.
+
+What it changes: mIgvmParamsInvalid starts TRUE instead of FALSE.
+PlatformIgvmMemoryMapFind and PlatformIgvmVpCount, the only two readers
+of the parameter area, test that flag before they read anything, and
+nothing sets it back to FALSE. So the memory map check reports no map,
+and E820 comes from fw_cfg's etc/e820. The vCPU count reports none, so
+PlatformMaxCpuCountInitialization asks fw_cfg and the CPU-hotplug block.
+That is exactly what a cold boot already did with a zeroed page. One
+line, in the one file that reads the area. Rejected: setting
+PcdOvmfIgvmParamBase to 0. That PCD is assigned by the MEMFD region in
+OvmfPkg/Include/Fdf/MemFd.fdf.inc, which the reset vector's IGVM
+metadata also describes, so it would move the firmware's memory layout
+to change one decision.
+
+Not changed: PlatformIgvmDataHobs, which walks the separate IGVM data-HOB
+page at PcdOvmfIgvmHobBase (0x813000). It takes an entry only when its
+type is a GUID extension and its 16-byte GUID is gEfiIgvmDataHobGuid,
+which leftover RAM does not match in practice.
+
+Applied by internal/firmware's OVMF build after 0004, unless Igvm.c
+already carries this file's marker comment. Its hunk keeps upstream's
+CRLF line endings.
+
+diff --git a/OvmfPkg/Library/PlatformInitLib/Igvm.c b/OvmfPkg/Library/PlatformInitLib/Igvm.c
+--- a/OvmfPkg/Library/PlatformInitLib/Igvm.c
++++ b/OvmfPkg/Library/PlatformInitLib/Igvm.c
+@@ -36,7 +36,12 @@ typedef struct IGVM_MEMORY_MAP_ENTRY {
+   UINT32    Reserved;
+ } IGVM_MEMORY_MAP_ENTRY;
+ 
+-STATIC BOOLEAN  mIgvmParamsInvalid;
++//
++// packer-plugin-macosx: assets/firmware/patches/0005-ovmf-never-read-igvm-parameters.patch
++// QEMU never loads an IGVM file here, so the parameter area holds no
++// parameters, only what was in RAM before a reset: never take it.
++//
++STATIC BOOLEAN  mIgvmParamsInvalid = TRUE;
+ 
+ STATIC
+ IGVM_MEMORY_MAP_ENTRY *

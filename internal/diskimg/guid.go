@@ -65,7 +65,7 @@ func (g GUID) String() string {
 // DerivedGUID is a GUID taken from a hash of seed, shaped as a version-4
 // (random) GUID: stable across builds, which random GUIDs are not.
 func DerivedGUID(seed string) GUID {
-	sum := sha256.Sum256([]byte("mavericks diskimg " + seed))
+	sum := sha256.Sum256([]byte("guest-macosx diskimg " + seed))
 	var b [16]byte
 	copy(b[:], sum[:16])
 	b[6] = b[6]&0x0f | 0x40 // version 4

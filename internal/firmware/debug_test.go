@@ -128,7 +128,7 @@ func TestEFIImageWithDebugOn(t *testing.T) {
 		if err := os.MkdirAll(filepath.Dir(f.b.ocvalidate()), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(f.b.ocvalidate(), []byte("#!/bin/sh\n"), 0o755); err != nil {
+		if err := os.WriteFile(f.b.ocvalidate(), testdataFile(t, "noop.sh"), 0o755); err != nil {
 			t.Fatal(err)
 		}
 		img, err := f.b.EFIImage(t.Context(), Mavericks, m, true)

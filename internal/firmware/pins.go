@@ -114,7 +114,7 @@ func openCoreTools(gcc string) []string {
 }
 
 // ovmfTools is every external program the OVMF build needs: bash runs
-// edksetup.sh, git applies our dsc patches, nasm assembles the reset
+// edksetup.sh, git applies our OVMF patches, nasm assembles the reset
 // vector and iasl compiles the ACPI tables.
 func ovmfTools(gcc string) []string {
 	return []string{"bash", "make", gcc, "git", "python3", "nasm", "iasl"}

@@ -1,0 +1,117 @@
+Reserve OVMF's IGVM parameter area, so no OS writes where the firmware
+reads its vCPU count on the next boot.
+
+Upstream's fix, unchanged: tianocore/edk2 commit
+a8210e06a2a19814e750e17919f44b18c6fb17c6, "OvmfPkg/PlatformInitLib:
+reserve igvm parameter area" (Gerd Hoffmann, 2025-12-05), merged as
+e4f99a85545f41ef7ae23cd939484d69a84b6176 on 2025-12-10 from
+https://github.com/tianocore/edk2/pull/11866. It was written for the
+same symptom, reported as intermittent hangs on reboot
+(edk2-devel, 2025-12-05, "commit 5e8db785: intermittent crashes and
+hangs on reboot"). acidanthera/audk has not merged it: neither the
+pinned 0672a009 nor audk master on 2026-10-13 has it.
+
+What it fixes, as measured here (docs/decisions/0018):
+
+Since edk2 5e8db785 and 38370cf4 (2025-09), OVMF's PEI reads a page of
+guest RAM at a fixed address, 0x812000, as IGVM parameters on every
+boot: an IGVM loader would have put a memory map there, and a vCPU
+count at +0xC0. Plain QEMU puts nothing there, and nothing reserved
+the page, so the OS used it as ordinary memory. A cold boot starts
+from zeroed RAM and finds nothing. A warm restart does not clear RAM,
+so OVMF read 10.9's leftover bytes. The first entry's page count
+(offset 8) decides. Nonzero, with a type below 16 and a zero reserved
+field: the bytes are taken as a memory map. Zero: there is no map, and
+nothing is marked invalid. Anything else marks the area invalid. Unless
+it is invalid, the dword at offset 0xC0 is the vCPU count whenever it is
+from 1 to 65535 (1992, in the debug log of one hang). MpInitLib then
+waits MAX_UINT32 microseconds, about 71 minutes, for APs that do not
+exist. A QMP system_reset keeps RAM too, and hung the same way; a new
+QEMU process booted.
+
+The reservation is runtime services data, which an OS leaves alone, so
+the page stays as a cold boot left it: zero.
+
+Applied by internal/firmware's OVMF build, unless Igvm.c already has
+PlatformIgvmParamReserve (an audk that has merged it), against the EDK
+II tree its OpenCore build assembles from the pinned audk tarball. Its
+hunks keep upstream's CRLF line endings.
+
+diff --git a/OvmfPkg/Include/Library/PlatformInitLib.h b/OvmfPkg/Include/Library/PlatformInitLib.h
+index 469c49b6285e..884e381928a0 100644
+--- a/OvmfPkg/Include/Library/PlatformInitLib.h
++++ b/OvmfPkg/Include/Library/PlatformInitLib.h
+@@ -321,4 +321,10 @@ PlatformIgvmVpCount (
+   VOID
+   );
+ 
++VOID
++EFIAPI
++PlatformIgvmParamReserve (
++  VOID
++  );
++
+ #endif // PLATFORM_INIT_LIB_H_
+diff --git a/OvmfPkg/Library/PlatformInitLib/Igvm.c b/OvmfPkg/Library/PlatformInitLib/Igvm.c
+index 1b0d9a9b851a..dd5a94ef38f6 100644
+--- a/OvmfPkg/Library/PlatformInitLib/Igvm.c
++++ b/OvmfPkg/Library/PlatformInitLib/Igvm.c
+@@ -75,6 +75,33 @@ PlatformIgvmMemoryMapFind (
+   return Map;
+ }
+ 
++VOID
++EFIAPI
++PlatformIgvmParamReserve (
++  VOID
++  )
++{
++  UINT64  Base;
++  UINT64  Size;
++
++  Base = FixedPcdGet64 (PcdOvmfIgvmParamBase);
++  Size = FixedPcdGet64 (PcdOvmfIgvmParamSize);
++
++  if (Base && Size) {
++    //
++    // Reserve igvm parameter area as runtime data, to make sure the OS isn't
++    // going to use it, otherwise we can get corrupted IGVM parameters after
++    // guest reboot.
++    //
++    DEBUG ((DEBUG_INFO, "%a: 0x%x +0x%x\n", __func__, Base, Size));
++    BuildMemoryAllocationHob (
++      Base,
++      Size,
++      EfiRuntimeServicesData
++      );
++  }
++}
++
+ BOOLEAN
+ EFIAPI
+ PlatformIgvmMemoryMapCheck (
+diff --git a/OvmfPkg/Library/PlatformInitLib/MemDetect.c b/OvmfPkg/Library/PlatformInitLib/MemDetect.c
+index 81fa60ade507..937e2b77a553 100644
+--- a/OvmfPkg/Library/PlatformInitLib/MemDetect.c
++++ b/OvmfPkg/Library/PlatformInitLib/MemDetect.c
+@@ -1240,6 +1240,8 @@ PlatformQemuInitializeRam (
+ 
+   DEBUG ((DEBUG_INFO, "%a called\n", __func__));
+ 
++  PlatformIgvmParamReserve ();
++
+   //
+   // Determine total memory size available
+   //
+diff --git a/OvmfPkg/Library/PlatformInitLib/PlatformInitLib.inf b/OvmfPkg/Library/PlatformInitLib/PlatformInitLib.inf
+index a02959c2cdbe..9df218c65c7a 100644
+--- a/OvmfPkg/Library/PlatformInitLib/PlatformInitLib.inf
++++ b/OvmfPkg/Library/PlatformInitLib/PlatformInitLib.inf
+@@ -113,6 +113,7 @@
+   gUefiOvmfPkgTokenSpaceGuid.PcdOvmfEarlyMemDebugLogSize
+ 
+   gUefiOvmfPkgTokenSpaceGuid.PcdOvmfIgvmParamBase
++  gUefiOvmfPkgTokenSpaceGuid.PcdOvmfIgvmParamSize
+   gUefiOvmfPkgTokenSpaceGuid.PcdOvmfIgvmHobBase
+   gUefiOvmfPkgTokenSpaceGuid.PcdOvmfIgvmHobSize
+ 

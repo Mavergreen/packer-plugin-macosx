@@ -118,7 +118,7 @@ func TestUntarStripsTheTopDirectory(t *testing.T) {
 		entry{name: "top/"},
 		entry{name: "top/a.txt", body: "a"},
 		entry{name: "top/sub/"},
-		entry{name: "top/sub/run.sh", body: "#!/bin/sh\n", mode: 0o755},
+		entry{name: "top/sub/run.sh", body: string(testdataFile(t, "noop.sh")), mode: 0o755},
 	)
 	dest := filepath.Join(dir, "out")
 	if err := untarGz(context.Background(), a, dest, 1); err != nil {

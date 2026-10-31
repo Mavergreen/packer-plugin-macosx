@@ -409,7 +409,7 @@
 			<key>SystemSerialNumber</key>
 			<string>W00000000001</string>
 			<key>SystemUUID</key>
-			<string>00000000-0000-0000-0000-000000000000</string>
+			<string>OEM</string>
 		</dict>
 		<key>UpdateDataHub</key>
 		<true/>

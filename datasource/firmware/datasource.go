@@ -54,7 +54,7 @@ type Config struct {
 	Compiler string `mapstructure:"compiler"`
 	// CacheDir names where the built store -- and, under it, the shared
 	// download cache and the firmware build workspace -- live. ""
-	// means packer.CachePath("mavericks").
+	// means packer.CachePath("guest-macosx").
 	CacheDir string `mapstructure:"cache_dir"`
 }
 
@@ -78,7 +78,7 @@ type DatasourceOutput struct {
 // The goldens part is the digest of that code's goldens (recipe_test.go's
 // recipeGoldens), and TestRecipePinsTheGoldens fails when they change
 // and this does not.
-const recipe = "2 goldens:66c6b9e67118289c"
+const recipe = "5 goldens:83b192f90e77c67c"
 
 // Datasource is a release's firmware data source: mavericks-firmware
 // when Release is zero, snowleopard-firmware with firmware.SnowLeopard.
@@ -197,7 +197,7 @@ func (d *Datasource) listing(reg *pins.Registry, compiler string) ([]string, err
 
 // logf reaches Packer's log (PACKER_LOG=1): a data source gets no UI, and
 // nothing here may print to stdout, which the plugin's RPC owns.
-func logf(format string, a ...any) { log.Printf("mavericks-firmware: "+format, a...) }
+func logf(format string, a ...any) { log.Printf("guest-macosx-firmware: "+format, a...) }
 
 func (d *Datasource) Execute() (cty.Value, error) {
 	ctx := context.Background()
@@ -217,7 +217,7 @@ func (d *Datasource) Execute() (cty.Value, error) {
 
 	cacheDir := d.config.CacheDir
 	if cacheDir == "" {
-		if cacheDir, err = packersdk.CachePath("mavericks"); err != nil {
+		if cacheDir, err = packersdk.CachePath("guest-macosx"); err != nil {
 			return cty.NullVal(cty.EmptyObject), err
 		}
 	}
@@ -280,7 +280,7 @@ func (d *Datasource) make(ctx context.Context, cacheDir string, reg *pins.Regist
 	// build; refused before anything is fetched.
 	for _, target := range []string{"opencore", "ovmf"} {
 		if err := firmware.CheckBuildPath(workspace, target); err != nil {
-			return fmt.Errorf("%w -- for mavericks-firmware, that means a shorter cache_dir (or PACKER_CACHE_DIR, which packer.CachePath honors, since cache_dir defaults to it)", err)
+			return fmt.Errorf("%w -- for %s-firmware, that means a shorter cache_dir (or PACKER_CACHE_DIR, which packer.CachePath honors, since cache_dir defaults to it)", err, d.rel().Name)
 		}
 	}
 

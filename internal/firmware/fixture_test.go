@@ -17,9 +17,31 @@ import (
 	"github.com/Mavergreen/packer-plugin-macosx/internal/proc"
 )
 
+// testdataFile is testdata/<name>, the shell scripts the tests use kept as
+// files the lint reads rather than as Go strings.
+func testdataFile(t *testing.T, name string) []byte {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join("testdata", name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
 // buildOCToolFetch is the line in OpenCorePkg 1.0.7's build_oc.tool that
 // assets/firmware/patches/0001 replaces: a curl of efibuild.sh at master.
 const buildOCToolFetch = "src=$(curl -LfsS https://raw.githubusercontent.com/acidanthera/ocbuild/master/efibuild.sh) && eval \"$src\" || exit 1\n"
+
+// buildOCTool is the fixture's build_oc.tool (testdata/build_oc.tool.sh),
+// which must hold buildOCToolFetch for the fake patch to find.
+func buildOCTool(t *testing.T) string {
+	t.Helper()
+	b := string(testdataFile(t, "build_oc.tool.sh"))
+	if !strings.Contains(b, buildOCToolFetch) {
+		t.Fatal("testdata/build_oc.tool.sh does not hold buildOCToolFetch")
+	}
+	return b
+}
 
 // A fixture is a firmware workspace whose every firmware input is a small
 // generated file, pinned in a test registry, and a proc.Fake that plays
@@ -43,6 +65,7 @@ type fixture struct {
 	buildOut    string   // what either build prints, if not its default line or two
 	fv          []string // OVMF's outputs; default: OVMFFiles
 	stdins      [][]byte // every patch git apply read from stdin
+	stampsAt    []string // the tree's .guest-macosx-ovmf-patches as each of those applies began
 	ocvalidate  error    // what an ocvalidate (built or on PATH) returns
 
 	missingHeaders []string          // headers the fake compiler cannot find
@@ -65,7 +88,9 @@ func sha(t *testing.T, p string) string {
 // submodule path, as a GitHub archive leaves a gitlink.
 func audkEntries() []entry {
 	es := []entry{{name: "audk-x/"}, {name: "audk-x/MdePkg/MdePkg.dec", body: "dec"},
-		{name: "audk-x/OpenCorePkg/"}, {name: "audk-x/OvmfPkg/OvmfPkgX64.dsc", body: "[BuildOptions]\n"}}
+		{name: "audk-x/OpenCorePkg/"}, {name: "audk-x/OvmfPkg/OvmfPkgX64.dsc", body: "[BuildOptions]\n"},
+		{name: "audk-x/OvmfPkg/Library/PlatformInitLib/Igvm.c", body: "PlatformIgvmVpCount\n"},
+		{name: "audk-x/" + qemuFlashC, body: "QemuFlashWrite (\n"}}
 	for _, s := range Submodules {
 		es = append(es, entry{name: "audk-x/" + s.Path + "/"})
 	}
@@ -122,7 +147,7 @@ func newFixture(t *testing.T) *fixture {
 	}
 	ocpkg := makeTarGz(t, t.TempDir(),
 		entry{name: "OpenCorePkg-" + OCVersion + "/"},
-		entry{name: "OpenCorePkg-" + OCVersion + "/build_oc.tool", body: "#!/bin/bash\n" + buildOCToolFetch, mode: 0o755},
+		entry{name: "OpenCorePkg-" + OCVersion + "/build_oc.tool", body: buildOCTool(t), mode: 0o755},
 		entry{name: "OpenCorePkg-" + OCVersion + "/Patches/0002-second.patch", body: "second"},
 		entry{name: "OpenCorePkg-" + OCVersion + "/Patches/0001-first.patch", body: "first"},
 	)
@@ -202,6 +227,8 @@ func (f *fixture) handle(c proc.Cmd) error {
 	case c.Name == "git" && len(c.Args) >= 4 && c.Args[2] == "apply" && c.Args[len(c.Args)-1] == "-":
 		patch, _ := io.ReadAll(c.Stdin)
 		f.stdins = append(f.stdins, patch)
+		stamp, _ := os.ReadFile(filepath.Join(c.Args[1], ".guest-macosx-ovmf-patches"))
+		f.stampsAt = append(f.stampsAt, string(stamp))
 		if f.patchesTake {
 			f.applyFake(c.Args[1], string(patch))
 		}
@@ -223,7 +250,7 @@ func (f *fixture) handle(c proc.Cmd) error {
 			os.WriteFile(filepath.Join(built, n), []byte("built "+n), 0o644)
 		}
 		os.MkdirAll(filepath.Join(c.Dir, "UDK", "BaseTools", "Source", "C", "bin"), 0o755)
-		os.WriteFile(filepath.Join(c.Dir, "UDK", "BaseTools", "Source", "C", "bin", "GenFv"), []byte("#!/bin/sh\n"), 0o755)
+		os.WriteFile(filepath.Join(c.Dir, "UDK", "BaseTools", "Source", "C", "bin", "GenFv"), testdataFile(f.t, "noop.sh"), 0o755)
 	case filepath.Base(c.Name) == "ocvalidate":
 		return f.ocvalidate
 	case c.Name == "bash" && len(c.Args) == 2 && c.Args[0] == "-c" && strings.Contains(c.Args[1], "edksetup.sh"):
@@ -243,9 +270,17 @@ func (f *fixture) handle(c proc.Cmd) error {
 }
 
 // applyFake makes a patch's effect happen: build_oc.tool stops fetching
-// efibuild.sh, or the OVMF dsc gains the flag its patch adds.
+// efibuild.sh, the OVMF dsc gains the flag its patch adds, Igvm.c
+// reserves the IGVM parameter area or stops reading it, or QemuFlash.c
+// programs only the bytes that change.
 func (f *fixture) applyFake(dir, patch string) {
 	switch {
+	case strings.Contains(patch, "+  // packer-plugin-macosx: assets/firmware/patches/0006"):
+		appendTo(filepath.Join(dir, filepath.FromSlash(qemuFlashC)), "  // packer-plugin-macosx: assets/firmware/patches/0006\n")
+	case strings.Contains(patch, "+// packer-plugin-macosx: assets/firmware/patches/0005"):
+		appendTo(filepath.Join(dir, "OvmfPkg", "Library", "PlatformInitLib", "Igvm.c"), "// packer-plugin-macosx: assets/firmware/patches/0005\nSTATIC BOOLEAN  mIgvmParamsInvalid = TRUE;\n")
+	case strings.Contains(patch, "+PlatformIgvmParamReserve ("):
+		appendTo(filepath.Join(dir, "OvmfPkg", "Library", "PlatformInitLib", "Igvm.c"), "PlatformIgvmParamReserve (\n")
 	case strings.Contains(patch, "build_oc.tool"):
 		p := filepath.Join(dir, "build_oc.tool")
 		b, _ := os.ReadFile(p)

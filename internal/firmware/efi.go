@@ -310,7 +310,7 @@ func treeSize(dir string) (int64, error) {
 // serial is a FAT volume serial number derived from seed, so the image
 // is the same every time (mformat's is random).
 func serial(seed string) uint32 {
-	s := sha256.Sum256([]byte("mavericks fat serial " + seed))
+	s := sha256.Sum256([]byte("guest-macosx fat serial " + seed))
 	return binary.LittleEndian.Uint32(s[:4])
 }
 

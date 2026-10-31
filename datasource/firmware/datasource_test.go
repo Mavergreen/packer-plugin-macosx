@@ -360,38 +360,54 @@ func TestDebugIsARowAndReachesTheBuild(t *testing.T) {
 }
 
 func TestALongCacheRootIsRefusedBeforeAnyWork(t *testing.T) {
-	reg, _, requests := fakeSources(t, firmware.SourceNames())
+	// Each release's refusal names its own data source: the Datasource
+	// type serves both, and a 10.6 build told about mavericks-firmware
+	// would be told about the wrong one.
+	for _, c := range []struct {
+		rel       firmware.Release
+		name, not string
+	}{
+		{firmware.Release{}, "mavericks-firmware", "snowleopard-firmware"},
+		{firmware.SnowLeopard, "snowleopard-firmware", "mavericks-firmware"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			reg, _, requests := fakeSources(t, firmware.SourceNames())
 
-	savedLoad, savedBuild := loadRegistry, buildFirmware
-	loadRegistry = func() (*pins.Registry, error) { return reg, nil }
-	buildFirmware = func(context.Context, *firmware.Builder, firmware.Inputs, firmware.Release, string, bool) error {
-		t.Fatal("buildFirmware must not run when the cache root is too long")
-		return nil
-	}
-	t.Cleanup(func() { loadRegistry, buildFirmware = savedLoad, savedBuild })
+			savedLoad, savedBuild := loadRegistry, buildFirmware
+			loadRegistry = func() (*pins.Registry, error) { return reg, nil }
+			buildFirmware = func(context.Context, *firmware.Builder, firmware.Inputs, firmware.Release, string, bool) error {
+				t.Fatal("buildFirmware must not run when the cache root is too long")
+				return nil
+			}
+			t.Cleanup(func() { loadRegistry, buildFirmware = savedLoad, savedBuild })
 
-	// Many reasonably-sized components (well under a filesystem's
-	// per-component NAME_MAX), so building it -- unlike the EDK II
-	// workspace path beneath it -- never itself fails with ENAMETOOLONG.
-	parts := []string{t.TempDir()}
-	for i := 0; i < 40; i++ {
-		parts = append(parts, "segment")
-	}
-	long := filepath.Join(parts...)
-	var d Datasource
-	if err := d.Configure(map[string]interface{}{"cache_dir": long}); err != nil {
-		t.Fatal(err)
-	}
+			// Many reasonably-sized components (well under a filesystem's
+			// per-component NAME_MAX), so building it -- unlike the EDK II
+			// workspace path beneath it -- never itself fails with ENAMETOOLONG.
+			parts := []string{t.TempDir()}
+			for i := 0; i < 40; i++ {
+				parts = append(parts, "segment")
+			}
+			long := filepath.Join(parts...)
+			d := Datasource{Release: c.rel}
+			if err := d.Configure(map[string]interface{}{"cache_dir": long}); err != nil {
+				t.Fatal(err)
+			}
 
-	_, err := d.Execute()
-	if err == nil {
-		t.Fatal("a too-long cache_dir must be refused")
-	}
-	if !strings.Contains(err.Error(), "PACKER_CACHE_DIR") {
-		t.Fatalf("err = %v, want it to mention PACKER_CACHE_DIR", err)
-	}
-	if got := atomic.LoadInt32(requests); got != 0 {
-		t.Fatalf("%d fetch requests before the refusal, want 0", got)
+			_, err := d.Execute()
+			if err == nil {
+				t.Fatal("a too-long cache_dir must be refused")
+			}
+			if !strings.Contains(err.Error(), "PACKER_CACHE_DIR") {
+				t.Fatalf("err = %v, want it to mention PACKER_CACHE_DIR", err)
+			}
+			if !strings.Contains(err.Error(), "for "+c.name+",") || strings.Contains(err.Error(), c.not) {
+				t.Fatalf("err = %v, want it to name %s and not %s", err, c.name, c.not)
+			}
+			if got := atomic.LoadInt32(requests); got != 0 {
+				t.Fatalf("%d fetch requests before the refusal, want 0", got)
+			}
+		})
 	}
 }
 

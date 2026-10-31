@@ -1,6 +1,7 @@
 package firmware
 
 import (
+	_ "embed"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -31,6 +32,13 @@ func CcacheVerdict(wanted bool, path string) (verdict, detail string) {
 	return "OFF", "ccache is not installed; every file is compiled"
 }
 
+// ccacheShim is each wrapper writeCcacheShims writes, @CCACHE@ and
+// @COMPILER@ to be replaced: a real file (ccache-shim.sh), so the lint
+// reads it as the shell script it is.
+//
+//go:embed ccache-shim.sh
+var ccacheShim string
+
 // writeCcacheShims writes gcc and g++ wrappers into dir that run ccache
 // on the real compiler, found by absolute path before dir is on PATH --
 // a wrapper that said `exec ccache gcc` would find itself. A PATH shim
@@ -46,7 +54,7 @@ func writeCcacheShims(dir, ccache string, lookPath func(string) (string, error))
 		if err != nil || strings.HasPrefix(real, dir+string(filepath.Separator)) {
 			continue
 		}
-		body := fmt.Sprintf("#!/bin/sh\nexec %s %s \"$@\"\n", ccache, real)
+		body := strings.NewReplacer("@CCACHE@", ccache, "@COMPILER@", real).Replace(ccacheShim)
 		p := filepath.Join(dir, tool)
 		if err := os.WriteFile(p, []byte(body), 0o755); err != nil {
 			return err

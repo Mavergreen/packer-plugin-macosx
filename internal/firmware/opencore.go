@@ -139,16 +139,24 @@ func (b *Builder) patchBuildOCTool(ctx context.Context) error {
 
 // assembleUDK builds the EDK II tree efibuild.sh would otherwise clone
 // at master: audk at its pinned commit, its submodules from their own
-// tarballs, OpenCorePkg's own patches. The .mqg-prepared marker says
+// tarballs, OpenCorePkg's own patches. The .guest-macosx-prepared marker says
 // which commit the tree holds; a tree at another (or no) commit is
-// removed and rebuilt. UDK.ready must
+// removed and rebuilt, and so is one whose OVMF patch stamp is not this
+// binary's (patchStampFile). UDK.ready must
 // exist before build_oc.tool runs, or efibuild.sh deletes the tree.
 func (b *Builder) assembleUDK(ctx context.Context, files map[string]string) error {
-	marker := filepath.Join(b.udk(), ".mqg-prepared")
+	marker := filepath.Join(b.udk(), ".guest-macosx-prepared")
+	stamp, err := ovmfPatchStamp()
+	if err != nil {
+		return err
+	}
 	// Compared less its trailing newlines.
 	if have, err := os.ReadFile(marker); err == nil && strings.TrimRight(string(have), "\n") == AudkCommit {
-		b.logf("EDK II tree already assembled at audk %s", AudkCommit)
-		return nil
+		if b.patchStampFits(stamp) {
+			b.logf("EDK II tree already assembled at audk %s", AudkCommit)
+			return nil
+		}
+		b.logf("the EDK II tree was patched with another set of OVMF patches (%s): reassembling it", patchStampFile)
 	}
 	b.logf("assembling the EDK II tree: audk %s", AudkCommit)
 	if err := os.RemoveAll(b.udk()); err != nil {
@@ -205,6 +213,10 @@ func (b *Builder) assembleUDK(ctx context.Context, files map[string]string) erro
 		if err := writeFileAtomic(filepath.Join(b.udk(), r), nil, 0o644); err != nil {
 			return err
 		}
+	}
+	// No OVMF patch yet: the OVMF build stamps each one as it applies it.
+	if err := writeFileAtomic(b.patchStampPath(), nil, 0o644); err != nil {
+		return err
 	}
 	return writeFileAtomic(marker, []byte(AudkCommit+"\n"), 0o644)
 }

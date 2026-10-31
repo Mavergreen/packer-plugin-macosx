@@ -326,7 +326,7 @@ func TestEFIImageLayout(t *testing.T) {
 // (a known answer). It moves only with a deliberate change to the
 // image's format or to assets/firmware/config.plist; say which in the
 // commit.
-const goldenEFIImage = "1434acd99cb2001c7e31e3fc03d0c7ea00396e907f9e50a0ce21e00fc21fd5c5"
+const goldenEFIImage = "c31de4d2d82cca25af880a1ee0f5a5ced22f0c6d85e18708c7732d0d7df072db"
 
 func TestEFIImageIsDeterministic(t *testing.T) {
 	f := newFixture(t)
@@ -406,7 +406,7 @@ func TestEFIImageWithAnotherSMBIOS(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(f.b.ocvalidate()), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(f.b.ocvalidate(), []byte("#!/bin/sh\n"), 0o755); err != nil {
+	if err := os.WriteFile(f.b.ocvalidate(), testdataFile(t, "noop.sh"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	img, err := f.efiImage("MacPro5,1")

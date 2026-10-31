@@ -209,7 +209,7 @@ func TestTheShimWrapsTheRealCompilerByAbsolutePath(t *testing.T) {
 		t.Fatal(err)
 	}
 	b, err := os.ReadFile(filepath.Join(dir, "gcc"))
-	if err != nil || string(b) != "#!/bin/sh\nexec /usr/bin/ccache /usr/bin/gcc \"$@\"\n" {
+	if err != nil || string(b) != string(testdataFile(t, "ccache-shim-gcc.sh")) {
 		t.Fatalf("%q %v", b, err)
 	}
 	if fi, _ := os.Stat(filepath.Join(dir, "gcc")); fi.Mode().Perm() != 0o755 {

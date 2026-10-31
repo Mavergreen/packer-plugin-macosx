@@ -218,9 +218,10 @@ func TestConfigPlistScanPolicyAdmitsOnlyHFSOnSATA(t *testing.T) {
 	const (
 		fsLock    = 0x1
 		devLock   = 0x2
-		allowHFS  = 0x200   // OC_SCAN_ALLOW_FS_HFS -- the macOS volume.
-		allowSATA = 0x10000 // OC_SCAN_ALLOW_DEVICE_SATA -- q35's ide-hd presents as SATA.
-		allowUSB  = 0x80000 // the OpenCore image itself lives on usb-storage.
+		allowHFS  = 0x200     // OC_SCAN_ALLOW_FS_HFS -- the macOS volume.
+		allowSATA = 0x10000   // OC_SCAN_ALLOW_DEVICE_SATA -- q35's ide-hd presents as SATA.
+		allowUSB  = 0x80000   // OC_SCAN_ALLOW_DEVICE_USB -- nothing the guest boots is on USB.
+		allowPCI  = 0x1000000 // OC_SCAN_ALLOW_DEVICE_PCI -- the class of OpenCore's own virtio-blk disk.
 	)
 	for name, bit := range map[string]int64{
 		"OC_SCAN_FILE_SYSTEM_LOCK":  fsLock,
@@ -232,8 +233,19 @@ func TestConfigPlistScanPolicyAdmitsOnlyHFSOnSATA(t *testing.T) {
 			t.Errorf("ScanPolicy %#x lacks %s (%#x)", policy, name, bit)
 		}
 	}
+	// OpenCore's own disk is a virtio-blk device (docs/decisions/0035),
+	// whose device path has no messaging node, which OpenCore classes
+	// OC_SCAN_ALLOW_DEVICE_PCI (READ: OpenCore 1.0.7's
+	// PolicyManagement.c:159-163). Admitting PCI devices would leave only
+	// the filesystem bit between the picker and OpenCore's own FAT volume,
+	// the entry that once became the default and hung the guest.
+	if policy&allowPCI != 0 {
+		t.Errorf("ScanPolicy %#x allows PCI devices, the class of OpenCore's own virtio-blk disk -- admitting it lists OpenCore's volume, which hangs the guest", policy)
+	}
+	// Nothing the guest boots is on USB any more; a USB volume admitted
+	// could become the picker's default.
 	if policy&allowUSB != 0 {
-		t.Errorf("ScanPolicy %#x allows usb-storage, where the OpenCore image itself lives -- admitting it hangs the guest", policy)
+		t.Errorf("ScanPolicy %#x allows USB devices, where nothing the guest boots lives -- a USB volume could become the default", policy)
 	}
 }
 
@@ -270,5 +282,48 @@ func TestConfigPlistEnabledKextsArePinned(t *testing.T) {
 	}
 	if seen == 0 {
 		t.Fatal("config.plist enables no kext in Kernel>Add")
+	}
+}
+
+// appleBootVariableGUID is the vendor GUID of macOS's own NVRAM variables
+// (boot-args, platform-uuid, ...), the one NVRAM>Add already uses.
+const appleBootVariableGUID = "7C436110-AB2A-4BBB-A880-FE41995C9F82"
+
+// "the host UUID comes from the hypervisor's SMBIOS where it gives one":
+// SystemUUID OEM is what makes OpenCore set system-id, which the kernel
+// prefers over everything, from the SMBIOS Type 1 UUID of whatever runs
+// the box (QEMU's -uuid, libvirt's domain UUID, VMware, VirtualBox, a
+// real Mac). The all-zero placeholder this replaced set nothing, so the
+// kernel had no host UUID at boot and early daemons waited up to 30 s
+// for one (F3, F8, F19). OEM is read only in Automatic mode.
+func TestConfigPlistTakesTheSystemUUIDFromTheHypervisor(t *testing.T) {
+	for _, r := range []Release{Mavericks, SnowLeopard} {
+		d := parsePlist(t, releasePlist(t, r))
+		if got := plistPath(t, d, "PlatformInfo", "Generic", "SystemUUID"); got != "OEM" {
+			t.Errorf("%s: PlatformInfo>Generic>SystemUUID = %q, want OEM", r.ConfigPlist, got)
+		}
+		if got := plistPath(t, d, "PlatformInfo", "Automatic"); got != true {
+			t.Errorf("%s: PlatformInfo>Automatic = %v, want true: OpenCore reads Generic's OEM only then", r.ConfigPlist, got)
+		}
+	}
+}
+
+// "the firmware never names a host UUID of its own": a platform-uuid in
+// NVRAM>Add would be one constant for every machine whose hypervisor gives
+// no UUID, whatever its NIC, where the guest itself would derive one from
+// the MAC. Distinct machines must have distinct UUIDs, so the UUID comes
+// from whatever runs the box (SystemUUID OEM, above, and every launcher
+// here passing QEMU its own -uuid) or from the guest, never from this file
+// (docs/decisions/0024).
+func TestConfigPlistNamesNoPlatformUUIDOfItsOwn(t *testing.T) {
+	for _, r := range []Release{Mavericks, SnowLeopard} {
+		d := parsePlist(t, releasePlist(t, r))
+		add, _ := plistPath(t, d, "NVRAM", "Add", appleBootVariableGUID).(map[string]any)
+		if v, ok := add["platform-uuid"]; ok {
+			t.Errorf("%s: NVRAM>Add sets platform-uuid = %x: every machine without a hypervisor UUID would share it", r.ConfigPlist, v)
+		}
+		if strings.Contains(string(releasePlist(t, r)), "platform-uuid") {
+			t.Errorf("%s names platform-uuid anywhere", r.ConfigPlist)
+		}
 	}
 }
