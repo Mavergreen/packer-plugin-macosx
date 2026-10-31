@@ -119,9 +119,14 @@ after the 10.6.8 update, 10.6.0's kernel printed `MACH Reboot` and
 stopped there, spinning one CPU, until the build gave up. 10.6.0's
 `AppleACPIPlatformExpert::performSystemReset` writes the FADT's reset
 register (`0xCF9` on q35) and then loops forever, waiting for the
-machine to reset; it did not reset. That path does not touch the RTC,
-and the 70 reboots above all went through it and reset. It is open,
-and seen once.
+machine to reset. That path does not touch the RTC, and the 70 reboots
+above all went through it and reset. ADR 0030 finds the reset was not
+lost (MEASURED: QEMU resets on that write every time, and xnu writes it
+again 30 s later if the first is lost). The firmware then most likely
+hung reading leftover RAM as IGVM parameters, as ADR 0018 found for
+10.9, leaving `MACH Reboot` on the screen (REASONED: that build's guest
+was not dumped). Patch 0005 removes that cause. The item is closed
+by ADR 0030, which the owner accepted (2026-10-25).
 
 ## Alternatives considered
 

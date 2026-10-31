@@ -47,9 +47,7 @@ SDK's `version.NewPluginVersion` wants the same. So a release tag is
 never disagree, and `build/version.sh` counts N from those tags alone.
 `.goreleaser.yml` reads `{{ .Version }}` off that tag, without the `v`, and
 writes it into `version.Version` with `-ldflags`. A plain `go build` says
-`0.0.0-dev`; `bin/dev-install.sh` builds `0.<UPSTREAM_VERSION>.<N>-dev`,
-because Packer matches a `-dev` plugin by its version without the `-dev`
-and the templates take `~> 0.<UPSTREAM_VERSION>.1`.
+`0.0.0-dev`; `bin/dev-install.sh` builds a dev build's version, below.
 
 Why a 0 major (decided 2026-10-05, before the first release; the tag was
 first specified as `v<UPSTREAM_VERSION>.<N>.0`): a Packer plugin before
@@ -59,6 +57,41 @@ as needing a `/vN` module path, and would mark a date-major tag
 minor bump, which under 0.x may break, and a release that only moves an
 ingredient is a patch. A template constrains its plugin to its own line,
 `~> 0.<UPSTREAM_VERSION>.1`: any N on that line, never a newer line.
+
+## A dev build is no release's version, past or future
+
+`bin/dev-install.sh` builds **`0.<UPSTREAM_VERSION>.999999-dev`**
+(`build/version.sh dev`), and no release is ever cut at an N of 999999 or
+above: `build/version.sh` refuses to name one (decided 2026-10-17).
+
+Packer 1.16.1 (read in `packer/plugin-getter/plugins.go`, `command/init.go`
+and `hcl2template/plugin.go`) checks a plugin against a template's
+constraint by its version without the `-dev`, takes `-dev` as the only
+pre-release `plugins install --path` accepts, sorts the installs it finds
+in semver order, in which `X-dev` comes before `X`, and runs the last.
+`packer init` counts releases alone, so with only a dev build installed
+it fetches the newest release the constraint takes. A dev build that
+shared a release's version would therefore run that release in its
+place, in silence. That happened: built as `0.20261005.8-dev` from 101
+commits past `v0.20261005.8`, the build lost to the `v0.20261005.8` that
+`packer init` installed beside it, and the run tested the release. A dev
+build at the *next* N fails the same way the day that N is released.
+
+At 999999 the dev build is above every release on its line, so `packer
+init` may fetch a release beside it but never one that Packer runs over
+it, and `~> 0.<UPSTREAM_VERSION>.1` still takes it. The cost is the
+reverse case: a dev build left installed is also run over the releases,
+so `packer plugins remove github.com/mavergreen/macosx
+0.<UPSTREAM_VERSION>.999999` is how a host goes back to them.
+
+**Whatever runs a dev build fails loudly if Packer would run another
+plugin.** `bin/dev-install.sh` checks that the binary Packer installed is
+byte for byte the one it built, then asks `packer plugins required` for
+every template that requires the plugin and fails unless that build is the
+last install listed, the one Packer runs. Everything that runs a dev
+build installs it with that script: the templates' Go tests, CI's
+`template` job and the gate, which also accepts exactly one macosx plugin
+in its own plugin directory and compares it with what it built.
 
 ## Why not the family's shared scripts
 

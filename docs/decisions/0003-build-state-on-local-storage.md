@@ -24,7 +24,7 @@ assembled, and an EDK II build tree of many thousands of small files.
 ## Decision
 
 Everything the data sources download, build or reuse lives under
-`mavericks/` in **Packer's cache directory**: `PACKER_CACHE_DIR` when it is
+`guest-macosx/` in **Packer's cache directory**: `PACKER_CACHE_DIR` when it is
 set, otherwise `$XDG_CACHE_HOME/packer`, otherwise `~/.cache/packer`. Each
 data source's `cache_dir` overrides it. Nothing is written into the
 repository.
@@ -59,8 +59,14 @@ Under that directory:
   refuses one over 255 bytes. MEASURED 2026-09-25 for this pin: the
   deepest paths below the EDK II tree are 130 bytes for OpenCore and 162
   for OVMF, so `<cache_dir>/firmware-build` can be at most 96 bytes long
-  for the OpenCore build and 64 for OVMF. `mavericks-firmware` refuses a
-  longer one before it fetches anything.
+  for the OpenCore build and 64 for OVMF. Each release's firmware data
+  source (`mavericks-firmware`, `snowleopard-firmware`) refuses a longer
+  one before it fetches anything, naming itself. With the default
+  `cache_dir` and neither `PACKER_CACHE_DIR` nor `XDG_CACHE_HOME` set,
+  `<home>/.cache/packer/guest-macosx/firmware-build`, that is a home
+  directory of at most 22 bytes (`/home/` and a 16-byte user name).
+  (Until 2026-10-17 the directory was `mavericks/`, three bytes shorter,
+  which allowed 25; that rename is the only change.)
 - The qemu builder's own outputs (`output-mavericks/`, `output/`) are
   written relative to wherever `packer` runs, as usual for Packer, so the
   finished disk lands wherever the build was started. Nobody has measured

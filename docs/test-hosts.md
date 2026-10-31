@@ -69,7 +69,10 @@ Vagrantfile rendered from the build's own settings; `vagrant up
 keepsyms=1" (debug off by default); `vagrant halt` 23 s, exit 0,
 `SHUTDOWN_TIME` logged.
 
-Not measured: a box run with a display (`MAVERICKS_DISPLAY`).
+Not measured: a box run with a display (`GUEST_MACOSX_GUI` or
+`GUEST_MACOSX_QEMU_DISPLAY`; `MAVERICKS_DISPLAY` until 2026-10-17), and
+any box on VirtualBox or VMware, whose window switch the box's
+Vagrantfile sets for the day one exists.
 
 **10.6, `templates/snowleopard/`, 2026-10-04**, from the 10A432 retail
 disc image (`docs/decisions/0014`), default settings (`updates =
@@ -98,7 +101,9 @@ finished, passwordless sudo for vagrant, updates=security as asked";
 **29m28s**, exit 0. The plugin was v0.20261005.4, the released one,
 because `packer init` installed it beside the checkout's dev build. The
 template was the checkout's, at the commit that added
-`MAVERICKS_CPU_ISA`. The box's Vagrantfile was then given the later
+`MAVERICKS_CPU_ISA`, the variable's name until 2026-10-17, when it became
+`GUEST_MACOSX_CPU_ISA` with nothing else changed; the names below are
+the ones these runs used. The box's Vagrantfile was then given the later
 `ignore_msrs` warning by hand, and its code compared equal to what the
 template renders (`measuredBoxVagrantfile`). `vagrant box add` took
 1m43s.
@@ -125,7 +130,12 @@ before any QEMU started. With it still set, every other `vagrant`
 command refuses the same way, so unset it first.
 
 Not measured through the box: the warning with `ignore_msrs=N`. That is
-covered by `TestBoxVagrantfileIsRuby`, against a stand-in parameter file.
+covered by `TestBoxVagrantfileWarnsOfIgnoreMSRs`, against a stand-in
+parameter file. The rename of 2026-10-17 also gave the box's Vagrantfile
+`GUEST_MACOSX_GUI`, `GUEST_MACOSX_QEMU_DISPLAY` and its VirtualBox and
+VMware blocks; `measuredBoxVagrantfile` carries them, and with them unset
+the run is the one measured here: daemonized, `-display none`, the same
+`-cpu` lines. No box has been booted since.
 
 ## The hosts
 

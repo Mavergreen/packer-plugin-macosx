@@ -51,8 +51,10 @@ places:
 `docs/host-profile.md` §4 is the ledger of host-specific assumptions, each
 a hypothesis until a second host has tried to falsify it. Some findings
 are about the guest and hold anywhere: 10.9 cannot drive QEMU's XHCI
-controller, so the machine has EHCI with UHCI companions (G13, confirmed
-under three QEMUs). Others are about KVM: `MacPro5,1` SMBIOS panics under
+controller (G13, confirmed under three QEMUs). The machine had EHCI with
+UHCI companions for that; since 2026-10-27 it has EHCI alone, carrying
+only the keyboard and tablet, and OpenCore's disk is on virtio-blk, the same on
+both releases (`docs/decisions/0035`). Others are about KVM: `MacPro5,1` SMBIOS panics under
 KVM on every host and boots under TCG (`docs/decisions/0010`).
 
 **NetBSD with NVMM** is a different accelerator, not KVM (`-accel nvmm`).

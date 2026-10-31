@@ -25,12 +25,16 @@ content is Wowfunhappy's Aqua Transport with its ModernRootCertificates.
    - It restarts the guest, because Aqua Transport patches
      `Security.framework`.
    - `verify.sh` runs in the new boot. It requires 10.9.5 (13F1911), the
-     pinned Aqua Transport's receipt, ModernRootCertificates' receipt, no
-     tap by receipt, by `kextstat` or on disk, and three fetches with the
-     system's own `/usr/bin/curl`: `https://github.com/`,
+     pinned Aqua Transport's receipt, ModernRootCertificates' receipt, and
+     no tap by receipt, by `kextstat` or on disk. A failing verdict fails
+     the build before anything is packaged.
+   - Until `docs/decisions/0034` (2026-10-27), it also required three
+     fetches with the system's own `/usr/bin/curl`: `https://github.com/`,
      `https://release-assets.githubusercontent.com/` and
-     `https://downloads.claude.ai/claude-code-releases/latest`. A failing
-     verdict fails the build before anything is packaged.
+     `https://downloads.claude.ai/claude-code-releases/latest`. The layer's
+     build guest now has no network, so those fetches moved to where the
+     box boots with one: `bin/gate.sh`'s `reach` step and mavericks-vm's
+     self-test. The measurements below are from before that change.
    - It zeroes free space and packages a standalone box,
      `output/mavericks-10.9.5-aquatransport-libvirt.box`, carrying the base
      box's firmware files and its Vagrantfile, behind the vagrant

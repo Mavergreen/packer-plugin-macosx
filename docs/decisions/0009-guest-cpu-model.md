@@ -90,8 +90,11 @@ What would move the default is a second `Conroe` install on a second host.
 ## The instruction-set levels: `none`, `avx` and `avx2`
 
 A guest can be asked for by what it can run rather than by a model name.
-These are the rows, and the box's `MAVERICKS_CPU_ISA` and mavericks-vm's
-`cpu-isa` take the same names:
+These are the rows, and the Mavericks box's `GUEST_MACOSX_CPU_ISA` and
+mavericks-vm's `cpu-isa` take the same names (the box's variable was
+`MAVERICKS_CPU_ISA` until 2026-10-17, and in the measurements above; only
+its name changed). A Snow Leopard box has no level measured, and warns
+that it ignores the variable:
 
 | Level | `-cpu` line |
 |---|---|

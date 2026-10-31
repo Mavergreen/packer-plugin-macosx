@@ -36,6 +36,20 @@ during the build, make the build depend on whatever Apple serves that day,
 and a 2013 OS talking to 2026 servers may simply hang. (The first boot
 does run `softwareupdate --schedule off`, the opposite act.)
 
+Note, 2026-10-27 (F25): Apple's own jobs did not keep to this. Until
+`docs/decisions/0034`, 10.9's first boot ran Apple's first-run Software
+Update scan (`softwareupdated`, against `swscan` and `swdist`) before
+`firstboot.sh` turned the schedule off, and the image kept its catalog
+cache; `apsd`, `ocspd`, and 10.6.8's `XProtectUpdater` and `crsud`
+reached Apple as well (MEASURED, 2 builds of each). No update was
+installed that way, but not by design: 10.6.8's `crsud` exists to
+download and install the updates Apple's catalog marks required (its
+strings: "Found the following required updates",
+`com.apple.crsud.DownloadAndInstallUpdates`), and what stopped it was
+10.6's TLS failing against Apple's servers (REASONED). The build's guest
+network now goes nowhere (`restrict=on`, every template), which is what
+makes this section true.
+
 Instead, every package is a standalone `.pkg` pinned by sha256 in
 `assets/pins/sources.tsv`, fetched by `mavericks-media` into the shared
 download cache and verified there, like every other ingredient. The

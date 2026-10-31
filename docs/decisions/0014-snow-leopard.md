@@ -42,15 +42,77 @@ of its own (`templates/snowleopard/`). What differs, and why:
    guest gets all 19 and runs `installer` once, on the distribution, which
    installs the packages in its own order and picks the Rosetta,
    QuickTime 7 and X11 ones by what the guest has. They go in last, at
-   the end of first boot, and the guest restarts before sshd first
-   starts. No `all`: no 10.6 application updates are chosen.
-7. **USB on XHCI, no USB keyboard or mouse.** OpenCore's disk is a
-   `usb-storage` device on `qemu-xhci`. 10.6 has no XHCI driver, so it
-   never touches that controller; it does have a UHCI driver, and that
-   driver hangs the guest. The template's window therefore shows the
-   screen but takes no input. Work over SSH.
-8. **One CPU by default.** With two, 10.6.0 under KVM panics when the
-   host is busy (Measurements). `cpus` stays a variable.
+   the end of first boot, each on a boot of its own (the combo, a
+   restart, then 2013-004: ADR 0023), and the guest restarts before sshd
+   first starts. No `all`: no 10.6 application updates are chosen.
+7. **USB and OpenCore's disk: the same as 10.9's (amended 2026-10-27,
+   `docs/decisions/0035`).** OpenCore's disk is a `virtio-blk-pci` disk in slot `0x10`,
+   which OVMF boots and neither release has a driver for, and USB carries only a keyboard and a tablet, on EHCI alone at
+   `0x1d.0`: no UHCI, whose 10.6.0 driver hung installs (Measurements),
+   and no XHCI. That holds in the build and the box, on both releases, so
+   this is no longer a difference. Until then OpenCore's disk was a
+   `usb-storage` device on `qemu-xhci`, which 10.6 has no driver for, and
+   the window took no input.
+8. **One CPU by default.** With two, 10.6 under KVM panics when the host
+   is busy (Measurements, and F26: 10.6.0 and 10.6.8 alike, after warm
+   resets). 1 CPU ships as a documented deviation, cause not yet
+   established; F26 is root-caused after the release (the owner's ruling
+   R49, 2026-10-27). `cpus` stays a variable.
+9. **The boot gate: both releases (added 2026-10-28, G8).** Until then
+   `bin/gate.sh` booted 10.9 alone, so a change to the boot stack both
+   releases share (OpenCore, Lilu, VirtualSMC, OVMF) was gated on one of
+   them. Now a plain `bin/gate.sh --installer <disc>` gates both, 10.9
+   and then 10.6.8, each built from the checkout, with the same steps and
+   the same checks, each release's evidence and verdict its own and a
+   combined verdict that passes only when both pass (the owner's ruling
+   R52, 2026-10-28); without the disc it refuses, naming the disc and
+   `--release 10.9` / `--release 10.6`, so 10.6 is never skipped in
+   silence. This is no longer a difference. A box names its release on a line of
+   its own Vagrantfile (`# guest-macosx-release: 10.6`, rendered by the
+   template), and `bin/gate-vm.sh` reads it, and nothing else, for the
+   three things it does differently on 10.6, each what the box's own
+   Vagrantfile does:
+   - its SSH client also accepts `ssh-rsa` (item 4);
+   - restarts and shutdowns are a bare `sudo /sbin/shutdown -r|-h now`:
+     10.6's images carry no `guest-macosx-shutdown`, whose causes 10.6
+     does not have (`docs/decisions/0019`; its shutdowns took 0.4 s,
+     MEASURED 2026-10-14);
+   - one CPU (item 8).
+
+   And the gate itself sets aside what 10.6 has nothing for, each step
+   `n/a` in `steps.tsv` with its reason, never a pass:
+   - `build-layer`: 10.6 has no Aqua Transport layer yet (the parity
+     design's G5), so the gate boots the base box, and `versions` holds
+     OpenCore, Lilu and VirtualSMC to their pins but has no Aqua
+     Transport pin to hold;
+   - `reach`, which proves that layer's TLS: without the layer, 10.6's
+     system curl has none the three hosts accept (MEASURED 2026-10-29:
+     the gate's `reach` check, run by hand on the fresh 10.6.8 box,
+     failed all three with curl error 35, `tlsv1 alert protocol version`).
+
+   `health` wants 10.6.8 (10K549), the `updates = security` build.
+   `host-uuid` reads 10.6's own `system.log` form: its `bootlog` line is
+   `BOOT_TIME: <n>`, about 6 s in, after the daemons that log "Error:
+   35" (`docs/decisions/0024`), so its boot starts at launchd's
+   "launchd[1] has started up" line before it (the form MEASURED in a
+   10.6.8 box's log, F18, 2026-10-19). `health` also fails, on both
+   releases, a `/var/log/launchd-pid1.crash`, as this template's
+   `verify.sh` does: 10.6's launchd samples itself there when it crashes,
+   then reboots (F16, MEASURED); 10.9's launchd (launchd-842.92.1) names
+   the same file but writes nothing to it, that code compiled out (#if 0),
+   so on 10.9 it is REASONED from the source never to appear, and checked
+   anyway. `bin/gate-summary.sh` never compares two releases' runs. The checks that 10.9's first-boot
+   fixes made pass (`docs/decisions/0020`, `0022`, `0031`) are the same
+   checks on 10.6, which never needed those fixes.
+
+   **MEASURED 2026-10-29**, `pet-power-plant`, KVM: fresh builds through
+   `bin/gate.sh --release 10.6` and `--release 10.9`, one restart each,
+   both exit 0. On 10.6.8 (10K549), all applicable steps pass, including
+   the real `versions` and `host-uuid` parsers, and only `build-layer`
+   and `reach` are `n/a`. On 10.9.5 (13F1911), the Aqua Transport
+   2026.10.25 layer passes every step, TLS reach before and after the
+   restart included. This measures the individual release paths, not a
+   real combined-default invocation or a stress run.
 
 ## Measurements
 
@@ -65,7 +127,10 @@ disc (sha256 `cbeeb237...`, `docs/test-hosts.md`):
   entry on the disk it leaves.
 - With it alone: the install completes, blesses, reboots into 10.6, and
   the first-boot payload -- 10.9's, unchanged -- creates the account,
-  turns on auto-login and Remote Login, and answers SSH.
+  turns on auto-login and Remote Login, and answers SSH. (Since
+  2026-10-15 the payload leaves auto-login off unless the build sets a
+  password, and the default build sets none; see
+  `docs/configuration-register.md`, "auto-login".)
 - The guest: 10A432, the `RELEASE_X86_64` kernel (KernelArch `Auto`),
   sudo 1.7.0, OpenSSH 5.2p1 with only `ssh-rsa` and `ssh-dss` host keys,
   X11 installed, Rosetta and QuickTime Player 7 not.
@@ -74,7 +139,11 @@ disc (sha256 `cbeeb237...`, `docs/test-hosts.md`):
   or two: CPU 0 spinning with interrupts off on `in` from port `0x60e2`,
   the first UHCI controller's status register, which read `0x20`
   (halted). That is 10.6.0's `AppleUSBUHCI` polling a halted controller.
-  With OpenCore on `qemu-xhci` and no UHCI, none wedged.
+  With OpenCore on `qemu-xhci` and no UHCI, none wedged. (Added
+  2026-10-27: these were 10.6.0's installer, some of them before the
+  OVMF restart fix, ADR 0018. They say nothing of `AppleUSBEHCI`, which
+  ADR 0035 measures in 10.6.0's installer and 10.6.8's boxes, or of
+  10.6.8's `AppleUSBUHCI` 4.2.0; no shape since has UHCI.)
 - With two CPUs: under host load, spinlock and `pmap_flush_tlbs`
   timeout panics; pinned to cores, none. With one CPU, none.
   Measured again 2026-10-11 with 0015's RTC patch, under host load: both
@@ -110,5 +179,12 @@ disc (sha256 `cbeeb237...`, `docs/test-hosts.md`):
   `openssh` as 10.9's has it.
 - `Macmini3,1` measured as the fallback model, or `iMac9,1` failing.
 - Two CPUs measured clean on a busy host, or installs run on one CPU
-  and the box booted with two once it is 10.6.8.
-- A USB keyboard and mouse 10.6.0 can drive without UHCI, for the window.
+  and the box booted with two once it is 10.6.8: F26's cause, found
+  after the release (R49).
+- A USB keyboard and mouse 10.6.0 can drive without UHCI, for the window:
+  done, EHCI alone (`docs/decisions/0035`).
+- A 10.6 Aqua Transport layer, or another TLS route (G5): the gate's
+  `build-layer` and `reach` apply to 10.6 too, and `versions` gets its
+  pin.
+- `Mavergreen/openssh` on 10.6: the box's Vagrantfile and
+  `bin/gate-vm.sh` stop accepting `ssh-rsa`.
