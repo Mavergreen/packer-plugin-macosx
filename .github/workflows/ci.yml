@@ -43,13 +43,17 @@ jobs:
         uses: Mavergreen/shipyard/.github/actions/install@v1
 
       # The family's runner: every top-level tests/*.bats, so a new test file runs the day it lands.
+      # No test may hang: the same per-test limit, and the same watchdog, as
+      # bin/run-tests.sh's (tests/test_timeout.bats holds them equal).
       - name: Test suite
-        run: sh "$SHIPYARD_SCRIPTS/run-repo-tests.sh"
+        env:
+          BATS_TEST_TIMEOUT: "120"
+        run: bin/bats-watchdog.sh --run sh "$SHIPYARD_SCRIPTS/run-repo-tests.sh"
 
       # bin/run-tests.sh's other half; its bats half is the step above.
       - name: shellcheck and the bash 3.2 floor
         env:
-          MQG_SKIP_BATS: "1"
+          GUEST_MACOSX_SKIP_BATS: "1"
         run: ./bin/run-tests.sh
 
       # OURS ALONE: a release must contain no Apple-derived bytes. It passes
@@ -172,8 +176,9 @@ jobs:
       # plugin, and init would fetch a RELEASE of it -- failing before the
       # first one exists, and validating the release rather than this
       # checkout after. bin/dev-install.sh above installs this checkout's
-      # build as 0.<UPSTREAM_VERSION>.<N>-dev, which the templates'
-      # ~> 0.<UPSTREAM_VERSION>.1 takes as it would the release. The qemu
+      # build as 0.<UPSTREAM_VERSION>.999999-dev, which the templates'
+      # ~> 0.<UPSTREAM_VERSION>.1 takes over any release, and fails if
+      # packer would run another macosx plugin. The qemu
       # and vagrant constraints repeat required_plugins'; if any drift,
       # validate below fails naming the plugin it cannot find.
       - name: Install the qemu and vagrant plugins the template requires

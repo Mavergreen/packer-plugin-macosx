@@ -26,6 +26,8 @@ __pycache__/
 # post-processor `output`.
 /templates/*/output/
 /templates/*/output-*/
+# The install's serial log, beside the output directory (docs/decisions/0027).
+/templates/*/output-*-install.log
 *.box
 # The manifest post-processor's record of a build.
 /templates/*/packer-manifest.json
@@ -35,6 +37,8 @@ __pycache__/
 /output/
 /output-mavericks/
 /output-mavericks-aquatransport/
+/output-snowleopard/
+/output-*-install.log
 /packer-manifest.json
 /.superpowers/
 /.idea/

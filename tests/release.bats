@@ -429,7 +429,7 @@ template_oses() {
     git -C "$REPO" ls-files templates | cut -d/ -f2 | sort -u
 }
 
-@test "each template archive names each tracked template file, no glob and no test" {
+@test "each template archive names each tracked template file, no glob and no test or test data" {
     for os in $(template_oses); do
         run template_srcs "$os"
         [ "$status" -eq 0 ]
@@ -438,7 +438,8 @@ template_oses() {
         [[ "$output" != *'?'* ]] || false
         [[ "$output" != *'['* ]] || false
         [[ "$output" != *_test.go* ]] || false
-        want=$(git -C "$REPO" ls-files "templates/$os/" | grep -v '_test\.go$' | sort)
+        [[ "$output" != */testdata/* ]] || false
+        want=$(git -C "$REPO" ls-files "templates/$os/" | grep -v -e '_test\.go$' -e '/testdata/' | sort)
         got=$(template_srcs "$os" | sort)
         [ "$got" = "$want" ] || { echo "$os: archive names differ from the tracked files"; false; }
     done
@@ -693,9 +694,9 @@ print('ok')
     # The forms measured on 2026-09-27 (docs/test-hosts.md): the box is
     # added from the build's own output/, and a plain `vagrant up` would
     # pick whatever default provider is installed.
-    # (The first 110 lines: the quickstart sits after the Snow Leopard and
-    # Aqua Transport build sections.)
-    run head -110 "$REPO/README.md"
+    # (The first 130 lines: the quickstart sits after the Snow Leopard,
+    # Aqua Transport and Watch a build sections.)
+    run head -130 "$REPO/README.md"
     [[ "$output" == *"packer init"* ]] || false
     [[ "$output" == *"packer build"* ]] || false
     [[ "$output" == *"vagrant plugin install vagrant-qemu"* ]] || false
@@ -717,10 +718,11 @@ print('ok')
 
 @test "the README never teaches a plain vagrant up" {
     # Every `vagrant up` it shows says --provider qemu, whatever
-    # environment variables come before it (MAVERICKS_DISPLAY,
-    # MAVERICKS_CPU_ISA, ...).
-    [ "$(grep -cE '^ *([A-Z_]+=[a-z0-9]+ )*vagrant up' "$REPO/README.md")" -ge 3 ]
-    run grep -nE '^ *([A-Z_]+=[a-z0-9]+ )*vagrant up *$' "$REPO/README.md"
+    # environment variables come before it (GUEST_MACOSX_GUI=1,
+    # GUEST_MACOSX_QEMU_DISPLAY=vnc=127.0.0.1:1, ...), whose values can
+    # hold = . and :.
+    [ "$(grep -cE '^ *([A-Z_]+=[^ ]+ )*vagrant up' "$REPO/README.md")" -ge 4 ]
+    run grep -nE '^ *([A-Z_]+=[^ ]+ )*vagrant up *$' "$REPO/README.md"
     [ "$status" -ne 0 ]
 }
 
@@ -731,10 +733,23 @@ print('ok')
 }
 
 @test "the README documents the headful escape hatch" {
-    # templates/mavericks/box.Vagrantfile.pkrtpl reads MAVERICKS_DISPLAY to trade the
-    # headless default for a real window; undocumented, nobody finds it.
-    run grep -c 'MAVERICKS_DISPLAY=[a-z]* vagrant up --provider qemu' "$REPO/README.md"
+    # Every box's Vagrantfile (templates/*/box.Vagrantfile.pkrtpl) reads
+    # GUEST_MACOSX_GUI to trade the headless default for a real window, and
+    # GUEST_MACOSX_QEMU_DISPLAY to pick QEMU's display; undocumented,
+    # nobody finds them.
+    run grep -c 'GUEST_MACOSX_GUI=1 vagrant up --provider qemu' "$REPO/README.md"
     [ "$output" -ge 1 ]
+    run grep -c 'GUEST_MACOSX_QEMU_DISPLAY=[^ ]* vagrant up --provider qemu' "$REPO/README.md"
+    [ "$output" -ge 1 ]
+}
+
+@test "the README teaches no box variable from before GUEST_MACOSX_" {
+    # MAVERICKS_DISPLAY and MAVERICKS_CPU_ISA became GUEST_MACOSX_GUI,
+    # GUEST_MACOSX_QEMU_DISPLAY and GUEST_MACOSX_CPU_ISA, and a box reads
+    # the old names no more: a README that taught them would teach a
+    # setting the box ignores.
+    run grep -nE 'MAVERICKS_(DISPLAY|CPU_ISA)' "$REPO/README.md"
+    [ "$status" -ne 0 ]
 }
 
 @test "the README carries no unread-by-a-human marker" {
