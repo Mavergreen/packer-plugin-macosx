@@ -389,7 +389,7 @@ func TestRunDrives(t *testing.T) {
 		if c.Name == "qemu-system-x86_64" {
 			initrd, _ = os.ReadFile(c.Args[8])
 			stdinN, stdinErr = c.Stdin.Read(make([]byte, 1))
-			_, _ = io.WriteString(c.Stdout, "MQG-PRIVOPS-OK rc=0\n")
+			_, _ = io.WriteString(c.Stdout, "GUEST-MACOSX-PRIVOPS-OK rc=0\n")
 		}
 		return nil
 	}
@@ -404,7 +404,7 @@ func TestRunDrives(t *testing.T) {
 	kernel := filepath.Join(fx.root, "boot/vmlinuz-6.1.0-test")
 	head := []string{"-enable-kvm", "-m", "512", "-nographic", "-no-reboot", "-kernel", kernel, "-initrd"}
 	tail := []string{
-		"-append", "console=ttyS0 loglevel=3 panic=1 mqg_modules=nls_base,nls_utf8,hfsplus,virtio,virtio_ring,virtio_pci,virtio_blk",
+		"-append", "console=ttyS0 loglevel=3 panic=1 gm_modules=nls_base,nls_utf8,hfsplus,virtio,virtio_ring,virtio_pci,virtio_blk",
 		"-drive", "file=" + img[0] + ",format=raw,if=virtio",
 		"-drive", "file=" + img[1] + ",format=raw,if=virtio,readonly=on",
 		"-drive", "file=" + img[2] + ",format=raw,if=virtio",
@@ -435,7 +435,7 @@ func TestRunDrives(t *testing.T) {
 func TestRunEscapesCommasInDrivePaths(t *testing.T) {
 	fx := newRunFixture(t)
 	img := fx.images(t, "t,1.img", "a,,b", "c")
-	fx.console(t, "MQG-PRIVOPS-OK rc=0\n")
+	fx.console(t, "GUEST-MACOSX-PRIVOPS-OK rc=0\n")
 	if _, err := fx.b.Run(context.Background(), img[0], nil, []Disk{{"ro", img[1]}, {"raw", img[2]}}); err != nil {
 		t.Fatal(err)
 	}
@@ -491,7 +491,7 @@ func TestModulesAreStagedOncePerBackend(t *testing.T) {
 			if got := string(byName(readNewc(t, initrd))["lib/modules/hfsplus.ko"].data); got != "hfsplus" {
 				t.Errorf("pass staged hfsplus.ko as %q", got)
 			}
-			_, _ = io.WriteString(c.Stdout, "MQG-PRIVOPS-OK rc=0\n")
+			_, _ = io.WriteString(c.Stdout, "GUEST-MACOSX-PRIVOPS-OK rc=0\n")
 		}
 		return nil
 	}
@@ -555,7 +555,7 @@ func TestRunRefusesAnUnknownRoleAndAMissingImage(t *testing.T) {
 func TestRunStreamsTheConsoleToAFile(t *testing.T) {
 	fx := newRunFixture(t)
 	img := fx.images(t, "t.img")
-	text := "SeaBIOS\nMQG-PRIVOPS-MOUNTED /dev/vda\nMQG-PRIVOPS-OK rc=0\n"
+	text := "SeaBIOS\nGUEST-MACOSX-PRIVOPS-MOUNTED /dev/vda\nGUEST-MACOSX-PRIVOPS-OK rc=0\n"
 	fx.console(t, text)
 	got, err := fx.b.Run(context.Background(), img[0], nil, nil)
 	if err != nil {
@@ -572,7 +572,7 @@ func TestRunStreamsTheConsoleToAFile(t *testing.T) {
 func TestRunSucceedsOnOKAndLogsThePayloadsLines(t *testing.T) {
 	fx := newRunFixture(t)
 	img := fx.images(t, "t.img")
-	fx.console(t, "[    0.123] foo\n\x1b[2J\x1b[?25l\n\x1bc\x1b[?7l\x1b[2JMQG-PRIVOPS-MOUNTED /dev/vda1\npayload says hi\r\n\nMQG-PRIVOPS-OK rc=0\n")
+	fx.console(t, "[    0.123] foo\n\x1b[2J\x1b[?25l\n\x1bc\x1b[?7l\x1b[2JGUEST-MACOSX-PRIVOPS-MOUNTED /dev/vda1\npayload says hi\r\n\nGUEST-MACOSX-PRIVOPS-OK rc=0\n")
 	if _, err := fx.b.Run(context.Background(), img[0], nil, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -587,6 +587,30 @@ func TestRunSucceedsOnOKAndLogsThePayloadsLines(t *testing.T) {
 	}
 }
 
+// A kernel image not named for KVer may be another build, whose modules
+// would not load: the run says so, naming the release whose modules it
+// staged.
+func TestAGenericKernelIsWarnedOf(t *testing.T) {
+	fx := newRunFixture(t)
+	if err := os.Remove(filepath.Join(fx.root, "boot", "vmlinuz-"+testKVer)); err != nil {
+		t.Fatal(err)
+	}
+	write(t, filepath.Join(fx.root, "boot", "vmlinuz"), []byte("kernel"), 0o644)
+	img := fx.images(t, "t.img")
+	fx.console(t, "GUEST-MACOSX-PRIVOPS-OK rc=0\n")
+	if _, err := fx.b.Run(context.Background(), img[0], nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	want := "warning: " + filepath.Join(fx.root, "boot", "vmlinuz") + " is not keyed to the release whose modules are staged (" +
+		testKVer + "): if it is a different build, none of them will load from " + filepath.Join(fx.root, "modules", testKVer)
+	for _, l := range fx.log.all() {
+		if l == want {
+			return
+		}
+	}
+	t.Fatalf("no %q in %q", want, fx.log.all())
+}
+
 func TestRunFailures(t *testing.T) {
 	var tail strings.Builder
 	for i := 1; i <= 25; i++ {
@@ -596,9 +620,9 @@ func TestRunFailures(t *testing.T) {
 		name, console, want string
 		tail                bool
 	}{
-		{"the payload failed", "MQG-PRIVOPS-MOUNTED /dev/vda\nMQG-PRIVOPS-OK rc=1\n", "the payload script reported a failure inside the microVM", false},
+		{"the payload failed", "GUEST-MACOSX-PRIVOPS-MOUNTED /dev/vda\nGUEST-MACOSX-PRIVOPS-OK rc=1\n", "the payload script reported a failure inside the microVM", false},
 		{"no OK at all", tail.String(), "privileged operations failed inside the microVM", true},
-		{"a source would not mount", "MQG-PRIVOPS-SOURCE-MOUNT-FAILED 1 /dev/vdb\n", "a disk the microVM was given was not there, or held no mountable HFS+ volume", false},
+		{"a source would not mount", "GUEST-MACOSX-PRIVOPS-SOURCE-MOUNT-FAILED 1 /dev/vdb\n", "a disk the microVM was given was not there, or held no mountable HFS+ volume", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			fx := newRunFixture(t)
@@ -670,7 +694,7 @@ func TestAZeroTimeoutIsTheDefault(t *testing.T) {
 	fx := newRunFixture(t)
 	img := fx.images(t, "t.img")
 	fx.b.Timeout = 0
-	fx.console(t, "MQG-PRIVOPS-OK rc=0\n")
+	fx.console(t, "GUEST-MACOSX-PRIVOPS-OK rc=0\n")
 	if _, err := fx.b.Run(context.Background(), img[0], nil, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -758,18 +782,18 @@ func TestTheMicroVMRunsAPayload(t *testing.T) {
 	if err := os.Truncate(target, 16<<20); err != nil {
 		t.Fatal(err)
 	}
-	if out, err := exec.Command(mkfs, "-v", "MQG TEST", target).CombinedOutput(); err != nil {
+	if out, err := exec.Command(mkfs, "-v", "GUEST MACOSX TEST", target).CombinedOutput(); err != nil {
 		t.Fatalf("mkfs.hfsplus: %v\n%s", err, out)
 	}
-	payload := []byte(`echo "MQG-TEST-WROTE $($B sh -c 'echo hi > $MQG_MNT/hello; $B cat $MQG_MNT/hello')"` + "\n")
+	payload := []byte(`echo "GUEST-MACOSX-TEST-WROTE $($B sh -c 'echo hi > $GUEST_MACOSX_MNT/hello; $B cat $GUEST_MACOSX_MNT/hello')"` + "\n")
 	start := time.Now()
 	console, err := b.Run(context.Background(), target, payload, nil)
 	t.Logf("the microVM ran in %v", time.Since(start))
 	if err != nil {
 		t.Fatalf("%v\nconsole:\n%s", err, console)
 	}
-	if got := Markers(console, "MQG-TEST-WROTE"); !reflect.DeepEqual(got, []string{"hi"}) {
-		t.Fatalf("MQG-TEST-WROTE %q\nconsole:\n%s", got, console)
+	if got := Markers(console, "GUEST-MACOSX-TEST-WROTE"); !reflect.DeepEqual(got, []string{"hi"}) {
+		t.Fatalf("GUEST-MACOSX-TEST-WROTE %q\nconsole:\n%s", got, console)
 	}
 }
 
@@ -829,7 +853,7 @@ func TestAPassThatFinishedIsNotATimeout(t *testing.T) {
 	img := fx.images(t, "t.img")
 	fx.b.Timeout = 20 * time.Millisecond
 	fx.b.Runner = funcRunner{fx.fake, func(ctx context.Context, c proc.Cmd) error {
-		_, _ = io.WriteString(c.Stdout, "MQG-PRIVOPS-OK rc=0\n")
+		_, _ = io.WriteString(c.Stdout, "GUEST-MACOSX-PRIVOPS-OK rc=0\n")
 		<-ctx.Done() // the deadline passes before QEMU's exit is seen
 		return nil
 	}}
@@ -841,7 +865,7 @@ func TestAPassThatFinishedIsNotATimeout(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	fx.b.Runner = funcRunner{fx.fake, func(_ context.Context, c proc.Cmd) error {
-		_, _ = io.WriteString(c.Stdout, "MQG-PRIVOPS-OK rc=0\n")
+		_, _ = io.WriteString(c.Stdout, "GUEST-MACOSX-PRIVOPS-OK rc=0\n")
 		cancel() // interrupted just after QEMU exited
 		return nil
 	}}

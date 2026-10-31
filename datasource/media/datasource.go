@@ -74,7 +74,7 @@ type Config struct {
 	PrivopsTimeout time.Duration `mapstructure:"privops_timeout"`
 	// CacheDir names where the built store -- and, under it, the shared
 	// download cache and the media build's scratch home -- live. ""
-	// means packer.CachePath("mavericks").
+	// means packer.CachePath("guest-macosx").
 	CacheDir string `mapstructure:"cache_dir"`
 }
 
@@ -108,7 +108,7 @@ type DatasourceOutput struct {
 // The goldens part is the digest of that code's goldens (recipe_test.go's
 // recipeGoldens), and TestRecipePinsTheGoldens fails when they change and
 // this does not.
-const recipe = "4 goldens:45129f92f2cbd49e"
+const recipe = "7 goldens:ac4be9b75685d5c6"
 
 // Datasource is mavericks-media.
 type Datasource struct {
@@ -260,7 +260,7 @@ var (
 
 // logf reaches Packer's log (PACKER_LOG=1): a data source gets no UI, and
 // nothing here may print to stdout, which the plugin's RPC owns.
-func logf(format string, a ...any) { log.Printf("mavericks-media: "+format, a...) }
+func logf(format string, a ...any) { log.Printf("guest-macosx-media: "+format, a...) }
 
 func (d *Datasource) Execute() (cty.Value, error) {
 	ctx := context.Background()
@@ -277,7 +277,7 @@ func (d *Datasource) Execute() (cty.Value, error) {
 	cacheDir := c.CacheDir
 	if cacheDir == "" {
 		var err error
-		if cacheDir, err = packersdk.CachePath("mavericks"); err != nil {
+		if cacheDir, err = packersdk.CachePath("guest-macosx"); err != nil {
 			return null, err
 		}
 	}
@@ -476,7 +476,7 @@ func onOff(b bool) string {
 // updates fetched into the shared cache; the
 // updates staged as dir/updates/ symlinks under the names the media
 // presents them by; the authorized key written into the entry; the
-// first-boot payload built into dir/mqg-firstboot.pkg; the media built
+// first-boot payload built into dir/guest-macosx-firstboot.pkg; the media built
 // in the scratch home and moved into dir/installer-media.img, with its
 // sidecar; its content digest taken; and, with the default key,
 // Vagrant's insecure private key written as dir/vagrant_insecure_key,

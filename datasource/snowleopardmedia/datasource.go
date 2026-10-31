@@ -46,7 +46,7 @@ type Config struct {
 	// PrivopsTimeout bounds one privops microVM pass. Default 15m.
 	PrivopsTimeout time.Duration `mapstructure:"privops_timeout"`
 	// CacheDir names where the built store lives. "" means
-	// packer.CachePath("mavericks"), the store the other data sources
+	// packer.CachePath("guest-macosx"), the store the other data sources
 	// share.
 	CacheDir string `mapstructure:"cache_dir"`
 }

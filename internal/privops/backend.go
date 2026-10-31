@@ -42,7 +42,7 @@ type Backend struct {
 	QEMU       string        // the qemu binary (config.QEMU)
 	BootDir    string        // where kernels are: /boot
 	ModulesDir string        // where modules are: /lib/modules
-	KVer       string        // the running kernel's release, uname -r
+	KVer       string        // the release booted, its modules staged: uname -r's, or chooseRelease's
 	Modules    []string      // loaded in the guest: DefaultModules
 	MemMiB     int           // the microVM's memory: 512
 	Timeout    time.Duration // the bound on one pass: 15m
@@ -60,10 +60,17 @@ type Backend struct {
 }
 
 // NewBackend is a Backend for this host: /boot, /lib/modules, /dev/kvm,
-// the running kernel's release, 512 MiB, a 15-minute bound on a pass.
-// Off Linux it asks nothing, and Missing says why it cannot run.
+// the running kernel's release unless its modules lack one the microVM
+// loads (chooseRelease), 512 MiB, a 15-minute bound on a pass. Off Linux
+// it asks nothing, and Missing says why it cannot run.
 func NewBackend(r proc.Runner, qemu string, log func(string, ...any)) (Backend, error) {
-	b := Backend{Runner: r, QEMU: qemu, BootDir: "/boot", ModulesDir: "/lib/modules", KVMDevice: "/dev/kvm",
+	return newBackend(r, qemu, log, "/boot", "/lib/modules")
+}
+
+// newBackend is NewBackend looking for kernels in bootDir and modules in
+// modulesDir.
+func newBackend(r proc.Runner, qemu string, log func(string, ...any), bootDir, modulesDir string) (Backend, error) {
+	b := Backend{Runner: r, QEMU: qemu, BootDir: bootDir, ModulesDir: modulesDir, KVMDevice: "/dev/kvm",
 		Modules: DefaultModules, MemMiB: 512, Timeout: DefaultTimeout, GOOS: runtime.GOOS, Log: log,
 		staged: &moduleCache{}}
 	if b.GOOS != "linux" {
@@ -73,6 +80,6 @@ func NewBackend(r proc.Runner, qemu string, log func(string, ...any)) (Backend, 
 	if err := r.Run(context.Background(), proc.Cmd{Name: "uname", Args: []string{"-r"}, Stdout: &out}); err != nil {
 		return b, fmt.Errorf("cannot ask uname for the kernel release: %w", err)
 	}
-	b.KVer = strings.TrimSpace(out.String())
+	b.KVer = b.chooseRelease(strings.TrimSpace(out.String()))
 	return b, nil
 }

@@ -468,7 +468,7 @@ func (b *Builder) build(ctx context.Context, esd string, o Options, work, buildi
 	if err != nil {
 		return "", err
 	}
-	n, ok := count(marker(console, "MQG-BASESYSTEM-BYTES"))
+	n, ok := count(marker(console, "GUEST-MACOSX-BASESYSTEM-BYTES"))
 	if !ok {
 		return "", errors.New("the microVM did not report a BaseSystem.dmg size")
 	}
@@ -478,7 +478,7 @@ func (b *Builder) build(ctx context.Context, esd string, o Options, work, buildi
 	// The host's own read, against the digest the guest sent: a short or
 	// torn write through the raw disk would otherwise surface as a
 	// dmg2img failure that says nothing about where the bytes went.
-	want := marker(console, "MQG-BASESYSTEM-SHA256")
+	want := marker(console, "GUEST-MACOSX-BASESYSTEM-SHA256")
 	got, err := fetch.SHA256File(bsDmg)
 	if err != nil {
 		return "", err
@@ -514,7 +514,7 @@ func (b *Builder) build(ctx context.Context, esd string, o Options, work, buildi
 	}
 	// Checked against a constant, not against the source: a bad byte out
 	// of dmg2img would be copied faithfully and verified as correct.
-	if err := b.checkSums(console, "MQG-SUM-ESD", "the ESD's Packages, as converted and read",
+	if err := b.checkSums(console, "GUEST-MACOSX-SUM-ESD", "the ESD's Packages, as converted and read",
 		"the ESD does not contain what Apple shipped. The suspects are dmg2img and the Linux hfsplus read of its output, in that order -- not the media, whose copy of them has not been checked yet, and not assets/pins/apple-packages.sha256, whose values were read from two images that share no code"); err != nil {
 		return "", err
 	}
@@ -535,7 +535,7 @@ func (b *Builder) build(ctx context.Context, esd string, o Options, work, buildi
 	if console, err = b.pass(ctx, 4, "verify-packages", building, work); err != nil {
 		return "", err
 	}
-	if err := b.checkSums(console, "MQG-SUM-MEDIA", "the finished media, read by a fresh guest",
+	if err := b.checkSums(console, "GUEST-MACOSX-SUM-MEDIA", "the finished media, read by a fresh guest",
 		"the media does not contain what Apple shipped. This is the fault that a finished copy, and a read-back through the same cache, both fail to report. Build it again"); err != nil {
 		return "", err
 	}
@@ -619,7 +619,7 @@ func hfsUsedBytes(volume string) (int64, error) {
 // -- and those are not the disc's to vouch for.
 func checkDiscSums(console []byte) error {
 	got := map[string]string{}
-	for _, m := range privops.Markers(console, "MQG-SUM-MEDIA") {
+	for _, m := range privops.Markers(console, "GUEST-MACOSX-SUM-MEDIA") {
 		if sum, name, ok := strings.Cut(m, "  "); ok {
 			got[name] = sum
 		}

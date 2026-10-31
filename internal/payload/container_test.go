@@ -33,7 +33,7 @@ func TestCPIOEntriesCarryFileTypeBits(t *testing.T) {
 	// Without them PackageKit's cpio reader fails "copier error 21 ... bad
 	// file format" (MEASURED in a guest install): 040755 and 100755,
 	// never 000755.
-	b := makeODC([]cpioEntry{{Name: ".", Mode: 0o755, Dir: true}, {Name: "./postinstall", Mode: 0o755, Data: []byte("#!/bin/sh\n")}})
+	b := makeODC([]cpioEntry{{Name: ".", Mode: 0o755, Dir: true}, {Name: "./postinstall", Mode: 0o755, Data: []byte("exit 0\n")}})
 	es, err := readODC(b)
 	if err != nil || len(es) != 2 {
 		t.Fatalf("%+v %v", es, err)
@@ -44,7 +44,7 @@ func TestCPIOEntriesCarryFileTypeBits(t *testing.T) {
 }
 
 func TestTheXarHeaderAndTOCChecksum(t *testing.T) {
-	blob, err := flatPackage([]byte("#!/bin/sh\nexit 0\n"), "com.mqg.firstboot", "1.0")
+	blob, err := flatPackage([]byte("exit 0\n"), "guest-macosx.firstboot", "1.0")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,28 +64,29 @@ func TestTheXarHeaderAndTOCChecksum(t *testing.T) {
 }
 
 func TestTheSameInputsGiveAByteIdenticalPackage(t *testing.T) {
-	a, _ := flatPackage([]byte("x\n"), "com.mqg.firstboot", "1.0")
-	b, _ := flatPackage([]byte("x\n"), "com.mqg.firstboot", "1.0")
+	a, _ := flatPackage([]byte("x\n"), "guest-macosx.firstboot", "1.0")
+	b, _ := flatPackage([]byte("x\n"), "guest-macosx.firstboot", "1.0")
 	if !bytes.Equal(a, b) {
 		t.Fatal("two builds differ")
 	}
 }
 
 // Structural agreement with a flat package written independently of
-// flatPackage, from this same postinstall (testdata/golden/reference.pkg.gz):
+// flatPackage (testdata/golden/reference.pkg.gz), built from the
+// reference's own postinstall:
 // the same TOC (bar the Scripts member's compressed length and
 // checksums), the same PackageInfo, the same decompressed cpio. It is
 // gzip'd so the tracked blob does not start with a flat package's own
 // "xar!" magic (bin/no-apple-bytes.sh's byte check, which does not know a
 // fixture from the real thing).
 func TestSameContentsAsTheReferencePackage(t *testing.T) {
-	post := []byte("#!/bin/sh\necho hello\nexit 0\n")
 	gzipped, err := os.ReadFile(filepath.Join(repoRoot(), "internal", "payload", "testdata", "golden", "reference.pkg.gz"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	ref := gunzip(t, gzipped)
-	gob, err := flatPackage(post, "com.mqg.firstboot", "1.0")
+	post := referencePostinstall(t, ref)
+	gob, err := flatPackage(post, "guest-macosx.firstboot", "1.0")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,4 +106,25 @@ func TestSameContentsAsTheReferencePackage(t *testing.T) {
 		t.Fatalf("TOCs differ beyond lengths and checksums:\n%s\n---\n%s", refTOC, goTOC)
 	}
 	t.Logf("compressed sizes: reference %d bytes, go %d bytes (deflate implementations differ)", len(ref), len(gob))
+}
+
+// referencePostinstall is the postinstall inside the reference package:
+// its Scripts member, gunzipped, is a cpio holding ./postinstall.
+func referencePostinstall(t *testing.T, ref []byte) []byte {
+	t.Helper()
+	_, members, err := readXar(ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	es, err := readODC(gunzip(t, members["Scripts"]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range es {
+		if e.Name == "./postinstall" {
+			return e.Data
+		}
+	}
+	t.Fatal("the reference package holds no ./postinstall")
+	return nil
 }

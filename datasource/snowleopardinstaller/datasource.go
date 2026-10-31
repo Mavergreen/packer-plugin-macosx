@@ -44,7 +44,7 @@ type Config struct {
 	// Default 15m.
 	PrivopsTimeout time.Duration `mapstructure:"privops_timeout"`
 	// CacheDir names where the built store lives. "" means
-	// packer.CachePath("mavericks"), the store the other data sources
+	// packer.CachePath("guest-macosx"), the store the other data sources
 	// share.
 	CacheDir string `mapstructure:"cache_dir"`
 }
@@ -142,7 +142,7 @@ func (d *Datasource) Execute() (cty.Value, error) {
 	}
 	cacheDir := c.CacheDir
 	if cacheDir == "" {
-		if cacheDir, err = packersdk.CachePath("mavericks"); err != nil {
+		if cacheDir, err = packersdk.CachePath("guest-macosx"); err != nil {
 			return cty.NullVal(cty.EmptyObject), err
 		}
 	}

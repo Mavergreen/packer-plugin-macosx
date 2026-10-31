@@ -1,5 +1,6 @@
-// Package media builds bootable Mavericks installer media from Apple's
-// InstallESD.dmg without a Mac, root, or a host mount: the host makes the
+// Package media builds bootable Mac OS X installer media from Apple's
+// InstallESD.dmg (10.9) or a retail disc's volume (10.6) without a Mac,
+// root, or a host mount: the host makes the
 // disk image and the raw conversions, and every read or write of an HFS+
 // volume's contents happens as uid 0 inside the privops microVM. It also
 // digests what is on the media, and checks Apple's packages against

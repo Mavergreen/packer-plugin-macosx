@@ -32,7 +32,7 @@ var repoParts = []string{"esd", "opencore", "ovmf", "efi", "efi-snowleopard", "p
 
 // RepoRows is the part's repository-side inputs: the pins, patches and
 // embedded files it builds from (the payload's are the three files it
-// embeds: com.mqg.firstboot.plist, firstboot.sh, postinstall). compiler
+// embeds: guest-macosx.firstboot.plist, firstboot.sh, postinstall). compiler
 // is the firmware build's compiler line, or "unknown" when there is
 // none; only opencore and ovmf use it.
 func RepoRows(reg *pins.Registry, part, compiler string) ([]Row, error) {
@@ -116,7 +116,7 @@ func efiRows(reg *pins.Registry, plist string) ([]Row, error) {
 }
 
 // payloadRows lists assets/guest's own top-level files -- currently
-// com.mqg.firstboot.plist, firstboot.sh and postinstall -- as "payload:"
+// guest-macosx.firstboot.plist, firstboot.sh and postinstall -- as "payload:"
 // rows; treeRows does not recurse, so assets/guest/autoinstall/ (mediaRows'
 // own listing, below) is not among them. The listing is of what the
 // binary embeds, not of the checkout: a new file in assets/guest/ joins

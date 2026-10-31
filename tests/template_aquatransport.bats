@@ -13,9 +13,10 @@
 # machine, so: the stub sudo runs only the stub installer and hdiutil and
 # refuses everything else; the scripts' PATH is the stubs, /usr/bin and /bin,
 # never an sbin; shutdown, reboot, halt and poweroff are stubs that fail;
-# verify.sh's curl is a stub, named through its MQG_VERIFY_CURL seam, so
-# no test fetches anything; and the files it looks for are under its
-# MQG_VERIFY_ROOT seam, a directory of the test's own.
+# curl is a stub that only logs, and verify.sh, which must fetch nothing,
+# is checked for any other curl before it runs; and the files it looks
+# for are under its GUEST_MACOSX_VERIFY_ROOT seam, a directory of the
+# test's own.
 
 setup() {
     REPO="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
@@ -27,7 +28,11 @@ setup() {
     export LOG
 
     for name in shutdown reboot halt poweroff systemctl; do
-        printf '#!/bin/sh\necho "stub: %s refused" >&2\nexit 1\n' "$name" > "$STUB/$name"
+        cat > "$STUB/$name" <<'STUB'
+#!/bin/sh
+echo "stub: ${0##*/} refused" >&2
+exit 1
+STUB
     done
 
     # sw_vers: $STUB_VERSION and $STUB_BUILD.
@@ -70,22 +75,12 @@ for k in $STUB_KEXTS; do
     i=$((i + 1))
 done
 EOF
-    # curl: fails for the URL in $STUB_CURL_FAIL, as 10.9.5's curl 7.30
-    # does when it cannot verify a peer -- the error, then its paragraph
-    # of advice (measured on the base box, 2026-10-11) -- and -V says
-    # what it is.
+    # curl: only logs, and fails as curl does with no network, so a
+    # verify.sh that reached for it would show.
     cat > "$STUB/curl" <<'EOF'
 #!/bin/sh
-[ "${1:-}" = -V ] && { echo "curl 7.30.0 (stub)"; exit 0; }
-for url; do :; done
 echo "curl $*" >> "$LOG"
-if [ "$url" = "${STUB_CURL_FAIL:-}" ]; then
-    echo "curl: (60) SSL certificate problem: Invalid certificate chain" >&2
-    echo "More details here: http://curl.haxx.se/docs/sslcerts.html" >&2
-    echo "" >&2
-    echo "curl performs SSL certificate verification by default, using a \"bundle\"" >&2
-    exit 60
-fi
+exit 6
 EOF
     # hdiutil: attach "mounts" a volume holding AquaTransport.pkg at the
     # -mountpoint it was given; detach empties it again, or fails with
@@ -118,14 +113,16 @@ done
 exit "${STUB_INSTALLER_STATUS:-0}"
 EOF
     # sudo: the stub installer and hdiutil, and nothing else.
-    cat > "$STUB/sudo" <<EOF
+    # Quoted, so this is the script that runs (bin/heredoc-scripts.sh): the
+    # two stubs it may run are beside it, in its own directory.
+    cat > "$STUB/sudo" <<'EOF'
 #!/bin/sh
-echo "sudo \$*" >> "\$LOG"
-[ "\$1" = -n ] && shift
-case \$1 in
-    installer) shift; exec "$STUB/installer" "\$@" ;;
-    hdiutil) shift; exec "$STUB/hdiutil" "\$@" ;;
-    *) echo "stub sudo: refusing \$1" >&2; exit 1 ;;
+echo "sudo $*" >> "$LOG"
+[ "$1" = -n ] && shift
+case $1 in
+    installer) shift; exec "$(dirname "$0")/installer" "$@" ;;
+    hdiutil) shift; exec "$(dirname "$0")/hdiutil" "$@" ;;
+    *) echo "stub sudo: refusing $1" >&2; exit 1 ;;
 esac
 EOF
     chmod +x "$STUB"/*
@@ -134,41 +131,42 @@ EOF
     export STUB_VERSION=10.9.5 STUB_BUILD=13F1911 STUB_AT_VERSION=2026.10.09
     export STUB_PKGS="com.apple.pkg.BaseSystemBinaries Wowfunhappy.AquaTransport Wowfunhappy.AquaTransport.ModernRootCertificates"
     export STUB_KEXTS="com.apple.kpi.bsd com.apple.driver.AppleACPIPlatform"
-    unset STUB_CURL_FAIL STUB_INSTALLER_STATUS STUB_DETACH_STATUS
+    unset STUB_INSTALLER_STATUS STUB_DETACH_STATUS
     ROOT="$BATS_TEST_TMPDIR/root"
     mkdir -p "$ROOT/Library/Extensions" "$ROOT/System/Library/Extensions"
 }
 
 verify() {  # $1 = AQUATRANSPORT_VERSION, or "-" to leave it unset
     if [ "$1" = - ]; then
-        run env -u AQUATRANSPORT_VERSION PATH="$STUB:/usr/bin:/bin" MQG_VERIFY_CURL="$STUB/curl" MQG_VERIFY_ROOT="$ROOT" \
+        run env -u AQUATRANSPORT_VERSION PATH="$STUB:/usr/bin:/bin" GUEST_MACOSX_VERIFY_ROOT="$ROOT" \
             /bin/sh "$TMPL/verify.sh"
     else
-        run env AQUATRANSPORT_VERSION="$1" PATH="$STUB:/usr/bin:/bin" MQG_VERIFY_CURL="$STUB/curl" MQG_VERIFY_ROOT="$ROOT" \
+        run env AQUATRANSPORT_VERSION="$1" PATH="$STUB:/usr/bin:/bin" GUEST_MACOSX_VERIFY_ROOT="$ROOT" \
             /bin/sh "$TMPL/verify.sh"
     fi
 }
-
-URLS="https://github.com/ https://release-assets.githubusercontent.com/ https://downloads.claude.ai/claude-code-releases/latest"
 
 # --- verify.sh ---------------------------------------------------------------
 
 @test "verify.sh passes a good guest, and says what it checked" {
     verify 2026.10.09
     [ "$status" -eq 0 ]
-    [[ "$output" == *"verify: ok: 10.9.5 (13F1911), Aqua Transport 2026.10.09"* ]] || false
+    [[ "$output" == *"verify: ok: 10.9.5 (13F1911), Aqua Transport 2026.10.09 with ModernRootCertificates, no tap"* ]] || false
     [[ "$output" != *FAILED* ]] || false
+    [[ "$output" != *reaches* ]] || false
 }
 
-@test "verify.sh fetches each of the three URLs with the system's own curl, quietly" {
+# The layer's build is restricted (docs/decisions/0034): a fetch would fail
+# there, so verify.sh makes none. Its code is read first, so that no
+# version of it that names curl or a URL runs here at all.
+@test "verify.sh fetches nothing: the build's guest has no network to fetch from" {
+    run grep -v -E '^[[:space:]]*#' "$TMPL/verify.sh"
+    [ "$status" -eq 0 ]
+    [[ "$output" != *curl* ]] || { echo "verify.sh's code names curl"; false; }
+    [[ "$output" != *"://"* ]] || { echo "verify.sh's code names a URL"; false; }
     verify 2026.10.09
     [ "$status" -eq 0 ]
-    for url in $URLS; do
-        grep -qxF "curl -sS -o /dev/null $url" "$LOG"
-    done
-    [ "$(grep -c '^curl ' "$LOG")" -eq 3 ]
-    run grep -F 'CURL=${MQG_VERIFY_CURL:-/usr/bin/curl}' "$TMPL/verify.sh"
-    [ "$status" -eq 0 ]
+    [ "$(grep -c '^curl ' "$LOG")" -eq 0 ]
 }
 
 @test "verify.sh prints key=value diagnostics before its verdict, even a failing one" {
@@ -177,7 +175,7 @@ URLS="https://github.com/ https://release-assets.githubusercontent.com/ https://
     [ "$status" -ne 0 ]
     for line in "ProductVersion:" "aquatransport-asked=2026.10.09" "aquatransport-version=2026.10.09" \
         "receipts=Wowfunhappy.AquaTransport Wowfunhappy.AquaTransport.ModernRootCertificates" \
-        "tap-kexts=" "curl=curl 7.30.0"; do
+        "tap-kexts=" "security-original="; do
         [[ "$output" == *"$line"* ]] || { echo "missing: $line"; false; }
     done
     first_verdict=$(grep -n '^verify: ' <<< "$output" | head -n 1 | cut -d: -f1)
@@ -244,25 +242,6 @@ URLS="https://github.com/ https://release-assets.githubusercontent.com/ https://
     [ "$status" -eq 0 ]
 }
 
-@test "verify.sh fails a guest that cannot fetch any one of the three URLs, naming it" {
-    for url in $URLS; do
-        export STUB_CURL_FAIL=$url
-        verify 2026.10.09
-        [ "$status" -eq 1 ]
-        [[ "$output" == *"verify: FAILED: /usr/bin/curl -sS -o /dev/null $url fails: curl: (60) SSL certificate problem"* ]] || false
-        [ "$(grep -c 'verify: FAILED:' <<< "$output")" -eq 1 ]
-    done
-}
-
-@test "verify.sh names a failed fetch by curl's first line, not its advice" {
-    export STUB_CURL_FAIL=https://github.com/
-    verify 2026.10.09
-    [ "$status" -eq 1 ]
-    [[ "$output" == *"fails: curl: (60) SSL certificate problem: Invalid certificate chain"* ]] || false
-    [[ "$output" != *"More details here"* ]] || false
-    [[ "$output" != *"verification by default"* ]] || false
-}
-
 @test "verify.sh fails a guest that is not 10.9.5, naming the version" {
     export STUB_VERSION=10.9.4
     verify 2026.10.09
@@ -286,11 +265,10 @@ URLS="https://github.com/ https://release-assets.githubusercontent.com/ https://
 @test "verify.sh names every failing check, not just the first" {
     export STUB_VERSION=10.9.4 STUB_BUILD=13F34 STUB_AT_VERSION=2026.09.21
     export STUB_PKGS="Wowfunhappy.AquaTransport net.sf.tuntaposx.tap" STUB_KEXTS=net.sf.tuntaposx.tap
-    export STUB_CURL_FAIL=https://github.com/
     verify 2026.10.09
     [ "$status" -eq 1 ]
-    [ "$(grep -c 'verify: FAILED:' <<< "$output")" -eq 7 ]
-    [[ "$output" == *"verify: 7 check(s) failed; this guest will not be packaged as a box"* ]] || false
+    [ "$(grep -c 'verify: FAILED:' <<< "$output")" -eq 6 ]
+    [[ "$output" == *"verify: 6 check(s) failed; this guest will not be packaged as a box"* ]] || false
 }
 
 @test "the template passes verify.sh the pinned version" {

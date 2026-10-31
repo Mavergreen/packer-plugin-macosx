@@ -1,6 +1,8 @@
-// Command packer-plugin-macosx is the Mavericks Packer plugin: three
-// data sources (mavericks-installesd, mavericks-firmware, mavericks-media)
-// that wrap this repository's fetch/firmware/media/privops libraries.
+// Command packer-plugin-macosx is the Packer plugin for Mac OS X guests:
+// each release's data sources (mavericks-installesd, mavericks-firmware
+// and mavericks-media for 10.9; snowleopard-installer, snowleopard-firmware
+// and snowleopard-media for 10.6) and the generic pinned download, which
+// wrap this repository's fetch/firmware/media/privops libraries.
 //
 // It lives under cmd/, not the repository root, because the root is
 // itself a Go package (macosx, in embed.go) carrying assets into the

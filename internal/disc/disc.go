@@ -231,7 +231,7 @@ func Verify(ctx context.Context, vm VM, scratch, volume string) (string, error) 
 	if err != nil {
 		return "", fmt.Errorf("reading the disc in the microVM: %w", err)
 	}
-	build, ok := privops.Marker(console, "MQG-DISC-BUILD")
+	build, ok := privops.Marker(console, "GUEST-MACOSX-DISC-BUILD")
 	if !ok || build == "" {
 		return "", errors.New("the microVM did not report the disc's build: is it a Mac OS X install disc?")
 	}
@@ -251,7 +251,7 @@ func Verify(ctx context.Context, vm VM, scratch, volume string) (string, error) 
 		return "", fmt.Errorf("build %s is not a disc this plugin knows (it knows %s)", build, strings.Join(builds, ", "))
 	}
 	got := map[string]string{}
-	for _, m := range privops.Markers(console, "MQG-SUM-DISC") {
+	for _, m := range privops.Markers(console, "GUEST-MACOSX-SUM-DISC") {
 		if sum, name, ok := strings.Cut(m, "  "); ok {
 			got[name] = sum
 		}

@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -178,6 +179,14 @@ func TestValidate(t *testing.T) {
 			t.Fatalf("packer validate: %v\n%s", err, out)
 		}
 	})
+
+	templatetest.ValidateDisplay(t, run)
+}
+
+// TestTheBuilderGetsTheDisplay: the qemu builder's display is the display
+// variable, checked against headless.
+func TestTheBuilderGetsTheDisplay(t *testing.T) {
+	templatetest.QemuSourceTakesDisplay(t, osName, osName+".pkr.hcl")
 }
 
 // TestTheDefaultCPUSaysGenuineIntel: under KVM a guest gets the host's
@@ -248,4 +257,85 @@ func TestTheTargetDriveStoresZerosAsHoles(t *testing.T) {
 		}
 	}
 	t.Fatal("no target drive")
+}
+
+// TestEveryShutdownGoesThroughTheGuestsHelper: a bare `shutdown` over SSH can
+// hold launchd's userspace shutdown for a job's 20 s exit timeout, and the
+// shutdown monitor then files a .shutdownStall report into the image. Two
+// causes, both MEASURED (docs/decisions/0019): loginwindow's `ManagedClient
+// -s` holds a DiskArbitration session that only loginwindow would close (8 of
+// 8 restarts stalled without stopping it, 2026-10-13), and UserEventAgent
+// cannot exit while it has a preference to write once cfprefsd is gone. The
+// box's /usr/local/sbin/guest-macosx-shutdown (assets/guest/firstboot.sh) handles both,
+// so every shutdown and restart the template issues is that helper, and none
+// is a bare `shutdown`, `reboot` or `halt`.
+func TestEveryShutdownGoesThroughTheGuestsHelper(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join(templatetest.RepoRoot(t), "templates", osName, osName+".pkr.hcl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var code []string
+	for _, line := range strings.Split(string(b), "\n") {
+		if !strings.HasPrefix(strings.TrimSpace(line), "#") {
+			code = append(code, line)
+		}
+	}
+	src := strings.Join(code, "\n")
+	if bare := regexp.MustCompile(`shutdown -[hr] now|killall|\breboot\b|\bhalt\b`).FindString(src); bare != "" {
+		t.Errorf("the template issues %q itself; want only sudo /usr/local/sbin/guest-macosx-shutdown", bare)
+	}
+	all := regexp.MustCompile(`"[^"\n]*shutdown[^"\n]*"`).FindAllString(src, -1)
+	if len(all) == 0 {
+		t.Fatal("no shutdown in the template")
+	}
+	for _, s := range all {
+		if s != `"sudo /usr/local/sbin/guest-macosx-shutdown -h"` && s != `"sudo /usr/local/sbin/guest-macosx-shutdown -r"` {
+			t.Errorf("a shutdown is %s; want \"sudo /usr/local/sbin/guest-macosx-shutdown -h\" or -r", s)
+		}
+	}
+}
+
+// TestTheBuildGivesQEMUAUUIDOfItsOwn: every build's guest gets a host UUID
+// of its own, there from its first second (docs/decisions/0024).
+func TestTheBuildGivesQEMUAUUIDOfItsOwn(t *testing.T) {
+	templatetest.CheckBuildUUID(t, osName, "mavericks.pkr.hcl")
+}
+
+// TestTheBuildGivesItsNICAnAddressOfItsOwn: the build's guest's NIC
+// address, derived from its UUID by the one rule (docs/decisions/0024).
+func TestTheBuildGivesItsNICAnAddressOfItsOwn(t *testing.T) {
+	templatetest.CheckBuildMAC(t, osName, "mavericks.pkr.hcl")
+}
+
+// TestTheInstallLogIsOutsideTheOutputDirectory: the install's serial log
+// beside the output directory, which a failed build keeps (docs/decisions/0027).
+func TestTheInstallLogIsOutsideTheOutputDirectory(t *testing.T) {
+	templatetest.CheckInstallLog(t, osName, osName+".pkr.hcl")
+}
+
+// TestAFailedInstallEndsTheBuild: refused logins end it (docs/decisions/0028).
+func TestAFailedInstallEndsTheBuild(t *testing.T) {
+	templatetest.CheckHandshakeAttempts(t, osName, osName+".pkr.hcl")
+}
+
+// TestTheBuildsGuestReachesNothingOffLink: the build's guest network is
+// restricted, so nothing in the guest -- Apple's own daemons included --
+// fetches anything during the build (docs/decisions/0034).
+func TestTheBuildsGuestReachesNothingOffLink(t *testing.T) {
+	templatetest.CheckGuestNetwork(t, osName, osName+".pkr.hcl")
+}
+
+// TestTheBuildsMachineIsTheOneShape: the build's QEMU has the devices every
+// build and box of both releases has (templatetest.MachineShapeErrors):
+// OpenCore's disk on virtio-blk, and USB for input alone, EHCI with no companion,
+// a usb-kbd and a usb-tablet (docs/decisions/0035).
+func TestTheBuildsMachineIsTheOneShape(t *testing.T) {
+	templatetest.CheckBuildMachine(t, osName, osName+".pkr.hcl")
+}
+
+// TestTheBoxsMachineIsTheOneShape: the box boots the same devices as its
+// build, through every argv setting its Vagrantfile makes. The layer's box
+// keeps this Vagrantfile.
+func TestTheBoxsMachineIsTheOneShape(t *testing.T) {
+	templatetest.CheckBoxMachine(t, osName, nil)
 }

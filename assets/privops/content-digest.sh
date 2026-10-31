@@ -5,15 +5,15 @@
 # directive instead of a shebang.
 #
 # Runs as uid 0 inside the privops microVM. The volume to digest is
-# mounted READ-ONLY at $MQG_SRC1; $MQG_RAW2 is a raw block device the
+# mounted READ-ONLY at $GUEST_MACOSX_SRC1; $GUEST_MACOSX_RAW2 is a raw block device the
 # listing is written to, which on the host is a plain file.
 #
 # Prints, on the console:
-#   MQG-DIGEST-FILES   <n>       files found
-#   MQG-DIGEST-HASHED  <n>       files sha256summed (must equal the above)
-#   MQG-DIGEST-BYTES   <n>       total bytes of those files
-#   MQG-DIGEST-SIZE    <n>       bytes of listing written to the raw disk
-#   MQG-DIGEST-SHA256  <sha256>  of the listing, as the guest read it back
+#   GUEST-MACOSX-DIGEST-FILES   <n>       files found
+#   GUEST-MACOSX-DIGEST-HASHED  <n>       files sha256summed (must equal the above)
+#   GUEST-MACOSX-DIGEST-BYTES   <n>       total bytes of those files
+#   GUEST-MACOSX-DIGEST-SIZE    <n>       bytes of listing written to the raw disk
+#   GUEST-MACOSX-DIGEST-SHA256  <sha256>  of the listing, as the guest read it back
 #
 # WHY THE LISTING GOES OUT ON A RAW DISK AND NOT THE CONSOLE
 #
@@ -47,9 +47,9 @@ set -u
 LC_ALL=C
 export LC_ALL
 
-src=${MQG_SRC1:-}
-raw=${MQG_RAW2:-}
-[ -n "$src" ] || { echo "no volume to digest (MQG_SRC1 unset)"; exit 1; }
+src=${GUEST_MACOSX_SRC1:-}
+raw=${GUEST_MACOSX_RAW2:-}
+[ -n "$src" ] || { echo "no volume to digest (GUEST_MACOSX_SRC1 unset)"; exit 1; }
 [ -n "$raw" ] || { echo "no raw disk to write the listing to"; exit 1; }
 [ -b "$raw" ] || { echo "$raw is not a block device"; exit 1; }
 
@@ -79,8 +79,8 @@ $B xargs -0 -r "$B" sha256sum < /files0 2>/sha.err | $B sort -k2 > /listing
 hashed=$($B grep -c . /listing)
 
 if [ "$found" != "$hashed" ]; then
-    echo "MQG-DIGEST-FILES $found"
-    echo "MQG-DIGEST-HASHED $hashed"
+    echo "GUEST-MACOSX-DIGEST-FILES $found"
+    echo "GUEST-MACOSX-DIGEST-HASHED $hashed"
     echo "sha256sum could not read every file it was given:"
     $B head -20 /sha.err | $B sed 's/^/  /'
     exit 1
@@ -108,13 +108,13 @@ $B dd if=/listing of="$raw" conv=notrunc 2>/dev/null \
     || { echo "cannot write the listing to $raw"; exit 1; }
 $B sync
 
-echo "MQG-DIGEST-FILES $found"
-echo "MQG-DIGEST-HASHED $hashed"
-echo "MQG-DIGEST-BYTES $bytes"
-echo "MQG-DIGEST-SIZE $size"
+echo "GUEST-MACOSX-DIGEST-FILES $found"
+echo "GUEST-MACOSX-DIGEST-HASHED $hashed"
+echo "GUEST-MACOSX-DIGEST-BYTES $bytes"
+echo "GUEST-MACOSX-DIGEST-SIZE $size"
 # Read back from the DEVICE, not from /listing: this is the number the
 # host compares its own read of the file against, so it has to have made
 # the trip through virtio at least once on this side too.
-echo "MQG-DIGEST-SHA256 $($B dd if="$raw" bs=4096 count=$(( (size + 4095) / 4096 )) 2>/dev/null \
+echo "GUEST-MACOSX-DIGEST-SHA256 $($B dd if="$raw" bs=4096 count=$(( (size + 4095) / 4096 )) 2>/dev/null \
     | $B head -c "$size" | $B sha256sum | $B cut -d' ' -f1)"
 echo "digested $hashed files, $bytes bytes"

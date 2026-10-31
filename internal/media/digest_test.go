@@ -42,7 +42,7 @@ type digestRig struct {
 func newDigestRig(t *testing.T) *digestRig {
 	t.Helper()
 	g := &digestRig{consoleOf: func(sha string) string {
-		return fmt.Sprintf("MQG-DIGEST-FILES 3\r\nMQG-DIGEST-HASHED 3\r\nMQG-DIGEST-BYTES 1234\r\nMQG-DIGEST-SIZE %d\r\nMQG-DIGEST-SHA256 %s\r\ndigested 3 files, 1234 bytes\r\n",
+		return fmt.Sprintf("GUEST-MACOSX-DIGEST-FILES 3\r\nGUEST-MACOSX-DIGEST-HASHED 3\r\nGUEST-MACOSX-DIGEST-BYTES 1234\r\nGUEST-MACOSX-DIGEST-SIZE %d\r\nGUEST-MACOSX-DIGEST-SHA256 %s\r\ndigested 3 files, 1234 bytes\r\n",
 			len(digestListing), sha)
 	}}
 	g.vm = &fakeVM{t: t, digest: func(disks []privops.Disk) string {
@@ -81,8 +81,8 @@ func TestDigest(t *testing.T) {
 		t.Fatalf("listing\n%s\nwant\n%s", listing.String(), digestListing)
 	}
 	if len(g.r.Calls) != 1 || g.r.Calls[0].Name != "mkfs.hfsplus" || len(g.r.Calls[0].Args) != 3 ||
-		g.r.Calls[0].Args[0] != "-v" || g.r.Calls[0].Args[1] != "MQG DIGEST" {
-		t.Fatalf("ran %v, want one mkfs.hfsplus -v 'MQG DIGEST'", g.r.Calls)
+		g.r.Calls[0].Args[0] != "-v" || g.r.Calls[0].Args[1] != "GUEST MACOSX DIGEST" {
+		t.Fatalf("ran %v, want one mkfs.hfsplus -v 'GUEST MACOSX DIGEST'", g.r.Calls)
 	}
 	if g.mkfsSize != 32<<20 {
 		t.Fatalf("the scratch volume is %d bytes, want 32 MiB", g.mkfsSize)
@@ -111,17 +111,17 @@ func TestDigestRefusesWhatIsNotWholeAndRight(t *testing.T) {
 	for _, tc := range []struct {
 		name, from, to, want string
 	}{
-		{"a file it could not read", "MQG-DIGEST-HASHED 3", "MQG-DIGEST-HASHED 2",
+		{"a file it could not read", "GUEST-MACOSX-DIGEST-HASHED 3", "GUEST-MACOSX-DIGEST-HASHED 2",
 			"the microVM found 3 files and could only checksum 2 of them: the volume is unreadable in places"},
-		{"a count that is not one", "MQG-DIGEST-BYTES 1234", "MQG-DIGEST-BYTES 12x4",
+		{"a count that is not one", "GUEST-MACOSX-DIGEST-BYTES 1234", "GUEST-MACOSX-DIGEST-BYTES 12x4",
 			"the microVM did not report a usable count"},
-		{"a count that is missing", "MQG-DIGEST-FILES 3\r\n", "",
+		{"a count that is missing", "GUEST-MACOSX-DIGEST-FILES 3\r\n", "",
 			"the microVM did not report a usable count"},
-		{"a listing that changed on the way", "MQG-DIGEST-SHA256 ", "MQG-DIGEST-SHA256 0",
+		{"a listing that changed on the way", "GUEST-MACOSX-DIGEST-SHA256 ", "GUEST-MACOSX-DIGEST-SHA256 0",
 			"the listing did not survive the trip out of the microVM"},
 		// Build's rule too (privops.Marker): a count printed twice is two
 		// answers, and neither is taken -- not even when they agree.
-		{"a count printed twice", "MQG-DIGEST-FILES 3\r\n", "MQG-DIGEST-FILES 3\r\nMQG-DIGEST-FILES 3\r\n",
+		{"a count printed twice", "GUEST-MACOSX-DIGEST-FILES 3\r\n", "GUEST-MACOSX-DIGEST-FILES 3\r\nGUEST-MACOSX-DIGEST-FILES 3\r\n",
 			"the microVM did not report a usable count"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

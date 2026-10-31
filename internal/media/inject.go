@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -19,7 +20,7 @@ import (
 
 // FirstbootPkgName is the first-boot payload's name on the media -- fixed,
 // not taken from its source, so OSInstall.collection cannot drift from it.
-const FirstbootPkgName = "mqg-firstboot.pkg"
+const FirstbootPkgName = "guest-macosx-firstboot.pkg"
 
 // An AutoinstallFile is one of Apple's unattended-install hooks, which
 // /etc/rc.install reads (assets/guest/autoinstall/): its source, where it goes
@@ -41,6 +42,7 @@ var AutoinstallFiles = []AutoinstallFile{
 // AutoinstallFilesFor is a release's hooks: Mavericks' AutoinstallFiles,
 // or for "snowleopard" the same three with minstallconfig.xml in /etc,
 // where 10A432's /etc/rc.install looks for it (MEASURED 2026-10-04).
+// WriteTar names the release's TargetVolume in them.
 func AutoinstallFilesFor(release string) []AutoinstallFile {
 	if release != "snowleopard" {
 		return AutoinstallFiles
@@ -54,9 +56,56 @@ func AutoinstallFilesFor(release string) []AutoinstallFile {
 	return files
 }
 
+// TargetVolume is the name of the volume a release installs onto, which
+// the installed disk carries for good, as Finder and diskutil show it:
+// "Snow Leopard" for "snowleopard", and "Mavericks", as
+// assets/guest/autoinstall/ names it, for 10.9.
+func TargetVolume(release string) string {
+	if release == "snowleopard" {
+		return "Snow Leopard"
+	}
+	return assetVolume
+}
+
+// assetVolume is the target volume as the hooks' assets name it.
+const assetVolume = "Mavericks"
+
+// volumeLines is, by source, each line of a hook that names the target
+// volume, with %s where the name goes: autoinstall.sh's VOLNAME default,
+// the volume it creates, and minstallconfig.xml's Target and TargetName,
+// the volume the installer installs onto. They must agree, or the install
+// targets a volume that does not exist and reboots in a loop.
+var volumeLines = map[string][]string{
+	"autoinstall.sh":     {"\nVOLNAME=${GUEST_MACOSX_TARGET_VOLUME:-%s}\n"},
+	"minstallconfig.xml": {"<key>Target</key>\n\t<string>/Volumes/%s</string>\n", "<key>TargetName</key>\n\t<string>%s</string>\n"},
+}
+
+// safeVolume is a name that needs no escaping in either file: a shell
+// word in a default expansion, and XML character data.
+var safeVolume = regexp.MustCompile(`^[A-Za-z0-9]+( [A-Za-z0-9]+)*$`)
+
+// nameVolume is a hook's bytes with each of its volumeLines naming volume
+// in place of assetVolume -- the same bytes for 10.9's own name. Each line
+// must be there exactly once, so a hook that stops naming the volume as
+// volumeLines expects fails the build rather than installing onto
+// another volume.
+func nameVolume(source string, data []byte, volume string) ([]byte, error) {
+	if !safeVolume.MatchString(volume) {
+		return nil, fmt.Errorf("target volume %q is not letters, digits and single spaces", volume)
+	}
+	for _, line := range volumeLines[source] {
+		old := []byte(fmt.Sprintf(line, assetVolume))
+		if n := bytes.Count(data, old); n != 1 {
+			return nil, fmt.Errorf("%s names the target volume as %q %d times, want once", source, old, n)
+		}
+		data = bytes.Replace(data, old, []byte(fmt.Sprintf(line, volume)), 1)
+	}
+	return data, nil
+}
+
 // Injectables is what a build adds to the media beyond Apple's files.
 type Injectables struct {
-	Release      string // "" or "mavericks", or "snowleopard": where the hooks go
+	Release      string // "" or "mavericks", or "snowleopard": where the hooks go, and the volume they name
 	Autoinstall  bool
 	FirstbootPkg string   // installed by the OS installer, listed in OSInstall.collection
 	ExtraPkgs    []string // carried beside it, NOT listed: firstboot.sh installs them
@@ -120,6 +169,9 @@ func (in Injectables) WriteTar(w io.Writer, log func(string, ...any)) error {
 	for _, f := range AutoinstallFilesFor(in.Release) {
 		data, err := fs.ReadFile(macosx.Files, "assets/guest/autoinstall/"+f.Source)
 		if err != nil {
+			return err
+		}
+		if data, err = nameVolume(f.Source, data, TargetVolume(in.Release)); err != nil {
 			return err
 		}
 		if f.Source == "OSInstall.collection" && in.FirstbootPkg != "" {

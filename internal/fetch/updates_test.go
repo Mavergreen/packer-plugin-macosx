@@ -51,7 +51,7 @@ func TestUpdatesFetchInInstallOrderWithStagedNames(t *testing.T) {
 	reg, _ := pins.Parse(strings.NewReader(fmt.Sprintf(
 		"apple-secupd-2016-004\t%s/SecUpd.pkg\t%s\n", srv.URL, sum(bodies["/SecUpd.pkg"]))))
 	got, err := getter(t).Updates(context.Background(), reg, "security")
-	if err != nil || len(got) != 1 || got[0].Staged != "mqg-update-01-SecUpd.pkg" {
+	if err != nil || len(got) != 1 || got[0].Staged != "guest-macosx-update-01-SecUpd.pkg" {
 		t.Fatalf("%+v %v", got, err)
 	}
 	if none, err := getter(t).Updates(context.Background(), reg, "none"); err != nil || len(none) != 0 {
@@ -71,7 +71,7 @@ func TestAnUpdateThatIsNotAFlatPackageIsRefused(t *testing.T) {
 }
 
 func TestStagedName(t *testing.T) {
-	if StagedName(3, "/c/x/iTunesX.pkg") != "mqg-update-03-iTunesX.pkg" {
+	if StagedName(3, "/c/x/iTunesX.pkg") != "guest-macosx-update-03-iTunesX.pkg" {
 		t.Fatal(StagedName(3, "/c/x/iTunesX.pkg"))
 	}
 }
@@ -185,7 +185,7 @@ func TestAProductsMembersAreCarriedUnderTheirOwnNames(t *testing.T) {
 		}
 		installed = append(installed, u.Staged)
 	}
-	want := []string{"mqg-update-01-041-98179.English.dist", "mqg-update-02-apple-secupd-2013-004-snowleopard.pkg"}
+	want := []string{"guest-macosx-update-01-041-98179.English.dist", "guest-macosx-update-02-apple-secupd-2013-004-snowleopard.pkg"}
 	if !slices.Equal(installed, want) {
 		t.Fatalf("installed %v; want %v", installed, want)
 	}

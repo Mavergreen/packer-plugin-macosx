@@ -169,7 +169,7 @@ func TestBusyboxLinkage(t *testing.T) {
 		t.Errorf("dynamic fixture: %s", got)
 	}
 	text := filepath.Join(t.TempDir(), "busybox")
-	write(t, text, []byte("#!/bin/sh\necho I am not busybox\n"), 0o755)
+	write(t, text, testdataFile(t, "not-busybox.sh"), 0o755)
 	if got := BusyboxLinkage(text); got != "unknown" {
 		t.Errorf("a script: %s", got)
 	}
@@ -221,7 +221,7 @@ func TestMissingDoesNotGuessAtAnUnknownBusybox(t *testing.T) {
 	root := t.TempDir()
 	write(t, filepath.Join(root, "boot/vmlinuz-6.1.0-test"), []byte("kernel"), 0o644)
 	script := filepath.Join(root, "busybox")
-	write(t, script, []byte("#!/bin/sh\n"), 0o755)
+	write(t, script, testdataFile(t, "noop.sh"), 0o755)
 	b := fixtureBackend(root)
 	b.Runner = &proc.Fake{Paths: map[string]string{"qemu-system-x86_64": "/q", "busybox": script}}
 	if got := b.Missing(); len(got) != 0 {
@@ -326,4 +326,15 @@ func TestMissingNamesTheKVMDevice(t *testing.T) {
 			t.Fatalf("Missing() = %q with KVMDevice unset", got)
 		}
 	})
+}
+
+// testdataFile is testdata/<name>, the shell scripts these tests use kept
+// as files the lint reads rather than as Go strings.
+func testdataFile(t *testing.T, name string) []byte {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join("testdata", name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
 }

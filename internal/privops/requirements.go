@@ -11,21 +11,25 @@ import (
 )
 
 // KernelCandidates is every path a kernel image might be at, most
-// specific first. The first three carry the running release, so the
+// specific first. The first three carry the release KVer, so the
 // modules staged from ModulesDir/KVer load into them; the rest are
 // generic names distributions use (Arch's vmlinuz-linux, Alpine's
 // vmlinuz, Gentoo's kernel-*), tried only when no keyed one exists,
 // because a kernel of another release rejects every module and the
 // failure then looks like an HFS+ problem.
 func (b Backend) KernelCandidates() []string {
-	c := []string{
-		filepath.Join(b.BootDir, "vmlinuz-"+b.KVer),
-		filepath.Join(b.ModulesDir, b.KVer, "vmlinuz"),
-		filepath.Join(b.BootDir, "kernel-"+b.KVer),
-		filepath.Join(b.BootDir, "vmlinuz-linux"),
-		filepath.Join(b.BootDir, "vmlinuz"),
-	}
+	c := append(b.keyedCandidates(b.KVer), filepath.Join(b.BootDir, "vmlinuz-linux"), filepath.Join(b.BootDir, "vmlinuz"))
 	return append(c, b.kernelGlob()...)
+}
+
+// keyedCandidates is where a kernel image of release rel would be under a
+// name that carries rel.
+func (b Backend) keyedCandidates(rel string) []string {
+	return []string{
+		filepath.Join(b.BootDir, "vmlinuz-"+rel),
+		filepath.Join(b.ModulesDir, rel, "vmlinuz"),
+		filepath.Join(b.BootDir, "kernel-"+rel),
+	}
 }
 
 // kernelGlob is BootDir/kernel-*: every name in BootDir that starts
@@ -71,12 +75,12 @@ func readableFile(p string) bool {
 	return err == nil && fi.Mode().IsRegular()
 }
 
-// KernelIsKeyed says whether path carries the running release. A generic
+// KernelIsKeyed says whether path carries the release KVer. A generic
 // name may well be the running kernel -- on a host with one kernel
 // installed it always is -- so this decides whether to warn, not whether
 // to proceed.
 func (b Backend) KernelIsKeyed(path string) bool {
-	for _, k := range b.KernelCandidates()[:3] {
+	for _, k := range b.keyedCandidates(b.KVer) {
 		if path == k {
 			return true
 		}
@@ -127,6 +131,15 @@ func (b Backend) Missing() []string {
 	}
 	if _, err := b.Kernel(); err != nil {
 		m = append(m, fmt.Sprintf("a readable kernel image for %s (looked for: %s)", b.KVer, strings.Join(b.KernelCandidates(), " ")))
+	}
+	// A module that is neither a file nor built in fails the microVM
+	// later, mounting a volume, where it reads as an HFS+ problem; it is
+	// named here, but only when a modules.builtin says it is not built in.
+	lack, _ := b.lacking(b.KVer)
+	for _, mod := range lack {
+		m = append(m, fmt.Sprintf("the %s module for %s: not under %s, and not built in by its modules.builtin "+
+			"(Ubuntu: linux-modules-extra-%s; or another installed kernel that has it, its image under %s readable by this user)",
+			mod, b.KVer, filepath.Join(b.ModulesDir, b.KVer), b.KVer, b.BootDir))
 	}
 	if l := b.kvmMissing(); l != "" {
 		m = append(m, l)

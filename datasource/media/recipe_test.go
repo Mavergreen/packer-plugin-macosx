@@ -75,9 +75,11 @@ func TestRecipePinsTheGoldens(t *testing.T) {
 	}
 	if pinned != got {
 		t.Fatalf("the goldens under %v changed (digest %s), but recipe still says %q.\n"+
-			"Bump recipe's number and set its goldens part to %s: a changed golden is\n"+
-			"code that shapes mavericks-media's output differently, and without a new recipe\n"+
-			"every user's cached entry from the old code would be reused as if nothing moved.",
+			"Set its goldens part to %s: a changed golden is output shaped differently, and\n"+
+			"without a new recipe every user's cached entry from the old code would be reused\n"+
+			"as if nothing moved. Bump its number too only if the Go recipe's comment names\n"+
+			"changed what an entry holds; a golden moved by an embedded file alone (firstboot.sh,\n"+
+			"say) keeps the number.",
 			recipeGoldens, got, recipe, got)
 	}
 }

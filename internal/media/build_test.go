@@ -90,7 +90,7 @@ func (v *fakeVM) Run(_ context.Context, target string, payload []byte, disks []p
 			sha = v.reportSHA
 		}
 		fmt.Fprintf(&con, "BaseSystem.dmg on the ESD: %d bytes\r\n", len(v.baseSystem))
-		fmt.Fprintf(&con, "MQG-BASESYSTEM-BYTES %d\r\nMQG-BASESYSTEM-SHA256 %s\r\n", len(v.baseSystem), sha)
+		fmt.Fprintf(&con, "GUEST-MACOSX-BASESYSTEM-BYTES %d\r\nGUEST-MACOSX-BASESYSTEM-SHA256 %s\r\n", len(v.baseSystem), sha)
 	case "assemble":
 		for _, d := range disks {
 			if d.Role == "raw" {
@@ -101,10 +101,10 @@ func (v *fakeVM) Run(_ context.Context, target string, payload []byte, disks []p
 				call.tar = readTar(t, b)
 			}
 		}
-		v.sums(&con, "MQG-SUM-ESD", v.badESD, "")
+		v.sums(&con, "GUEST-MACOSX-SUM-ESD", v.badESD, "")
 		writeAt(t, target, assembledAt, "assembled by pass 2")
 	case "verify-packages":
-		v.sums(&con, "MQG-SUM-MEDIA", "", v.dropMedia)
+		v.sums(&con, "GUEST-MACOSX-SUM-MEDIA", "", v.dropMedia)
 		// A read-write mount rewrites the HFS+ header, whatever the pass.
 		writeAt(t, target, mountedAt, "mounted by pass 4")
 	case "content-digest":
@@ -114,7 +114,7 @@ func (v *fakeVM) Run(_ context.Context, target string, payload []byte, disks []p
 	default:
 		t.Fatalf("an unknown payload was run on %s", target)
 	}
-	con.WriteString("MQG-PRIVOPS-OK rc=0\r\n")
+	con.WriteString("GUEST-MACOSX-PRIVOPS-OK rc=0\r\n")
 	v.calls = append(v.calls, call)
 	return []byte(con.String()), nil
 }
@@ -365,7 +365,7 @@ func TestPassOrderAndDisks(t *testing.T) {
 				}
 				return
 			}
-			if got := tar["System/Installation/Packages/mqg-firstboot.pkg"]; got.data != "xar!the first-boot payload" {
+			if got := tar["System/Installation/Packages/guest-macosx-firstboot.pkg"]; got.data != "xar!the first-boot payload" {
 				t.Fatalf("the first-boot package is not on the media: %+v", got)
 			}
 			if _, ok := tar["private/etc/rc.cdrom.local"]; !ok {
@@ -412,7 +412,7 @@ func TestBaseSystemMustSurviveTheTrip(t *testing.T) {
 func TestTheBaseSystemSizeMustBeReported(t *testing.T) {
 	g := newRig(t)
 	g.b.VM = &consoleEdit{g.vm, func(c []byte) []byte {
-		return regexp.MustCompile(`(?m)^MQG-BASESYSTEM-BYTES .*$`).ReplaceAll(c, []byte("MQG-BASESYSTEM-BYTES 12a\r"))
+		return regexp.MustCompile(`(?m)^GUEST-MACOSX-BASESYSTEM-BYTES .*$`).ReplaceAll(c, []byte("GUEST-MACOSX-BASESYSTEM-BYTES 12a\r"))
 	}}
 	_, err := g.b.Build(context.Background(), g.esd, Options{})
 	if err == nil || !strings.Contains(err.Error(), "the microVM did not report a BaseSystem.dmg size") {

@@ -21,8 +21,65 @@
 # The rendered file also passes through Packer's legacy Go template
 # engine twice (the file provisioner that carries it, and the
 # post-processor), so it must never contain a double open brace.
+#
+# THE HOST'S SETTINGS come from its environment, under one prefix every
+# Mac OS X box of this project's reads the same way, whatever the
+# provider:
+#
+#   GUEST_MACOSX_GUI           a window: 1, true or yes, in any case, for
+#                              one; unset, empty, 0, false or no for none
+#   GUEST_MACOSX_QEMU_DISPLAY  qemu only: QEMU's -display, in place of the
+#                              host's own window (cocoa on macOS, gtk
+#                              elsewhere), such as sdl, or vnc=127.0.0.1:1
+#                              for a VNC server on the host's own port
+#                              5901; set, it asks for a display,
+#                              GUEST_MACOSX_GUI or not, which is how a
+#                              headless host shows a guest; none is no
+#                              display, the same as unset
+#   GUEST_MACOSX_CPU_ISA       a Mavericks box's instruction-set level;
+#                              ignored here, with a warning (below)
+#
+# A value outside these raises, naming the variable and what it wants,
+# before any provider starts a guest set up some way nobody asked for.
+# The checks here only record it, in bad, and every provider block raises
+# it first: Vagrant rescues an error from a provider block into its own
+# "There was an error loading a Vagrantfile" message, while one raised
+# outside them, in this block's own body, reaches the user as a Ruby
+# backtrace (MEASURED 2026-10-17, Vagrant 2.4.9).
+# Vagrant reads this file for every command, so while a bad value stays
+# in the environment it stops `vagrant halt` and `vagrant destroy` too;
+# the error names the variable to unset, and nothing but that value is
+# wrong. A variable this box cannot honour warns instead and never stops
+# a command.
+#
+# THE RELEASE, for a tool that boots this box without Vagrant: the line
+# below, a comment Vagrant never reads, names the Mac OS X release the box
+# is. bin/gate-vm.sh reads it, and only it, to log in, shut down and size
+# the guest as that release needs (docs/decisions/0014, "The boot gate").
+# guest-macosx-release: 10.6
 Vagrant.configure("2") do |config|
   boxdir = File.expand_path(__dir__)
+
+  bad = nil
+  gui_env = ENV["GUEST_MACOSX_GUI"].to_s
+  gui = case gui_env.downcase
+    when "1", "true", "yes" then true
+    when "", "0", "false", "no" then false
+    else
+      bad = "GUEST_MACOSX_GUI: want 1, true or yes for a window, or 0, false, no or nothing for none (got '#{gui_env}')"
+      false
+    end
+  # It lands in QEMU's arguments, so it is held to what a -display value
+  # is made of: a backend, then comma-separated options. That leaves out
+  # an IPv6 VNC address and a unix: socket path, on purpose.
+  qemu_display = ENV["GUEST_MACOSX_QEMU_DISPLAY"].to_s
+  unless qemu_display.match?(/\A([A-Za-z][A-Za-z0-9_.,:=+-]*)?\z/)
+    bad ||= "GUEST_MACOSX_QEMU_DISPLAY: want a QEMU -display value, a backend then comma-separated options, such as sdl or vnc=127.0.0.1:1 (got '#{qemu_display}')"
+  end
+  # none is QEMU's own name for no display: the headless run, daemonized,
+  # not a foreground QEMU with nothing to show.
+  qemu_display = "" if qemu_display == "none"
+  qemu_display = Vagrant::Util::Platform.darwin? ? "cocoa" : "gtk" if gui && qemu_display.empty?
 
   # :darwin is Vagrant's own guest support for macOS; 10.6 needs no
   # guest additions for it.
@@ -49,33 +106,140 @@ Vagrant.configure("2") do |config|
     t.run_remote = { inline: "sudo /sbin/shutdown -h now" }
   end
 
+  # THE MACHINE'S OWN HOST UUID AND NIC ADDRESS (docs/decisions/0024).
+  # Distinct machines have distinct host UUIDs: under QEMU the guest's is
+  # QEMU's -uuid, which OpenCore makes its system-id, there before the
+  # first daemon asks. Without one the guest derives a UUID from its NIC's
+  # MAC, late (10.9 then waits 30 s at every cold boot), and every
+  # vagrant-qemu machine has QEMU's one default MAC. So each machine gets
+  # a UUID of its own the first time it comes up, kept in its own data
+  # dir (.vagrant/machines/<name>/qemu/guest-macosx-host-uuid), the same
+  # UUID at every later up, halt and reload, however often Vagrant reads
+  # this file; and a NIC address derived from it, locally administered
+  # in QEMU's 52:54:00 range, on the first NIC alone (vagrant-qemu puts
+  # net_device into that NIC's -device), and never one of QEMU's own
+  # defaults (52:54:00:12:34:56 and up), which a second NIC a project adds
+  # without an address of its own gets. An address a project gave the NIC,
+  # and vagrant-qemu's dual-NIC mode (advanced_network with a private
+  # network), which gives each of its NICs one of its own, are left
+  # alone. A -uuid already in extra_qemu_args (the project's own) is the
+  # machine's: nothing is stored, and the address derives from it. It
+  # says which of these it did. Under another provider the provider names
+  # its own machine. Vagrant itself empties the data dir on a destroy that
+  # happens, so the next machine of that name is new; no trigger here
+  # deletes the UUID (an after-destroy trigger runs on a declined destroy
+  # too, and would make a live machine a new host).
+  config.trigger.before :up, :reload do |t|
+    t.name = "guest-macosx host UUID"
+    t.ruby do |_env, machine|
+      next unless machine.provider_name.to_s == "qemu"
+      qc = machine.provider_config
+      args = qc.extra_qemu_args
+      if (own = args.index("-uuid"))
+        uuid = args[own + 1].to_s
+        said = "the project's own -uuid"
+      else
+        store = machine.data_dir.join("guest-macosx-host-uuid")
+        uuid = File.exist?(store) ? File.read(store).strip : ""
+        if uuid.match?(/\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/)
+          said = "kept in #{store}"
+        else
+          said = uuid.empty? ? "new" : "new (the stored value was not a UUID)"
+          require "securerandom"
+          uuid = SecureRandom.uuid
+          File.write(store, uuid + "\n")
+          said += ", kept in #{store}"
+        end
+        args.push("-uuid", uuid)
+      end
+      if qc.advanced_network && machine.config.vm.networks.any? { |type, _| type == :private_network }
+        nic = "vagrant-qemu's own dual-NIC addresses"
+      elsif qc.net_device.to_s.include?("mac=")
+        nic = "the project's own address"
+      else
+        require "digest"
+        h = Digest::SHA256.hexdigest(uuid)
+        i = 0
+        i += 6 while h[i, 4] == "1234"
+        mac = "52:54:00:#{h[i, 2]}:#{h[i + 2, 2]}:#{h[i + 4, 2]}"
+        qc.net_device = "#{qc.net_device},mac=#{mac}"
+        nic = "#{mac}, derived from the UUID"
+      end
+      machine.ui.detail("host UUID #{uuid} (#{said}); first NIC: #{nic}")
+    end
+  end
+
   config.vm.provider "qemu" do |qe|
+    raise bad if bad
     qe.arch = "x86_64"
     qe.machine = "q35,vmport=off%{ if accelerator != "none" },accel=${accelerator}%{ endif }"
+    # The build's own cpu line, always. GUEST_MACOSX_CPU_ISA's levels are
+    # each a line measured on 10.9 (docs/decisions/0009, "The
+    # instruction-set levels"), and none has been measured on 10.6, so a
+    # Snow Leopard box offers none, and says so rather than let the
+    # variable look honoured. A warning, not an error: the guest boots
+    # as built either way, and nothing wrong should stop a halt or a
+    # destroy.
     qe.cpu = "${cpu}"
+    isa = ENV["GUEST_MACOSX_CPU_ISA"].to_s
+    unless isa.empty?
+      $stderr.puts "GUEST_MACOSX_CPU_ISA=#{isa} is ignored on 10.6: no instruction-set level has been measured on Snow Leopard, so the box boots its build's own cpu line, #{qe.cpu}"
+    end
     qe.smp = "${cpus}"
     qe.memory = "%{ if memory % 1024 == 0 }${memory / 1024}G%{ else }${memory}M%{ endif }"
     qe.net_device = "${nic}"
     qe.drive_interface = "ide"
 
     # A headless run (the default) daemonizes QEMU and drops the
-    # display entirely; ENV["MAVERICKS_DISPLAY"] (e.g. "gtk") asks for
-    # a window instead, which needs QEMU to stay in the foreground
-    # (no_daemonize) with a real -display in place of "none". On 10.6 the
-    # window shows the screen and takes no input: there is no USB
-    # keyboard or mouse, since 10.6.0's UHCI driver hangs the guest
-    # (docs/decisions/0014). Use it to watch; work over `vagrant ssh`.
-    display = ENV["MAVERICKS_DISPLAY"]
-    qe.no_daemonize = true if display
+    # display entirely; a display (GUEST_MACOSX_GUI, or
+    # GUEST_MACOSX_QEMU_DISPLAY) needs QEMU to stay in the foreground
+    # (no_daemonize, which vagrant-qemu still detaches from the command)
+    # with a real -display in place of "none".
+    qe.no_daemonize = true unless qemu_display.empty?
     qe.other_default = %W(-parallel none)
 
+    # OpenCore's disk is a virtio-blk disk, which OVMF boots first
+    # (bootindex) and neither 10.6 nor 10.9 has a driver for, so the guest
+    # never sees it (on AHCI, 10.6's DiskArbitration called it unreadable
+    # at every desktop login). USB carries the
+    # keyboard and pointer alone: an EHCI controller of its own, no UHCI
+    # companions and no XHCI, the same on both releases. QEMU's usb-kbd and
+    # usb-tablet are high-speed devices, so they need no companion; 10.9's
+    # and 10.6's AppleUSBEHCI drive them, and neither release loads
+    # AppleUSBUHCI, the driver that wedged 10.6.0's installs
+    # (docs/decisions/0014). EHCI sits at the ICH9's own USB slot, 0x1d.0,
+    # which avoids the stall measured with it in the first free slot, on the
+    # NIC's line (vagrant-qemu puts the NIC first); why 10.6.0's EHCI never
+    # serviced its interrupt there is not established, and that no other
+    # device shares 0x1d's line is REASONED from q35's routing. A tablet, not
+    # a mouse: it points without a grab (docs/decisions/0035).
     qe.extra_qemu_args = %W(
       -drive if=pflash,format=raw,unit=0,readonly=on,file=#{boxdir}/OVMF_CODE.fd
       -drive if=pflash,format=raw,unit=1,snapshot=on,file=#{boxdir}/OVMF_VARS.fd
-      -device qemu-xhci,id=usb
       -drive id=opencore,if=none,format=raw,snapshot=on,file=#{boxdir}/opencore.img
-      -device usb-storage,bus=usb.0,drive=opencore
+      -device virtio-blk-pci,drive=opencore,bootindex=0,bus=pcie.0,addr=0x10
+      -device ich9-usb-ehci1,id=ehci,bus=pcie.0,addr=0x1d.0
+      -device usb-kbd,bus=ehci.0
+      -device usb-tablet,bus=ehci.0
       -device VGA,vgamem_mb=64
-    ) + (display ? %W(-display #{display}) : %W(-display none))
+    ) + %W(-display #{qemu_display.empty? ? "none" : qemu_display})
+  end
+
+  # VirtualBox and VMware: the convention, for the day a box of this
+  # project's runs on either. Today's boxes are qemu's alone, so neither
+  # block has been measured, and each sets only its provider's own
+  # window switch. Neither can warn that it ignores the qemu-only
+  # GUEST_MACOSX_QEMU_DISPLAY and GUEST_MACOSX_CPU_ISA: Vagrant runs every
+  # provider's block on every command, so the warning would print under
+  # qemu too. A box for either provider must find a way to say so, as the
+  # Snow Leopard box does for its ignored CPU_ISA, never ignore them in
+  # silence.
+  config.vm.provider "virtualbox" do |vb|
+    raise bad if bad
+    vb.gui = true if gui
+  end
+  config.vm.provider "vmware_desktop" do |v|
+    raise bad if bad
+    v.gui = true if gui
   end
 end

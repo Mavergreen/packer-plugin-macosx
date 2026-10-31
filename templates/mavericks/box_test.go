@@ -15,15 +15,14 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/zclconf/go-cty/cty"
-	"github.com/zclconf/go-cty/cty/convert"
-	"github.com/zclconf/go-cty/cty/function"
+
+	"github.com/Mavergreen/packer-plugin-macosx/internal/templatetest"
 )
 
 // findBlock returns the first child block of body with the given type
@@ -255,129 +254,12 @@ func TestVagrantPostProcessorBlock(t *testing.T) {
 	}
 }
 
-// templateVars is variables.pkr.hcl's defaults, converted to each
-// variable's type, with overrides applied the way -var would.
-func templateVars(t *testing.T, overrides map[string]cty.Value) map[string]cty.Value {
-	t.Helper()
-	path := filepath.Join(repoRoot(t), "templates", "mavericks", "variables.pkr.hcl")
-	src, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	f, diags := hclsyntax.ParseConfig(src, path, hcl.InitialPos)
-	if diags.HasErrors() {
-		t.Fatalf("parsing %s: %v", path, diags)
-	}
-	types := map[string]cty.Type{
-		"string": cty.String,
-		"number": cty.Number,
-		"bool":   cty.Bool,
-	}
-	vars := map[string]cty.Value{}
-	for _, b := range f.Body.(*hclsyntax.Body).Blocks {
-		if b.Type != "variable" {
-			continue
-		}
-		name := b.Labels[0]
-		typ := b.Body.Attributes["type"]
-		if typ == nil {
-			t.Fatalf("variable %q has no type", name)
-		}
-		ty, ok := types[hcl.ExprAsKeyword(typ.Expr)]
-		if !ok {
-			t.Fatalf("variable %q: unexpected type %s", name, hcl.ExprAsKeyword(typ.Expr))
-		}
-		v, ok := overrides[name]
-		if !ok {
-			def := b.Body.Attributes["default"]
-			if def == nil {
-				t.Fatalf("variable %q has no default", name)
-			}
-			var diags hcl.Diagnostics
-			if v, diags = def.Expr.Value(nil); diags.HasErrors() {
-				t.Fatalf("variable %q default: %v", name, diags)
-			}
-		}
-		cv, err := convert.Convert(v, ty)
-		if err != nil {
-			t.Fatalf("variable %q = %#v: %v", name, v, err)
-		}
-		vars[name] = cv
-	}
-	for name := range overrides {
-		if _, ok := vars[name]; !ok {
-			t.Fatalf("override for undeclared variable %q", name)
-		}
-	}
-	return vars
-}
-
-// renderBoxVagrantfile evaluates mavericks.pkr.hcl's own
-// local.box_vagrantfile expression -- its templatefile() call and the
-// variables it passes -- with variables.pkr.hcl's defaults plus
-// overrides. templatefile() here is Packer's: the file named relative
-// to the template's directory, rendered as an HCL template with the
-// given object as its variables. (It offers no functions: the template
-// calls none, and a call would fail here first.)
+// renderBoxVagrantfile is this template's box Vagrantfile, rendered as
+// mavericks.pkr.hcl renders it, with variables.pkr.hcl's defaults plus
+// overrides (templatetest.RenderBoxVagrantfile).
 func renderBoxVagrantfile(t *testing.T, overrides map[string]cty.Value) string {
 	t.Helper()
-	dir := filepath.Join(repoRoot(t), "templates", "mavericks")
-	path := filepath.Join(dir, "mavericks.pkr.hcl")
-	src, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	f, diags := hclsyntax.ParseConfig(src, path, hcl.InitialPos)
-	if diags.HasErrors() {
-		t.Fatalf("parsing %s: %v", path, diags)
-	}
-	locals := findBlock(f.Body.(*hclsyntax.Body), "locals")
-	if locals == nil {
-		t.Fatal("no locals block")
-	}
-	attr, ok := locals.Body.Attributes["box_vagrantfile"]
-	if !ok {
-		t.Fatal("no local.box_vagrantfile")
-	}
-
-	templatefile := function.New(&function.Spec{
-		Params: []function.Parameter{
-			{Name: "path", Type: cty.String},
-			{Name: "vars", Type: cty.DynamicPseudoType},
-		},
-		Type: function.StaticReturnType(cty.String),
-		Impl: func(args []cty.Value, _ cty.Type) (cty.Value, error) {
-			name := args[0].AsString()
-			if !filepath.IsAbs(name) {
-				name = filepath.Join(dir, name)
-			}
-			b, err := os.ReadFile(name)
-			if err != nil {
-				return cty.NilVal, err
-			}
-			expr, diags := hclsyntax.ParseTemplate(b, name, hcl.InitialPos)
-			if diags.HasErrors() {
-				return cty.NilVal, diags
-			}
-			v, diags := expr.Value(&hcl.EvalContext{Variables: args[1].AsValueMap()})
-			if diags.HasErrors() {
-				return cty.NilVal, diags
-			}
-			return v, nil
-		},
-	})
-	ctx := &hcl.EvalContext{
-		Variables: map[string]cty.Value{
-			"var":  cty.ObjectVal(templateVars(t, overrides)),
-			"path": cty.ObjectVal(map[string]cty.Value{"root": cty.StringVal(dir)}),
-		},
-		Functions: map[string]function.Function{"templatefile": templatefile},
-	}
-	v, diags := attr.Expr.Value(ctx)
-	if diags.HasErrors() {
-		t.Fatalf("local.box_vagrantfile: %v", diags)
-	}
-	return v.AsString()
+	return templatetest.RenderBoxVagrantfile(t, osName, overrides)
 }
 
 // codeLines is a Vagrantfile's lines less its comments and blank lines.
@@ -396,82 +278,143 @@ func codeLines(text string) []string {
 // measured builds of 2026-09-27 (docs/test-hosts.md) booted, logged in
 // to and halted, less its comments -- with the cpu line's
 // vendor=GenuineIntel, which the 2026-10-06 builds on GitHub's Intel and
-// AMD runners carried (TestTheDefaultCPUSaysGenuineIntel), and the
-// MAVERICKS_CPU_ISA switch, whose unset arm is that same line
-// (TestBoxVagrantfileOffersTheThreeLevels).
+// AMD runners carried (TestTheDefaultCPUSaysGenuineIntel), the
+// GUEST_MACOSX_CPU_ISA switch, whose unset arm is that same line
+// (TestBoxVagrantfileOffersTheThreeLevels), and the GUEST_MACOSX_GUI and
+// GUEST_MACOSX_QEMU_DISPLAY switches and the VirtualBox and VMware blocks,
+// whose unset values leave the measured headless run as it was:
+// daemonized, -display none (TestBoxVagrantfileReadsTheGuestEnvironment);
+// and the per-machine host UUID and MAC triggers, run by Vagrant 2.4.9 and
+// vagrant-qemu 0.6.3 (docs/decisions/0024, TestEachVagrantMachineHasItsOwnHostUUID).
 // Rendered with the template's defaults, the box's Vagrantfile must be
 // this code exactly.
 const measuredBoxVagrantfile = `Vagrant.configure("2") do |config|
   boxdir = File.expand_path(__dir__)
+  bad = nil
+  gui_env = ENV["GUEST_MACOSX_GUI"].to_s
+  gui = case gui_env.downcase
+    when "1", "true", "yes" then true
+    when "", "0", "false", "no" then false
+    else
+      bad = "GUEST_MACOSX_GUI: want 1, true or yes for a window, or 0, false, no or nothing for none (got '#{gui_env}')"
+      false
+    end
+  qemu_display = ENV["GUEST_MACOSX_QEMU_DISPLAY"].to_s
+  unless qemu_display.match?(/\A([A-Za-z][A-Za-z0-9_.,:=+-]*)?\z/)
+    bad ||= "GUEST_MACOSX_QEMU_DISPLAY: want a QEMU -display value, a backend then comma-separated options, such as sdl or vnc=127.0.0.1:1 (got '#{qemu_display}')"
+  end
+  qemu_display = "" if qemu_display == "none"
+  qemu_display = Vagrant::Util::Platform.darwin? ? "cocoa" : "gtk" if gui && qemu_display.empty?
   config.vm.guest = :darwin
   config.ssh.username = "vagrant"
   config.vm.synced_folder ".", "/vagrant", disabled: true
   config.trigger.before :halt do |t|
     t.name = "guest shutdown"
     t.on_error = :continue
-    t.run_remote = { inline: "sudo /sbin/shutdown -h now" }
+    t.run_remote = { inline: "sudo /usr/local/sbin/guest-macosx-shutdown -h" }
+  end
+  config.trigger.before :up, :reload do |t|
+    t.name = "guest-macosx host UUID"
+    t.ruby do |_env, machine|
+      next unless machine.provider_name.to_s == "qemu"
+      qc = machine.provider_config
+      args = qc.extra_qemu_args
+      if (own = args.index("-uuid"))
+        uuid = args[own + 1].to_s
+        said = "the project's own -uuid"
+      else
+        store = machine.data_dir.join("guest-macosx-host-uuid")
+        uuid = File.exist?(store) ? File.read(store).strip : ""
+        if uuid.match?(/\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/)
+          said = "kept in #{store}"
+        else
+          said = uuid.empty? ? "new" : "new (the stored value was not a UUID)"
+          require "securerandom"
+          uuid = SecureRandom.uuid
+          File.write(store, uuid + "\n")
+          said += ", kept in #{store}"
+        end
+        args.push("-uuid", uuid)
+      end
+      if qc.advanced_network && machine.config.vm.networks.any? { |type, _| type == :private_network }
+        nic = "vagrant-qemu's own dual-NIC addresses"
+      elsif qc.net_device.to_s.include?("mac=")
+        nic = "the project's own address"
+      else
+        require "digest"
+        h = Digest::SHA256.hexdigest(uuid)
+        i = 0
+        i += 6 while h[i, 4] == "1234"
+        mac = "52:54:00:#{h[i, 2]}:#{h[i + 2, 2]}:#{h[i + 4, 2]}"
+        qc.net_device = "#{qc.net_device},mac=#{mac}"
+        nic = "#{mac}, derived from the UUID"
+      end
+      machine.ui.detail("host UUID #{uuid} (#{said}); first NIC: #{nic}")
+    end
   end
   config.vm.provider "qemu" do |qe|
+    raise bad if bad
     qe.arch = "x86_64"
     qe.machine = "q35,vmport=off,accel=kvm"
-    isa = ENV["MAVERICKS_CPU_ISA"].to_s
+    isa = ENV["GUEST_MACOSX_CPU_ISA"].to_s
     qe.cpu = case isa
       when "" then "Penryn,vendor=GenuineIntel,+ssse3,+sse4.1,+sse4.2"
       when "none" then "Penryn,vendor=GenuineIntel,+ssse3,+sse4.1,+sse4.2"
       when "avx" then "SandyBridge,vendor=GenuineIntel,-x2apic,-tsc-deadline,enforce"
       when "avx2" then "IvyBridge,vendor=GenuineIntel,-x2apic,-tsc-deadline,+avx2,+fma,+bmi1,+bmi2,+movbe,+abm,enforce"
-      else raise "MAVERICKS_CPU_ISA: want none, avx or avx2 (got '#{isa}')"
+      else raise "GUEST_MACOSX_CPU_ISA: want none, avx or avx2 (got '#{isa}')"
       end
     msrs = "/sys/module/kvm/parameters/ignore_msrs"
     if "kvm" == "kvm" && %w(avx avx2).include?(isa) && File.readable?(msrs) && File.read(msrs).strip != "Y"
-      $stderr.puts "MAVERICKS_CPU_ISA=#{isa} needs kvm.ignore_msrs=Y on this host, or 10.9 resets in a loop: echo Y | sudo tee #{msrs}"
+      $stderr.puts "GUEST_MACOSX_CPU_ISA=#{isa} needs kvm.ignore_msrs=Y on this host, or 10.9 resets in a loop: echo Y | sudo tee #{msrs}"
     end
     qe.smp = "2"
     qe.memory = "4G"
     qe.net_device = "e1000-82545em"
     qe.drive_interface = "ide"
-    display = ENV["MAVERICKS_DISPLAY"]
-    qe.no_daemonize = true if display
+    qe.no_daemonize = true unless qemu_display.empty?
     qe.other_default = %W(-parallel none)
     qe.extra_qemu_args = %W(
       -drive if=pflash,format=raw,unit=0,readonly=on,file=#{boxdir}/OVMF_CODE.fd
       -drive if=pflash,format=raw,unit=1,snapshot=on,file=#{boxdir}/OVMF_VARS.fd
-      -device ich9-usb-ehci1,id=usb,bus=pcie.0,addr=0x1d.7,multifunction=on
-      -device ich9-usb-uhci1,masterbus=usb.0,firstport=0,bus=pcie.0,addr=0x1d.0,multifunction=on
-      -device ich9-usb-uhci2,masterbus=usb.0,firstport=2,bus=pcie.0,addr=0x1d.1
-      -device ich9-usb-uhci3,masterbus=usb.0,firstport=4,bus=pcie.0,addr=0x1d.2
       -drive id=opencore,if=none,format=raw,snapshot=on,file=#{boxdir}/opencore.img
-      -device usb-storage,bus=usb.0,drive=opencore
-      -device usb-kbd,bus=usb.0
-      -device usb-mouse,bus=usb.0
+      -device virtio-blk-pci,drive=opencore,bootindex=0,bus=pcie.0,addr=0x10
+      -device ich9-usb-ehci1,id=ehci,bus=pcie.0,addr=0x1d.0
+      -device usb-kbd,bus=ehci.0
+      -device usb-tablet,bus=ehci.0
       -device VGA,vgamem_mb=64
-    ) + (display ? %W(-display #{display}) : %W(-display none))
+    ) + %W(-display #{qemu_display.empty? ? "none" : qemu_display})
+  end
+  config.vm.provider "virtualbox" do |vb|
+    raise bad if bad
+    vb.gui = true if gui
+  end
+  config.vm.provider "vmware_desktop" do |v|
+    raise bad if bad
+    v.gui = true if gui
   end
 end`
 
 // measuredHaltTrigger is the halt trigger, comment and all, as measured
-// (docs/test-hosts.md, 2026-09-27): every rendering carries it byte for byte.
+// (docs/test-hosts.md, 2026-09-27), with the guest command the image's own
+// guest-macosx-shutdown since 2026-10-14 (docs/decisions/0019: a bare `shutdown` can
+// stall 20 s and leave a .shutdownStall report in the consumer's guest):
+// every rendering carries it byte for byte.
 const measuredHaltTrigger = `  # A clean ` + "`vagrant halt`" + `. vagrant-qemu's halt presses the ACPI power
   # button, which 10.9 answers with a dialog rather than a shutdown, and
   # after 60s it quits QEMU under the running guest (MEASURED 2026-09-27:
   # no SHUTDOWN_TIME in the guest's system.log). It never asks the guest
   # itself, so this does: passwordless sudo lets the shutdown run, and
-  # QEMU exits when the guest powers off.
+  # QEMU exits when the guest powers off. The image's own guest-macosx-shutdown,
+  # never a bare ` + "`shutdown`" + `, or the guest can wait out a 20 s exit
+  # timeout on the way down and keep a .shutdownStall report for it
+  # (docs/decisions/0019).
   config.trigger.before :halt do |t|
     t.name = "guest shutdown"
     t.on_error = :continue
-    t.run_remote = { inline: "sudo /sbin/shutdown -h now" }
+    t.run_remote = { inline: "sudo /usr/local/sbin/guest-macosx-shutdown -h" }
   end
 `
-
-// usbControllers are the EHCI controller and its UHCI companions, on
-// extra_qemu_args.
-var usbControllers = []string{
-	"-device ich9-usb-ehci1,id=usb,bus=pcie.0,addr=0x1d.7,multifunction=on",
-	"-device ich9-usb-uhci1,masterbus=usb.0,firstport=0,bus=pcie.0,addr=0x1d.0,multifunction=on",
-	"-device ich9-usb-uhci2,masterbus=usb.0,firstport=2,bus=pcie.0,addr=0x1d.1",
-	"-device ich9-usb-uhci3,masterbus=usb.0,firstport=4,bus=pcie.0,addr=0x1d.2",
-}
 
 // rubyArray is the lines of the Ruby %W( ... ) array that begins on the
 // line starting with prefix, trimmed.
@@ -524,11 +467,12 @@ func TestBoxVagrantfileSource(t *testing.T) {
 		`config.vm.guest = :darwin`,
 		`config.ssh.username = "${user}"`,
 		`when "" then "${cpu}"`,
-		`ENV["MAVERICKS_CPU_ISA"]`,
+		`ENV["GUEST_MACOSX_CPU_ISA"]`,
 		`qe.smp = "${cpus}"`,
 		`accel=${accelerator}`,
 		`${memory / 1024}G`,
-		`ENV["MAVERICKS_DISPLAY"]`,
+		`ENV["GUEST_MACOSX_GUI"]`,
+		`ENV["GUEST_MACOSX_QEMU_DISPLAY"]`,
 		measuredHaltTrigger,
 	} {
 		if !strings.Contains(text, want) {
@@ -627,14 +571,9 @@ func TestBoxVagrantfileCarriesTheBuildsSettings(t *testing.T) {
 			}
 
 			extra := rubyArray(t, text, "qe.extra_qemu_args = %W(")
-			// Each controller exactly once, on extra_qemu_args.
-			for _, c := range usbControllers {
-				if n := strings.Count(strings.Join(extra, "\n"), c); n != 1 {
-					t.Errorf("%s: %d on extra_qemu_args, want 1", c, n)
-				}
-			}
-			// The rest of the devices, as measured.
-			for _, d := range []string{"-device usb-storage,bus=usb.0,drive=opencore", "-device usb-kbd,bus=usb.0", "-device usb-mouse,bus=usb.0", "-device VGA,vgamem_mb=64"} {
+			// The devices, as measured, each once (the whole shape:
+			// TestTheBoxsMachineIsTheOneShape).
+			for _, d := range []string{"-device virtio-blk-pci,drive=opencore,bootindex=0,bus=pcie.0,addr=0x10", "-device ich9-usb-ehci1,id=ehci,bus=pcie.0,addr=0x1d.0", "-device usb-kbd,bus=ehci.0", "-device usb-tablet,bus=ehci.0", "-device VGA,vgamem_mb=64"} {
 				if strings.Count(strings.Join(extra, "\n"), d) != 1 {
 					t.Errorf("extra_qemu_args lacks %q: %q", d, extra)
 				}
@@ -652,7 +591,7 @@ var theLevels = []struct{ name, line string }{
 }
 
 // TestBoxVagrantfileOffersTheThreeLevels: whatever the build's own cpu,
-// MAVERICKS_CPU_ISA offers none, avx and avx2 as their measured lines,
+// GUEST_MACOSX_CPU_ISA offers none, avx and avx2 as their measured lines,
 // and unset it keeps the build's cpu.
 func TestBoxVagrantfileOffersTheThreeLevels(t *testing.T) {
 	for name, o := range map[string]map[string]cty.Value{
@@ -682,14 +621,10 @@ func TestBoxVagrantfileOffersTheThreeLevels(t *testing.T) {
 	}
 }
 
-// TestBoxVagrantfileIsRuby: every rendering parses as Ruby, when a ruby
-// is on PATH to ask (Vagrant's own embedded one works: set PATH to
-// include /opt/vagrant/embedded/bin).
+// TestBoxVagrantfileIsRuby: every rendering parses as Ruby, when there
+// is a ruby to ask (templatetest.Ruby: PATH's, or Vagrant's own).
 func TestBoxVagrantfileIsRuby(t *testing.T) {
-	ruby, err := exec.LookPath("ruby")
-	if err != nil {
-		t.Skip("no ruby on PATH")
-	}
+	ruby := templatetest.Ruby(t)
 	for name, o := range map[string]map[string]cty.Value{
 		"defaults": nil,
 		"virtio":   {"nic": cty.StringVal("virtio-net-pci"), "user": cty.StringVal("alice")},
@@ -703,63 +638,62 @@ func TestBoxVagrantfileIsRuby(t *testing.T) {
 			t.Errorf("%s: ruby -c: %v\n%s", name, err, out)
 		}
 	}
+}
 
-	// The MAVERICKS_CPU_ISA switch itself, run: its lines from `isa =` to
-	// the case's end, printing the cpu line it picks.
-	var sw []string
-	for _, l := range codeLines(renderBoxVagrantfile(t, nil)) {
-		if strings.HasPrefix(strings.TrimSpace(l), "isa = ") || len(sw) > 0 {
-			sw = append(sw, strings.Replace(l, "qe.cpu = ", "puts ", 1))
-			if strings.TrimSpace(l) == "end" {
-				break
-			}
-		}
-	}
-	run := func(isa string, set bool) (string, error) {
-		cmd := exec.Command(ruby, "-e", strings.Join(sw, "\n"))
-		cmd.Env = []string{"PATH=" + os.Getenv("PATH")}
-		if set {
-			cmd.Env = append(cmd.Env, "MAVERICKS_CPU_ISA="+isa)
-		}
-		out, err := cmd.CombinedOutput()
-		return strings.TrimSpace(string(out)), err
+// TestBoxVagrantfileReadsTheGuestEnvironment: GUEST_MACOSX_GUI and
+// GUEST_MACOSX_QEMU_DISPLAY, as every box reads them
+// (templatetest.CheckGuestEnvironment).
+func TestBoxVagrantfileReadsTheGuestEnvironment(t *testing.T) {
+	templatetest.CheckGuestEnvironment(t, osName, nil)
+}
+
+// TestBoxVagrantfilePicksALevel: GUEST_MACOSX_CPU_ISA, run. Unset or
+// empty it keeps the build's own cpu line; none, avx and avx2 are their
+// measured lines; anything else is refused, naming the three.
+func TestBoxVagrantfilePicksALevel(t *testing.T) {
+	text := renderBoxVagrantfile(t, nil)
+	cpu := func(env map[string]string) (string, templatetest.BoxRun) {
+		r := templatetest.RunBoxVagrantfile(t, text, "linux", env)
+		got, _ := r.Provider("qemu")["cpu"].(string)
+		return got, r
 	}
 	for _, c := range []struct {
-		isa  string
-		set  bool
+		env  map[string]string
 		want string
 	}{
-		{"", false, theLevels[0].line},
-		{"", true, theLevels[0].line},
-		{"none", true, theLevels[0].line},
-		{"avx", true, theLevels[1].line},
-		{"avx2", true, theLevels[2].line},
+		{nil, theLevels[0].line},
+		{map[string]string{"GUEST_MACOSX_CPU_ISA": ""}, theLevels[0].line},
+		{map[string]string{"GUEST_MACOSX_CPU_ISA": "none"}, theLevels[0].line},
+		{map[string]string{"GUEST_MACOSX_CPU_ISA": "avx"}, theLevels[1].line},
+		{map[string]string{"GUEST_MACOSX_CPU_ISA": "avx2"}, theLevels[2].line},
 	} {
-		if got, err := run(c.isa, c.set); err != nil || got != c.want {
-			t.Errorf("MAVERICKS_CPU_ISA=%q (set %v): got %q, %v; want %q", c.isa, c.set, got, err, c.want)
+		if got, r := cpu(c.env); r.Err != nil || got != c.want {
+			t.Errorf("%v: cpu %q, %v %s; want %q", c.env, got, r.Err, r.Stderr, c.want)
 		}
 	}
 	for _, bad := range []string{"AVX", "avx512", "bogus"} {
-		got, err := run(bad, true)
-		if err == nil || !strings.Contains(got, "want none, avx or avx2") {
-			t.Errorf("MAVERICKS_CPU_ISA=%q: got %q, %v; want a failure naming none, avx and avx2", bad, got, err)
+		_, r := cpu(map[string]string{"GUEST_MACOSX_CPU_ISA": bad})
+		if !r.Refused(templatetest.ProviderPhase + "GUEST_MACOSX_CPU_ISA: want none, avx or avx2 (got '" + bad + "')") {
+			t.Errorf("GUEST_MACOSX_CPU_ISA=%q: %v %q; want a failure naming the variable, none, avx and avx2", bad, r.Err, r.Stderr)
 		}
 	}
+	// The variable before GUEST_MACOSX_ is gone, not kept beside it.
+	if got, r := cpu(map[string]string{"MAVERICKS_CPU_ISA": "avx"}); r.Err != nil || got != theLevels[0].line {
+		t.Errorf("MAVERICKS_CPU_ISA=avx: cpu %q, %v; want the build's own line", got, r.Err)
+	}
+}
 
-	// The ignore_msrs warning, run against a stand-in for the kvm parameter.
-	var warn []string
-	for _, l := range codeLines(renderBoxVagrantfile(t, nil)) {
-		if strings.HasPrefix(strings.TrimSpace(l), "msrs = ") || len(warn) > 0 {
-			warn = append(warn, l)
-			if strings.TrimSpace(l) == "end" {
-				break
-			}
-		}
-	}
-	if len(warn) == 0 {
-		t.Fatal("the box Vagrantfile has no ignore_msrs warning")
+// TestBoxVagrantfileWarnsOfIgnoreMSRs: a level that needs
+// kvm.ignore_msrs=Y on a KVM host that lacks it warns, and only warns,
+// run against a stand-in for the kvm parameter.
+func TestBoxVagrantfileWarnsOfIgnoreMSRs(t *testing.T) {
+	const sysfs = "/sys/module/kvm/parameters/ignore_msrs"
+	text := renderBoxVagrantfile(t, nil)
+	if !strings.Contains(text, sysfs) {
+		t.Fatal("the box Vagrantfile reads no ignore_msrs")
 	}
 	param := filepath.Join(t.TempDir(), "ignore_msrs")
+	text = strings.Replace(text, sysfs, param, 1)
 	for _, c := range []struct {
 		isa, param string
 		warns      bool
@@ -771,21 +705,30 @@ func TestBoxVagrantfileIsRuby(t *testing.T) {
 		{"", "N", false},
 		{"avx", "", false}, // no such parameter: not a KVM host to judge
 	} {
-		code := strings.Replace(strings.Join(warn, "\n"), "/sys/module/kvm/parameters/ignore_msrs", param, 1)
 		os.Remove(param)
 		if c.param != "" {
 			if err := os.WriteFile(param, []byte(c.param+"\n"), 0o644); err != nil {
 				t.Fatal(err)
 			}
 		}
-		cmd := exec.Command(ruby, "-e", "isa = "+strconv.Quote(c.isa)+"\n"+code)
-		cmd.Env = []string{"PATH=" + os.Getenv("PATH")}
-		out, err := cmd.CombinedOutput()
-		if err != nil {
-			t.Errorf("isa %q, ignore_msrs %q: %v\n%s", c.isa, c.param, err, out)
+		r := templatetest.RunBoxVagrantfile(t, text, "linux", map[string]string{"GUEST_MACOSX_CPU_ISA": c.isa})
+		if r.Err != nil {
+			t.Errorf("isa %q, ignore_msrs %q: %v\n%s", c.isa, c.param, r.Err, r.Stderr)
 		}
-		if got := strings.Contains(string(out), "needs kvm.ignore_msrs=Y"); got != c.warns {
-			t.Errorf("isa %q, ignore_msrs %q: warned %v, want %v: %q", c.isa, c.param, got, c.warns, out)
+		if got := strings.Contains(r.Stderr, "GUEST_MACOSX_CPU_ISA="+c.isa+" needs kvm.ignore_msrs=Y"); got != c.warns {
+			t.Errorf("isa %q, ignore_msrs %q: warned %v, want %v: %q", c.isa, c.param, got, c.warns, r.Stderr)
 		}
 	}
+}
+
+// TestEachVagrantMachineHasItsOwnHostUUID: distinct machines, distinct host
+// UUIDs and MACs, each kept with its machine (templatetest.CheckMachineIdentity).
+func TestEachVagrantMachineHasItsOwnHostUUID(t *testing.T) {
+	templatetest.CheckMachineIdentity(t, osName, nil)
+}
+
+// TestBoxVagrantfileNamesItsRelease: the box says it is 10.9, on the one line
+// bin/gate-vm.sh reads to log in and shut down as 10.9 needs.
+func TestBoxVagrantfileNamesItsRelease(t *testing.T) {
+	templatetest.CheckBoxRelease(t, osName, nil, "10.9")
 }

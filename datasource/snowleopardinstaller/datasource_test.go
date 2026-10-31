@@ -31,9 +31,9 @@ func (f *fakeVM) Run(_ context.Context, _ string, _ []byte, _ []privops.Disk) ([
 		build = known[0].Build
 	}
 	var b strings.Builder
-	b.WriteString("MQG-DISC-BUILD " + build + "\n")
+	b.WriteString("GUEST-MACOSX-DISC-BUILD " + build + "\n")
 	for n, s := range known[0].Sums {
-		b.WriteString("MQG-SUM-DISC " + s + "  " + n + "\n")
+		b.WriteString("GUEST-MACOSX-SUM-DISC " + s + "  " + n + "\n")
 	}
 	return []byte(b.String()), nil
 }

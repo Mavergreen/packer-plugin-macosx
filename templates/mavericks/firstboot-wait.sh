@@ -15,7 +15,7 @@
 # used (bin/bash32-check.sh covers this file too).
 set -eu
 
-MARKER=/private/var/db/.mqg-firstboot/.done
+MARKER=/private/var/db/.guest-macosx-firstboot/.done
 LIMIT=300
 EVERY=5
 waited=0

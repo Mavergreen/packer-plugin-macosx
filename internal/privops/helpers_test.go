@@ -42,7 +42,7 @@ func repo(t *testing.T) string {
 func staticELF(t *testing.T) string {
 	t.Helper()
 	staticOnce.Do(func() {
-		dir, err := os.MkdirTemp("", "mavericks-privops-test-")
+		dir, err := os.MkdirTemp("", "guest-macosx-privops-test-")
 		if err != nil {
 			staticError = err.Error()
 			return

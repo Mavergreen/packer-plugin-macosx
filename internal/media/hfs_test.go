@@ -85,6 +85,45 @@ func writeHPlus(f *os.File, _ int64) error {
 	return err
 }
 
+// TestCreateHFSGPTDerivesItsGUIDs pins the installer media's GPT GUIDs, a
+// known answer for each release's volume: the disk's from "installer
+// media disk", the partition's from "installer media hfs " and the
+// volume name, through diskimg.DerivedGUID ("guest-macosx diskimg " and
+// the seed, since 2026-10-17). TestCreateHFSGPTMatchesItsGolden leaves
+// GUIDs out, since sgdisk's are random; this is what holds ours.
+func TestCreateHFSGPTDerivesItsGUIDs(t *testing.T) {
+	const disk = "72AB2CF4-216D-4BAB-AFF1-EBAE49C08D51"
+	for _, c := range []struct{ volname, part string }{
+		{VolumeName, "2C3BEC30-CF9A-4E75-A2E3-31F4F92A8D77"},     // 10.9
+		{DiscVolumeName, "8CA3F85B-401C-407E-8CFF-22C3BF119D4D"}, // 10.6
+	} {
+		img := filepath.Join(t.TempDir(), "media.img")
+		if err := CreateHFSGPT(context.Background(), fakeMkfs(t, writeHPlus), img, 8, c.volname); err != nil {
+			t.Fatal(err)
+		}
+		f, err := os.Open(img)
+		if err != nil {
+			t.Fatal(err)
+		}
+		fi, err := f.Stat()
+		if err != nil {
+			t.Fatal(err)
+		}
+		gotDisk, parts, err := diskimg.ReadGPT(f, uint64(fi.Size())/diskimg.SectorSize)
+		f.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(parts) != 1 {
+			t.Fatalf("%s: %d partitions, want 1", c.volname, len(parts))
+		}
+		if gotDisk.String() != disk || parts[0].GUID.String() != c.part {
+			t.Errorf("%s: disk GUID %s, partition GUID %s; the pinned answers are %s and %s",
+				c.volname, gotDisk, parts[0].GUID, disk, c.part)
+		}
+	}
+}
+
 func TestCreateHFSGPTLaysOutOneAppleHFSPartition(t *testing.T) {
 	const mib = 8
 	img := filepath.Join(t.TempDir(), "media.img")

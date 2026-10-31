@@ -34,12 +34,12 @@ func TestAssembleShNeverChowns(t *testing.T) {
 
 // "what gets injected is staged before the ownership pass runs": the
 // assets/privops/assemble.sh-specific half of the bats test -- it writes
-// to the raw disk MQG_RAW3 names, and its injection step must not run
+// to the raw disk GUEST_MACOSX_RAW3 names, and its injection step must not run
 // through a pipe, because busybox ash has no pipefail and `tar x ... |
 // sed` would report sed's exit status, not tar's.
 func TestAssembleShStagesThroughARawDiskAndNeverPipesItsUntar(t *testing.T) {
-	if !embeddedContains(t, "assets/privops/assemble.sh", "MQG_RAW3") {
-		t.Error("assets/privops/assemble.sh never mentions MQG_RAW3")
+	if !embeddedContains(t, "assets/privops/assemble.sh", "GUEST_MACOSX_RAW3") {
+		t.Error("assets/privops/assemble.sh never mentions GUEST_MACOSX_RAW3")
 	}
 	if tarPipeRe.Match(embedded(t, "assets/privops/assemble.sh")) {
 		t.Error("assets/privops/assemble.sh pipes tar's extraction, hiding its exit status")
@@ -74,11 +74,11 @@ func TestContentDigestHashesInBulk(t *testing.T) {
 // an I/O error off a corrupt volume can make sha256sum print nothing for a
 // file and carry on; the two counts are what catches that silently.
 func TestContentDigestCountsFoundAndHashed(t *testing.T) {
-	if !embeddedContains(t, "assets/privops/content-digest.sh", "MQG-DIGEST-FILES") {
-		t.Error("assets/privops/content-digest.sh never emits MQG-DIGEST-FILES")
+	if !embeddedContains(t, "assets/privops/content-digest.sh", "GUEST-MACOSX-DIGEST-FILES") {
+		t.Error("assets/privops/content-digest.sh never emits GUEST-MACOSX-DIGEST-FILES")
 	}
-	if !embeddedContains(t, "assets/privops/content-digest.sh", "MQG-DIGEST-HASHED") {
-		t.Error("assets/privops/content-digest.sh never emits MQG-DIGEST-HASHED")
+	if !embeddedContains(t, "assets/privops/content-digest.sh", "GUEST-MACOSX-DIGEST-HASHED") {
+		t.Error("assets/privops/content-digest.sh never emits GUEST-MACOSX-DIGEST-HASHED")
 	}
 }
 

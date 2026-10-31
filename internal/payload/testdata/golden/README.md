@@ -2,7 +2,7 @@
 
 | File | What it is | Test |
 |---|---|---|
-| `reference.pkg.gz` | a flat package (xar) with one `Scripts` member, `postinstall` holding `#!/bin/sh\necho hello\nexit 0\n`, identifier `com.mqg.firstboot`, version `1.0`, written independently of `flatPackage`, then gzip'd (`gzip -9`) so the tracked blob does not start with a flat package's own "xar!" magic (bin/no-apple-bytes.sh's byte check) | `TestSameContentsAsTheReferencePackage` (`container_test.go`) |
+| `reference.pkg.gz` | a flat package (xar) with one `Scripts` member, `postinstall` holding `#!/bin/sh\necho hello\nexit 0\n`, identifier `guest-macosx.firstboot`, version `1.0`, written independently of `flatPackage`, then gzip'd at level 9 (`gzip -9`; the 2026-10-17 rewrite used `gzip -9 -n`, so its header has no file name and a zero mtime) so the tracked blob does not start with a flat package's own "xar!" magic (bin/no-apple-bytes.sh's byte check) | `TestSameContentsAsTheReferencePackage` (`container_test.go`) |
 | `fixed-rsa.pub`, `fixed-ed25519.pub` | one RSA and one Ed25519 public key, generated once and kept: a golden comparison needs the same key every run | the three below |
 | `postinstall-defaults.golden` | the postinstall assembled from `DefaultConfig()` and `fixed-rsa.pub` | `TestConfDefaultsMatchThePostinstallGoldenByteForByte` (`payload_test.go`) |
 | `postinstall-openssh-updates.golden` | the same, with `fixed-ed25519.pub`, the test's two fixed-content OpenSSH packages at tag `10.5p1-mavericks.2`, and one staged update, as for updates `security` | `TestConfWithOpenSSHAndUpdatesMatchesThePostinstallGolden` (`payload_test.go`) |
@@ -17,7 +17,7 @@ deflate implementations need not agree on the compressed bytes.
 
 The three `postinstall-*.golden` files are the whole
 `assets/guest/postinstall` template with the generated `firstboot.conf`,
-`assets/guest/firstboot.sh` and `assets/guest/com.mqg.firstboot.plist`
+`assets/guest/firstboot.sh` and `assets/guest/guest-macosx.firstboot.plist`
 substituted into it as heredocs (`payload.Postinstall`), so a deliberate
 change to any of those changes the goldens too:
 
@@ -36,7 +36,12 @@ not a change to make in passing.
 
 `reference.pkg.gz` and the two keys never change: a failing
 `TestSameContentsAsTheReferencePackage` is `flatPackage` drifting from
-the flat-package format.
+the flat-package format. (The one exception: on 2026-10-17 the payload's
+identifier was renamed, and `reference.pkg.gz` was rewritten to match by
+hand, still independently of `flatPackage`: its uncompressed
+`PackageInfo` member edited to the new identifier, that member's length
+and sha1s and the next member's offset updated, the TOC recompressed and
+its sha1 rewritten. Nothing else in it changed.)
 
 ## The data sources' recipe
 

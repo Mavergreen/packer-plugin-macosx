@@ -27,6 +27,16 @@ variable "base_box" {
     ))
     error_message = "Base_box must be an unpacked Mavericks base box: a directory holding box_0.img, OVMF_CODE.fd, OVMF_VARS.fd, opencore.img and Vagrantfile (tar -xzf the .box, or Vagrant's own copy under ~/.vagrant.d/boxes), whose Vagrantfile templates/mavericks/mavericks.pkr.hcl rendered: a Snow Leopard box will not do."
   }
+
+  # And the base box must have this release's machine shape: OpenCore's disk
+  # on virtio-blk in slot 0x10 (docs/decisions/0035). The layer's box keeps
+  # the base's Vagrantfile, so a base box built before that change would
+  # give the layer's box the old shape, while this build boots it in the new
+  # one.
+  validation {
+    condition     = try(length(regexall("virtio-blk-pci,drive=opencore,bootindex=0,bus=pcie\\.0,addr=0x10", file("${var.base_box}/Vagrantfile"))) > 0, false)
+    error_message = "Base_box was built before this release's machine shape (OpenCore's disk on virtio-blk, docs/decisions/0035): rebuild the base box with templates/mavericks/ first, or the layer's box would keep the old one."
+  }
 }
 
 variable "cpu" {
@@ -101,6 +111,20 @@ variable "headless" {
   validation {
     condition     = contains([true, false], var.headless)
     error_message = "Headless must be true or false."
+  }
+}
+
+variable "display" {
+  type        = string
+  default     = ""
+  description = "The QEMU -display backend for the build's window with headless = false, such as gtk, sdl or cocoa; a display with headless = true is refused. \"\" is the qemu builder's own default, gtk, and none makes it pass no -display. REASONED from packer-plugin-qemu v1.1.6's source, not run: no build has had a window. The builder also always passes its own -vnc, so a headless build's screen is on the VNC address it prints, and with none QEMU is expected to open no window."
+
+  # The qemu builder hands it to QEMU whole, as -display's one argument,
+  # so it is held to what a -display value is made of: a backend, then
+  # its comma-separated options.
+  validation {
+    condition     = can(regex("^([A-Za-z][A-Za-z0-9_.,:=+-]*)?$", var.display))
+    error_message = "Display wants a QEMU -display value: a backend, then comma-separated options, such as gtk, sdl or cocoa."
   }
 }
 

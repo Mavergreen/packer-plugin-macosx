@@ -102,11 +102,11 @@ func (v *discVM) Run(_ context.Context, target string, payload []byte, disks []p
 			if n == v.bad {
 				s = strings.Repeat("0", 64)
 			}
-			con.WriteString("MQG-SUM-MEDIA " + s + "  " + n + "\r\n")
+			con.WriteString("GUEST-MACOSX-SUM-MEDIA " + s + "  " + n + "\r\n")
 		}
-		con.WriteString("MQG-SUM-MEDIA " + strings.Repeat("1", 64) + "  " + FirstbootPkgName + "\r\n")
+		con.WriteString("GUEST-MACOSX-SUM-MEDIA " + strings.Repeat("1", 64) + "  " + FirstbootPkgName + "\r\n")
 	}
-	con.WriteString("MQG-PRIVOPS-OK rc=0\r\n")
+	con.WriteString("GUEST-MACOSX-PRIVOPS-OK rc=0\r\n")
 	return []byte(con.String()), nil
 }
 

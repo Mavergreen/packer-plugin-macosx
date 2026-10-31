@@ -5,9 +5,9 @@
 # directive instead of a shebang.
 #
 # Runs as uid 0 inside the privops microVM.
-#   $MQG_SRC1  the ESD volume, read-only
-#   $MQG_RAW2  a raw disk the host will read back as a plain file
-#   $MQG_MNT   the target image. NOT TOUCHED HERE, and mounted only
+#   $GUEST_MACOSX_SRC1  the ESD volume, read-only
+#   $GUEST_MACOSX_RAW2  a raw disk the host will read back as a plain file
+#   $GUEST_MACOSX_MNT   the target image. NOT TOUCHED HERE, and mounted only
 #              because the backend always mounts its first disk.
 #
 # WHY THIS PASS EXISTS AT ALL
@@ -28,11 +28,11 @@
 # against what the guest sent. A silent short write would otherwise turn
 # into a dmg2img failure that says nothing about where the bytes went.
 
-src=$MQG_SRC1/BaseSystem.dmg
+src=$GUEST_MACOSX_SRC1/BaseSystem.dmg
 
 if [ ! -f "$src" ]; then
-    echo "no BaseSystem.dmg on the ESD volume at $MQG_SRC1"
-    $B ls "$MQG_SRC1" | $B sed 's/^/  /'
+    echo "no BaseSystem.dmg on the ESD volume at $GUEST_MACOSX_SRC1"
+    $B ls "$GUEST_MACOSX_SRC1" | $B sed 's/^/  /'
     exit 1
 fi
 
@@ -41,11 +41,11 @@ echo "BaseSystem.dmg on the ESD: $bytes bytes"
 
 # bs=1M rather than dd's 512-byte default: 470 MB in 512-byte reads is
 # nearly a million syscalls through virtio for no reason.
-if ! $B dd if="$src" of="$MQG_RAW2" bs=1M conv=notrunc 2>/dev/null; then
-    echo "dd of BaseSystem.dmg onto $MQG_RAW2 failed"
+if ! $B dd if="$src" of="$GUEST_MACOSX_RAW2" bs=1M conv=notrunc 2>/dev/null; then
+    echo "dd of BaseSystem.dmg onto $GUEST_MACOSX_RAW2 failed"
     exit 1
 fi
 $B sync
 
-echo "MQG-BASESYSTEM-BYTES $bytes"
-echo "MQG-BASESYSTEM-SHA256 $($B sha256sum "$src" | $B cut -d' ' -f1)"
+echo "GUEST-MACOSX-BASESYSTEM-BYTES $bytes"
+echo "GUEST-MACOSX-BASESYSTEM-SHA256 $($B sha256sum "$src" | $B cut -d' ' -f1)"

@@ -92,7 +92,7 @@ type Update struct {
 // (1-based): the install order is legible in the name, and the prefix
 // keeps it from colliding with Apple's own packages on the media.
 func StagedName(n int, path string) string {
-	return fmt.Sprintf("mqg-update-%02d-%s", n, filepath.Base(path))
+	return fmt.Sprintf("guest-macosx-update-%02d-%s", n, filepath.Base(path))
 }
 
 // Updates fetches one selection, verified against the registry, in the

@@ -16,10 +16,10 @@
 # all.
 #
 # Runs as uid 0 with:
-#   $MQG_MNT   the target volume, read-write
-#   $MQG_SRC1  the BaseSystem volume, read-only
-#   $MQG_SRC2  the ESD volume, read-only
-#   $MQG_RAW3  optional: a tar of files to inject, already named for
+#   $GUEST_MACOSX_MNT   the target volume, read-write
+#   $GUEST_MACOSX_SRC1  the BaseSystem volume, read-only
+#   $GUEST_MACOSX_SRC2  the ESD volume, read-only
+#   $GUEST_MACOSX_RAW3  optional: a tar of files to inject, already named for
 #              where they go on the media. Absent when the build was not
 #              asked for any.
 #
@@ -32,9 +32,9 @@
 # them afterwards -- a destructive step must not run before the code that
 # makes it reversible.
 
-BS=$MQG_SRC1
-ESD=$MQG_SRC2
-PKGLINK=$MQG_MNT/System/Installation/Packages
+BS=$GUEST_MACOSX_SRC1
+ESD=$GUEST_MACOSX_SRC2
+PKGLINK=$GUEST_MACOSX_MNT/System/Installation/Packages
 
 # Elapsed seconds since this payload started, so a build on a host nobody
 # has tried can say WHICH step was slow rather than that the pass took a
@@ -77,8 +77,8 @@ count_tree "$BS" "BaseSystem source"
 #     arrived owned by the building user whatever flags rsync was given.
 #     Here the source's own ownership is what lands.
 step "copying BaseSystem onto the target volume"
-$B cp -a "$BS/." "$MQG_MNT/" || { echo "cp of BaseSystem failed"; exit 1; }
-count_tree "$MQG_MNT" "after BaseSystem"
+$B cp -a "$BS/." "$GUEST_MACOSX_MNT/" || { echo "cp of BaseSystem failed"; exit 1; }
+count_tree "$GUEST_MACOSX_MNT" "after BaseSystem"
 
 # On the ESD this is a symlink to /System/Installation/PackagesLink, which
 # resolves through the ESD volume. On installer media there is no ESD
@@ -95,7 +95,7 @@ $B cp -a "$ESD/Packages/." "$PKGLINK/" \
 
 step "copying BaseSystem.dmg and BaseSystem.chunklist"
 $B cp -a "$ESD/BaseSystem.dmg" "$ESD/BaseSystem.chunklist" \
-    "$MQG_MNT/System/Installation/" \
+    "$GUEST_MACOSX_MNT/System/Installation/" \
     || { echo "cp of BaseSystem.dmg/chunklist failed"; exit 1; }
 
 # The unattended-install hooks and any packages this build carries, as a
@@ -114,14 +114,27 @@ $B cp -a "$ESD/BaseSystem.dmg" "$ESD/BaseSystem.chunklist" \
 # the media would ship without its install hooks. This project has written
 # that lesson down twice already (a screenshot piped into `head -1`, and
 # a command substitution that ate a fatal exit), and it did not travel.
-if [ -n "${MQG_RAW3:-}" ]; then
+if [ -n "${GUEST_MACOSX_RAW3:-}" ]; then
     step "injecting the files the host staged"
-    if ! $B tar xvf "$MQG_RAW3" -C "$MQG_MNT" > /inject.log 2>&1; then
+    if ! $B tar xvf "$GUEST_MACOSX_RAW3" -C "$GUEST_MACOSX_MNT" > /inject.log 2>&1; then
         $B sed 's/^/  /' /inject.log
         echo "extracting the injectables failed"
         exit 1
     fi
     $B sed 's/^/  /' /inject.log
+    # syslog's lines, for the hook's log follower (autoinstall.sh's
+    # SYSLOG_PORT, which must agree), as on the 10.6 disc
+    # (disc/assemble-disc.sh): 10.9's asl.conf writes no file of the
+    # installer's lines, and its syslog.conf forwards install.* to instlogd
+    # alone, so a failed install's account would be in no file at all
+    # (docs/decisions/0027).
+    step "forwarding syslog to 127.0.0.1:32377 for the install's log follower"
+    # The leading newline: a syslog.conf without a final one would otherwise
+    # have its last line run into this one.
+    if ! $B printf '\n*.notice;install.*;kern.*\t@127.0.0.1:32377\n' >> "$GUEST_MACOSX_MNT/private/etc/syslog.conf"; then
+        echo "adding the log follower's forward to syslog.conf failed"
+        exit 1
+    fi
 fi
 
 # The ESD's Packages, checked where they are read rather than where they
@@ -132,11 +145,11 @@ step "checksumming the ESD's Packages"
 ( cd "$ESD/Packages" || exit 1
   for f in *; do
       [ -f "$f" ] || continue
-      echo "MQG-SUM-ESD $($B sha256sum "$f")"
+      echo "GUEST-MACOSX-SUM-ESD $($B sha256sum "$f")"
   done )
 
 step "counting the finished volume"
-count_tree "$MQG_MNT" "final volume"
+count_tree "$GUEST_MACOSX_MNT" "final volume"
 echo "free space on the target volume:"
-$B df -h "$MQG_MNT" | $B sed 's/^/  /'
+$B df -h "$GUEST_MACOSX_MNT" | $B sed 's/^/  /'
 step "done"

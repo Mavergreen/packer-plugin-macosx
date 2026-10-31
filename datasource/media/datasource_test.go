@@ -375,10 +375,10 @@ func TestExecuteBuildsOnceAndReuses(t *testing.T) {
 	if pc.OpenSSHTag != tag || len(pc.OpenSSHPkgs) != 2 {
 		t.Fatalf("payload OpenSSH = %s %v", pc.OpenSSHTag, pc.OpenSSHPkgs)
 	}
-	if filepath.Base(w.payloadOut) != "mqg-firstboot.pkg" {
+	if filepath.Base(w.payloadOut) != "guest-macosx-firstboot.pkg" {
 		t.Fatalf("payload built at %s", w.payloadOut)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "mqg-firstboot.pkg")); err != nil {
+	if _, err := os.Stat(filepath.Join(dir, "guest-macosx-firstboot.pkg")); err != nil {
 		t.Fatalf("the payload is not in the entry: %v", err)
 	}
 
@@ -393,10 +393,10 @@ func TestExecuteBuildsOnceAndReuses(t *testing.T) {
 	// packages then the staged update, room for the update plus the
 	// configured extra, built from the given ESD in the scratch home.
 	o := w.mb.built
-	if !o.Force || !o.Autoinstall || filepath.Base(o.FirstbootPkg) != "mqg-firstboot.pkg" {
+	if !o.Force || !o.Autoinstall || filepath.Base(o.FirstbootPkg) != "guest-macosx-firstboot.pkg" {
 		t.Fatalf("media options = %+v", o)
 	}
-	wantExtra := []string{pc.OpenSSHPkgs[0], pc.OpenSSHPkgs[1], "mqg-update-01-"}
+	wantExtra := []string{pc.OpenSSHPkgs[0], pc.OpenSSHPkgs[1], "guest-macosx-update-01-"}
 	if len(o.ExtraPkgs) != 3 || o.ExtraPkgs[0] != wantExtra[0] || o.ExtraPkgs[1] != wantExtra[1] ||
 		!strings.HasPrefix(filepath.Base(o.ExtraPkgs[2]), wantExtra[2]) {
 		t.Fatalf("ExtraPkgs = %v", o.ExtraPkgs)
@@ -576,7 +576,7 @@ func TestOpenSSHOffFetchesNoOpenSSH(t *testing.T) {
 		t.Fatalf("payload config = %+v", w.payloadCfg)
 	}
 	extra := w.mb.built.ExtraPkgs
-	if len(extra) != 1 || !strings.HasPrefix(filepath.Base(extra[0]), "mqg-update-01-") {
+	if len(extra) != 1 || !strings.HasPrefix(filepath.Base(extra[0]), "guest-macosx-update-01-") {
 		t.Fatalf("ExtraPkgs = %v, want the one staged update", extra)
 	}
 	if n := atomic.LoadInt32(&w.sshReqs); n != 0 {

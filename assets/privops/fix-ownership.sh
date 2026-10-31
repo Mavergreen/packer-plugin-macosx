@@ -6,7 +6,7 @@
 #
 # shellcheck disable=SC2016  # the awk programs are single-quoted on purpose
 #
-# Runs as uid 0 inside the privops microVM, media mounted at $MQG_MNT,
+# Runs as uid 0 inside the privops microVM, media mounted at $GUEST_MACOSX_MNT,
 # busybox at $B.
 #
 # Media copied unprivileged arrives owned by the building user, and
@@ -21,7 +21,7 @@
 # The list lives in a shell variable rather than a temp file, because the
 # initramfs has no writable /tmp and six entries do not need one.
 
-SPECIAL=$($B find "$MQG_MNT" -type f \( -perm -4000 -o -perm -2000 \) 2>/dev/null)
+SPECIAL=$($B find "$GUEST_MACOSX_MNT" -type f \( -perm -4000 -o -perm -2000 \) 2>/dev/null)
 n_before=$(printf '%s\n' "$SPECIAL" | $B grep -c . )
 echo "special-mode files before chown: $n_before"
 
@@ -33,9 +33,9 @@ if [ "$n_before" -gt 0 ]; then
     printf '%s\n' "$MODES" | $B head -8 | $B sed 's/^/  recorded: /'
 fi
 
-echo "ownership before: $($B ls -ldn "$MQG_MNT/System/Library/LaunchDaemons" | $B awk '{print $3":"$4}')"
-$B chown -R 0:0 "$MQG_MNT" || exit 1
-echo "ownership after:  $($B ls -ldn "$MQG_MNT/System/Library/LaunchDaemons" | $B awk '{print $3":"$4}')"
+echo "ownership before: $($B ls -ldn "$GUEST_MACOSX_MNT/System/Library/LaunchDaemons" | $B awk '{print $3":"$4}')"
+$B chown -R 0:0 "$GUEST_MACOSX_MNT" || exit 1
+echo "ownership after:  $($B ls -ldn "$GUEST_MACOSX_MNT/System/Library/LaunchDaemons" | $B awk '{print $3":"$4}')"
 
 restored=0
 if [ -n "$MODES" ]; then
@@ -49,8 +49,8 @@ if [ -n "$MODES" ]; then
     IFS=$OLDIFS
 fi
 echo "special modes restored: $restored"
-echo "special-mode files after: $($B find "$MQG_MNT" -type f \( -perm -4000 -o -perm -2000 \) 2>/dev/null | $B grep -c .)"
-echo "runner: $($B ls -ln "$MQG_MNT/System/Library/PrivateFrameworks/Install.framework/Versions/A/Resources/runner" 2>/dev/null | $B awk '{print $1}')"
+echo "special-mode files after: $($B find "$GUEST_MACOSX_MNT" -type f \( -perm -4000 -o -perm -2000 \) 2>/dev/null | $B grep -c .)"
+echo "runner: $($B ls -ln "$GUEST_MACOSX_MNT/System/Library/PrivateFrameworks/Install.framework/Versions/A/Resources/runner" 2>/dev/null | $B awk '{print $1}')"
 
 # The unattended-install hooks, if this build injected them. Reported here
 # because this is the step that makes them root-owned, and because
@@ -60,8 +60,8 @@ echo "runner: $($B ls -ln "$MQG_MNT/System/Library/PrivateFrameworks/Install.fra
 for f in private/etc/rc.cdrom.local \
          System/Installation/Packages/Extras/minstallconfig.xml \
          System/Installation/Packages/OSInstall.collection; do
-    if [ -e "$MQG_MNT/$f" ]; then
-        echo "autoinstall: $($B ls -ln "$MQG_MNT/$f" | $B awk '{print $1, $3":"$4}') $f"
+    if [ -e "$GUEST_MACOSX_MNT/$f" ]; then
+        echo "autoinstall: $($B ls -ln "$GUEST_MACOSX_MNT/$f" | $B awk '{print $1, $3":"$4}') $f"
     else
         echo "autoinstall: absent $f"
     fi

@@ -3,14 +3,14 @@
 # Put the first-boot payload on the target volume, at install time.
 #
 # THIS FILE IS A TEMPLATE. internal/payload replaces the
-# `#MQG_EMBEDDED_FILES` line below with the heredocs that write
+# `#GUEST_MACOSX_EMBEDDED_FILES` line below with the heredocs that write
 # firstboot.sh, its conf file, the authorized key and the LaunchDaemon. So
 # the copy in the repository is the logic, and the copy in a package is the
 # logic plus its data. Running this one directly writes nothing.
 #
 # WHERE THIS RUNS
 #
-# Inside the OS X Installer, as root, because mqg-firstboot.pkg is listed in
+# Inside the OS X Installer, as root, because guest-macosx-firstboot.pkg is listed in
 # /System/Installation/Packages/OSInstall.collection alongside
 # OSInstall.mpkg. So the payload is installed as part of the install, the
 # way timsutton/osx-vm-templates does it, rather than being injected into a
@@ -51,11 +51,17 @@
 #
 # WHAT IS DONE HERE RATHER THAN AT FIRST BOOT
 #
-# Only .AppleSetupDone, and only because of a race: loginwindow starts Setup
-# Assistant at boot, and a LaunchDaemon with RunAtLoad has no guarantee of
-# beating it. Creating the marker at install time removes the race instead
-# of hoping to win it. Everything else needs a booted system -- dscl,
-# systemsetup, launchctl -- and is firstboot.sh's job.
+# Only what a boot races, and the first boot is a boot:
+#   - .AppleSetupDone: loginwindow starts Setup Assistant at boot, and a
+#     LaunchDaemon with RunAtLoad has no guarantee of beating it;
+#   - setting UserEventAgent's telemetry plugin aside (below): it races
+#     UserEventAgent's own start, which is over before firstboot.sh runs;
+#   - setting systemstats' jobs aside with it (below): launchd loads them
+#     as it boots, and a build that crosses 00:15 could run the daily one
+#     before firstboot.sh could stop it.
+# Doing them at install time removes each race instead of hoping to win
+# it. Everything else needs a booted system -- dscl, systemsetup,
+# launchctl -- and is firstboot.sh's job.
 
 set -u
 
@@ -65,29 +71,47 @@ TARGET=${3:-}
 # onto the running system, which during an OS install it is not; fall back
 # rather than silently writing to the wrong place.
 if [ -z "$TARGET" ] || [ "$TARGET" = "/" ]; then
-    TARGET=${MQG_FIRSTBOOT_TARGET:-/}
+    TARGET=${GUEST_MACOSX_FIRSTBOOT_TARGET:-/}
 fi
 
-CONF_DIR="$TARGET/private/var/db/.mqg-firstboot"
-DAEMON="$TARGET/Library/LaunchDaemons/com.mqg.firstboot.plist"
+CONF_DIR="$TARGET/private/var/db/.guest-macosx-firstboot"
+DAEMON="$TARGET/Library/LaunchDaemons/guest-macosx.firstboot.plist"
 LOG="$CONF_DIR/postinstall.log"
 
 mkdir -p "$CONF_DIR" || exit 1
 mkdir -p "$TARGET/Library/LaunchDaemons" || exit 1
 
 say() {
-    echo "mqg-firstboot-postinstall: $*"
+    echo "guest-macosx-firstboot-postinstall: $*"
     echo "$*" >> "$LOG" 2>/dev/null
+}
+
+# names_in <dir> -- the names in dir, dot-files too, on one line, for the
+# log; "(no such directory)" when it is not one. A glob, not `ls`, whose
+# output is for people and mangles a name it cannot print.
+names_in() {
+    [ -d "$1" ] || { printf '(no such directory)'; return 0; }
+    for _f in "$1"/* "$1"/.[!.]* "$1"/..?*; do
+        [ -e "$_f" ] || [ -L "$_f" ] || continue
+        printf '%s ' "${_f##*/}"
+    done
 }
 
 say "target volume: $TARGET"
 say "package: ${1:-none}  destination: ${2:-none}"
 say "\$0: $0"
 say "cwd: $(pwd 2>&1)"
-say "script directory holds: $(ls -a "$(dirname "$0")" 2>&1 | tr '\n' ' ')"
+# The PATH the installer runs this with: the commands it can find, which
+# internal/payload/testdata/commands/ lists for each release.
+say "PATH: $PATH"
+case $0 in
+    */*) _here=${0%/*} ;;
+    *) _here=. ;;
+esac
+say "script directory holds: $(names_in "${_here:-/}")"
 
 say "writing $CONF_DIR/firstboot.sh"
-cat > "$CONF_DIR/firstboot.sh" <<'MQG_EOF_FIRSTBOOT_SH'
+cat > "$CONF_DIR/firstboot.sh" <<'GUEST_MACOSX_EOF_FIRSTBOOT_SH'
 #!/bin/sh
 # platform: macOS-only -- runs in the guest at its first boot, never on the build host
 # What Setup Assistant would have done, done once, with nobody watching.
@@ -95,9 +119,9 @@ cat > "$CONF_DIR/firstboot.sh" <<'MQG_EOF_FIRSTBOOT_SH'
 # WHERE THIS RUNS
 #
 # On the installed Mavericks system, as root, on its first boot, launched by
-# /Library/LaunchDaemons/com.mqg.firstboot.plist. Both this script and that
+# /Library/LaunchDaemons/guest-macosx.firstboot.plist. Both this script and that
 # plist are put there at install time by ./postinstall, which the OS X
-# Installer runs because mqg-firstboot.pkg is listed in
+# Installer runs because guest-macosx-firstboot.pkg is listed in
 # OSInstall.collection -- so the payload is installed *as part of the
 # install*, not injected into a finished volume afterwards.
 #
@@ -116,55 +140,116 @@ cat > "$CONF_DIR/firstboot.sh" <<'MQG_EOF_FIRSTBOOT_SH'
 # image's life, and the symptom turns up long after the cause. Removing the
 # plist is therefore not tidiness, it is the safety property.
 #
+# The one exception is by design and bounded: on 10.6 with updates, it runs
+# once more on each boot between them (snow_leopard_updates), doing nothing
+# but the updates, and the boot that installs the last one, or stops them
+# (an update cut short, a list it cannot write or rewrite), removes the
+# LaunchDaemon and writes the marker as the main line does.
+#
 # NOTHING HERE MAY HANG FOREVER
 #
 # This is a 2013 OS that may be talking to Apple's 2026 servers. Every step
-# runs under run_with_timeout and every failure is non-fatal: a payload that
-# skips a nicety is better than a payload that never finishes and leaves an
-# image with no account on it.
+# runs under run_with_timeout; niceties are best-effort, but an update's
+# failed or timed-out installer stops the update chain and makes verification
+# reject the build. First boot can still finish rather than hang forever.
 
 PATH=/usr/bin:/bin:/usr/sbin:/sbin
 export PATH
 
-CONF_DIR=/private/var/db/.mqg-firstboot
-LOG=/private/var/log/mqg-firstboot.log
-DAEMON=/Library/LaunchDaemons/com.mqg.firstboot.plist
+CONF_DIR=/private/var/db/.guest-macosx-firstboot
+LOG=/private/var/log/guest-macosx-firstboot.log
+DAEMON=/Library/LaunchDaemons/guest-macosx.firstboot.plist
 DONE_MARKER=$CONF_DIR/.done
+# Where a host finds the log without a running VM (see the verdict).
+LOG_COPY=/.guest-macosx-firstboot.log
+# 10.6's updates still to install, one per line, across the restarts between
+# them, and the one being installed (snow_leopard_updates).
+UPDATES_LEFT=$CONF_DIR/updates.left
+UPDATES_CURRENT=$CONF_DIR/updates.current
+# PackageKit's deferred install: what an update could not replace under the
+# running system, which launchd applies at the end of the next shutdown.
+DEFERRED_INSTALL=/private/etc/rc.deferred_install
+SSHD_OVERRIDES=/private/var/db/launchd.db/com.apple.launchd/overrides
+# Remote Login's job, and 10.9's shutdown helper (write_shutdown_helper),
+# which restart_into_updates restarts through.
+SSH_PLIST=/System/Library/LaunchDaemons/ssh.plist
+SHUTDOWN_HELPER=/usr/local/sbin/guest-macosx-shutdown
+# The kexts, and where the caches kextd judges them by are
+# (kext_caches_are_current).
+KEXT_DIR=/System/Library/Extensions
+KEXT_CACHE_DIR=/System/Library/Caches/com.apple.kext.caches/Directories/System/Library/Extensions
+# 10.9's prelinked kernel, and what kextd judges it by: its extensions
+# folders and its kernel (kernelcache_is_current).
+KERNELCACHE=/System/Library/Caches/com.apple.kext.caches/Startup/kernelcache
+KEXT_DIRS="/System/Library/Extensions /Library/Extensions"
+KERNEL_FILE=/mach_kernel
+# kextd's job, held off while an update that brings its own kernel goes in
+# under the running one (hold_kextd_for).
+KEXTD_JOB=com.apple.kextd
+KEXTD_PLIST=/System/Library/LaunchDaemons/com.apple.kextd.plist
+# What launchctl runs to start and stop the boot cache, and the kext's own
+# version (set_bootcache_aside).
+BOOTCACHE_CONTROL=/usr/sbin/BootCacheControl
+BOOTCACHE_KEXT_PLIST=/System/Library/Extensions/BootCache.kext/Contents/Info.plist
+# The BootCache.kext versions MEASURED to deadlock (docs/decisions/0025);
+# templates/snowleopard/verify.sh holds the same list.
+BOOTCACHE_DEADLOCKS="31.1"
+# What launchctl runs at every boot, before it loads a single job: 10.6's
+# wait for the kernel's first IPv6 address goes there (set_ipv6_wait).
+RC_SERVER=/private/etc/rc.server
+# The line that says the rc.server is ours, not a Mac OS X Server's.
+RC_SERVER_OURS="# guest-macosx: wait for IPv6 before launchctl binds sockets (docs/decisions/0029)"
+# aslmanager's job, which 10.9's syslogd asks for synchronously as it
+# starts (unthrottle_aslmanager), and the tool that edits it.
+ASLMANAGER_PLIST=/System/Library/LaunchDaemons/com.apple.aslmanager.plist
+PLISTBUDDY=/usr/libexec/PlistBuddy
+# F27: inherit ignored HUP across exec, before netbiosd installs its source.
+NETBIOSD_PLIST=/System/Library/LaunchDaemons/com.apple.netbiosd.plist
+NETBIOSD_BIN=/usr/sbin/netbiosd
+NETBIOSD_HUP_WRAPPER=/usr/libexec/guest-macosx-netbiosd-hup
+# The keyboard types Keyboard Setup Assistant has recorded, and the tool that
+# reads and writes them (seed_keyboard_type).
+KEYBOARDTYPE_DOMAIN=/Library/Preferences/com.apple.keyboardtype
+DEFAULTS=/usr/bin/defaults
+# QEMU's usb-kbd as the assistant names it: product 1, vendor 0x0627 (1575),
+# country code 0; and 40, ANSI, what the assistant writes when it is quit.
+QEMU_KEYBOARD_TYPE_KEY=1-1575-0
+QEMU_KEYBOARD_TYPE=40
 
 # Defaults, overridden by the conf file the build writes next to this
 # script. They are here so the script is readable on its own and so a hand
 # run in a rescue shell does something sensible.
-MQG_FB_USER=mavsuser
-MQG_FB_UID=501
-MQG_FB_GID=20
-MQG_FB_ADMIN_GID=80
-MQG_FB_REALNAME="Mavericks User"
-MQG_FB_SHELL=/bin/bash
-MQG_FB_HOSTNAME=mavericks
-MQG_FB_AUTOLOGIN=1
-MQG_FB_SUDO=0
-MQG_FB_OPENSSH=0
-MQG_FB_OPENSSH_TAG=
+GUEST_MACOSX_FB_USER=mavsuser
+GUEST_MACOSX_FB_UID=501
+GUEST_MACOSX_FB_GID=20
+GUEST_MACOSX_FB_ADMIN_GID=80
+GUEST_MACOSX_FB_REALNAME="Mavericks User"
+GUEST_MACOSX_FB_SHELL=/bin/bash
+GUEST_MACOSX_FB_HOSTNAME=mavericks
+GUEST_MACOSX_FB_AUTOLOGIN=1
+GUEST_MACOSX_FB_SUDO=0
+GUEST_MACOSX_FB_OPENSSH=0
+GUEST_MACOSX_FB_OPENSSH_TAG=
 # Read by ./postinstall, which sources this same conf file at install time
 # to learn which packages to copy off the media. Declared here so the
 # defaults are all in one place and a hand run in a rescue shell has them.
 # shellcheck disable=SC2034
-MQG_FB_EXTRA_PKGS=
+GUEST_MACOSX_FB_EXTRA_PKGS=
 # Apple's post-10.9.5 updates. `none` is the value a conf file that says
 # nothing about updates produces, and that is deliberate: a conf file
 # built with updates "none" has no updates lines at all, so the performance
 # baseline (docs/decisions/0011) does not move when the default does.
-MQG_FB_UPDATES=none
+GUEST_MACOSX_FB_UPDATES=none
 # shellcheck disable=SC2034
-MQG_FB_UPDATE_PKGS=
+GUEST_MACOSX_FB_UPDATE_PKGS=
 # The release the payload is for: empty (10.9) or snowleopard (10.6).
-MQG_FB_RELEASE=
+GUEST_MACOSX_FB_RELEASE=
 
 [ -r "$CONF_DIR/firstboot.conf" ] && . "$CONF_DIR/firstboot.conf"
 
 say() {
-    echo "mqg-firstboot: $*"
-    echo "$(date -u '+%Y-%m-%dT%H:%M:%SZ') mqg-firstboot: $*" >> "$LOG" 2>/dev/null
+    echo "guest-macosx-firstboot: $*"
+    echo "$(date -u '+%Y-%m-%dT%H:%M:%SZ') guest-macosx-firstboot: $*" >> "$LOG" 2>/dev/null
 }
 
 # 10.9 has no timeout(1), so here is one: run the command in the background
@@ -174,7 +259,11 @@ say() {
 # distinction is less clean than it looks -- systemsetup and dscl both talk
 # to launchd and opendirectoryd, either of which can be slow or wedged on a
 # system that has never booted before.
+# --checked preserves the command's exit status for a caller that must not
+# continue dependent work after failure; ordinary callers remain best-effort.
 run_with_timeout() {
+    _checked=
+    if [ "$1" = --checked ]; then _checked=1; shift; fi
     _limit=$1
     shift
     say "run (${_limit}s limit): $*"
@@ -187,15 +276,764 @@ run_with_timeout() {
             sleep 1
             _n=$((_n + 1))
         done
-        echo "mqg-firstboot: TIMED OUT after ${_limit}s: $*" >> "$LOG"
+        echo "guest-macosx-firstboot: TIMED OUT after ${_limit}s: $*" >> "$LOG"
         kill -9 "$_pid" 2>/dev/null
     ) &
     _dog=$!
     wait "$_pid" 2>/dev/null
     _rc=$?
     kill "$_dog" 2>/dev/null
-    [ "$_rc" -eq 0 ] || say "  -> rc=$_rc (continuing; nothing here is fatal)"
+    if [ -n "$_checked" ]; then
+        [ "$_rc" -eq 0 ] || say "  -> rc=$_rc (checked command failed)"
+        return "$_rc"
+    fi
+    [ "$_rc" -eq 0 ] || say "  -> rc=$_rc (continuing; best-effort step)"
     return 0
+}
+
+# redact <secret>: stdin to stdout, with every occurrence of <secret>
+# replaced by <redacted>. The secret is matched as a string, not a pattern:
+# it is quoted inside every pattern below, and unquoted it would be a glob.
+# An empty secret passes the input through (it would match everywhere and
+# never advance). A shell function, so the secret is in no process's argv.
+redact() {
+    _rd_secret=$1
+    if [ -z "$_rd_secret" ]; then
+        cat
+        return 0
+    fi
+    while IFS= read -r _rd_line || [ -n "$_rd_line" ]; do
+        _rd_shown=
+        while :; do
+            case $_rd_line in
+                *"$_rd_secret"*)
+                    _rd_shown=$_rd_shown${_rd_line%%"$_rd_secret"*}'<redacted>'
+                    _rd_line=${_rd_line#*"$_rd_secret"}
+                    ;;
+                *) break ;;
+            esac
+        done
+        printf '%s\n' "$_rd_shown$_rd_line"
+    done
+}
+
+# run_secret_with_timeout <limit> <secret> <command...>: run_with_timeout,
+# for a command that has to carry <secret> in its arguments -- dscl takes a
+# password nowhere else. Everything it logs, to the log and to stdout (the
+# LaunchDaemon's .out), shows <redacted> in the secret's place: the command
+# line, a timeout, and the command's own output, which waits in a file only
+# root can read until the command ends and is redacted on its way to the
+# log. The command line is redacted argument by argument -- an argument
+# that is the secret is shown as <redacted> whole -- so a secret that
+# overlaps the argument before it (user bob, password "b b") cannot be
+# matched across the two and leave part of itself showing. The secret is
+# still in that command's argv while it runs; nothing here can avoid that.
+#
+# Unlike run_with_timeout, it returns the command's status (non-zero after
+# a timeout), because its caller decides on it.
+run_secret_with_timeout() {
+    _limit=$1
+    _secret=$2
+    shift 2
+    _shown=
+    for _arg in "$@"; do
+        if [ "$_arg" = "$_secret" ]; then
+            _arg='<redacted>'
+        else
+            _arg=$(printf '%s\n' "$_arg" | redact "$_secret")
+        fi
+        _shown=${_shown:+$_shown }$_arg
+    done
+    say "run (${_limit}s limit): $_shown"
+    _out=$CONF_DIR/.secret-run.out
+    rm -f "$_out"
+    (
+        umask 077
+        exec "$@" > "$_out" 2>&1
+    ) &
+    _pid=$!
+    (
+        _n=0
+        while [ "$_n" -lt "$_limit" ]; do
+            kill -0 "$_pid" 2>/dev/null || exit 0
+            sleep 1
+            _n=$((_n + 1))
+        done
+        echo "guest-macosx-firstboot: TIMED OUT after ${_limit}s: $_shown" >> "$LOG"
+        kill -9 "$_pid" 2>/dev/null
+    ) &
+    _dog=$!
+    wait "$_pid" 2>/dev/null
+    _rc=$?
+    kill "$_dog" 2>/dev/null
+    redact "$_secret" < "$_out" >> "$LOG" 2>/dev/null
+    rm -f "$_out"
+    [ "$_rc" -eq 0 ] || say "  -> rc=$_rc"
+    return "$_rc"
+}
+
+# --- 10.6's updates, one boot each (docs/decisions/0023) -------------------
+#
+# 10.6.8's combo replaces part of the running 10.6.0 under it, and leaves the
+# rest -- CoreFoundation, Security, CoreServices, ApplicationServices, 363
+# files -- in /System/DeferredInstall, for launchd to put in place at the end
+# of the next shutdown (/etc/rc.deferred_install). Until that restart the
+# guest is half one release and half the other. Security Update 2013-004
+# installed into that state (MEASURED 2026-10-15, 3 of 3 first boots):
+#
+# - its new Security.framework asked 10.6.0's still-running securityd for
+#   the session, which answered MIG_BAD_ID (-303): MRTAgent, which 2013-004's
+#   `mrt` action starts, aborted in LaunchServices (an MRTAgent .crash), and
+#   MRT could not make the AuthorizationRef it removes its own jobs with;
+# - so both MRT jobs were still loaded in launchd at the shutdown, the agent
+#   watching the daemon (KeepAlive OtherJobEnabled). launchd 10.6.0's
+#   shutdown removed the daemon, which dispatched and freed the agent, the
+#   next job its loop then read: launchd crashed (/var/log/launchd-pid1.crash),
+#   its crash handler rebooted through the kernel, configd crashed in its
+#   SIGTERM path (a configd .crash), and the deferred install waited for an
+#   extra boot of its own;
+# - and that deferred install then put the combo's CoreFoundation 6.6.5,
+#   Security and Spotlight back over 2013-004's (of the 26 files both
+#   carry, all 19 compared were the combo's): a guest with 2013-004's
+#   receipt and not all of its fixes.
+#
+# Combo, restart, 2013-004, restart: none of it, and 2013-004's files stay
+# (MEASURED 2026-10-15). So each update goes in on a boot of its own, when it
+# needs one: one whose metadata asks for a restart, or one that left a
+# deferred install, is followed by a restart before the next is installed;
+# one that does neither is followed by the next on the same boot, as before.
+# The LaunchDaemon stays until the last one, and runs this again on the next
+# boot, which resumes here (the main line's first step).
+
+# update_wants_restart <update>: Apple's own answer. A distribution says it
+# in its pkg-ref's onConclusion; a flat package in its PackageInfo's
+# postinstall-action. A package whose metadata cannot be read is treated as
+# one that wants a restart, and the log says so: an extra boot costs a
+# minute, a half-updated guest costs the image.
+update_wants_restart() {
+    case $1 in
+        *.dist)
+            if [ ! -r "$1" ]; then
+                say "updates: cannot read $1; restarting after it, to be safe"
+                return 0
+            fi
+            grep -q 'onConclusion="RequireRestart"' "$1"
+            return
+            ;;
+    esac
+    _uwr_dir=$CONF_DIR/.pkginfo
+    rm -rf "$_uwr_dir"
+    mkdir -p "$_uwr_dir"
+    # run_with_timeout returns 0 whatever xar does; the -r below judges.
+    if ! (cd "$_uwr_dir" && run_with_timeout 120 xar -xf "$1" PackageInfo) ||
+        [ ! -r "$_uwr_dir/PackageInfo" ]; then
+        rm -rf "$_uwr_dir"
+        say "updates: cannot read the PackageInfo of $1; restarting after it, to be safe"
+        return 0
+    fi
+    grep -q 'postinstall-action="restart"' "$_uwr_dir/PackageInfo"
+    _uwr_rc=$?
+    rm -rf "$_uwr_dir"
+    return "$_uwr_rc"
+}
+
+# update_installs_kernel <update>: whether the update puts a kernel at
+# /mach_kernel: a flat package's Bom, or the Boms of the packages a
+# distribution names (its pkg-refs, carried beside it in the updates
+# folder), each read with xar and lsbom. 10.6.8's combo does (its
+# SUBaseSystemCombo10.6.8.pkg), 2013-004 does not. A package that cannot be
+# read counts as one that does, and the log says so: a Bom xar cannot
+# extract, or one lsbom cannot list (its status is judged, not grep's of
+# whatever it printed). Holding kextd off costs nothing the restart does not
+# give back.
+update_installs_kernel() {
+    case $1 in
+        *.dist) _uik_pkgs=$(sed -n 's|.*>#*\([^<>]*\.pkg\)</pkg-ref>.*|\1|p' "$1" 2>/dev/null) ;;
+        *) _uik_pkgs=${1##*/} ;;
+    esac
+    if [ -z "$_uik_pkgs" ]; then
+        say "kextd: cannot read the packages of $1; taking it to install a kernel"
+        return 0
+    fi
+    _uik_dir=$CONF_DIR/.bom
+    for _uik_p in $_uik_pkgs; do
+        rm -rf "$_uik_dir"
+        mkdir -p "$_uik_dir"
+        # run_with_timeout returns 0 whatever xar does; the -r below judges.
+        if ! (cd "$_uik_dir" && run_with_timeout 120 xar -xf "${1%/*}/$_uik_p" Bom) ||
+            [ ! -r "$_uik_dir/Bom" ]; then
+            rm -rf "$_uik_dir"
+            say "kextd: cannot read the Bom of $_uik_p; taking $1 to install a kernel"
+            return 0
+        fi
+        if ! _uik_list=$(lsbom -s -f "$_uik_dir/Bom" 2>/dev/null); then
+            rm -rf "$_uik_dir"
+            say "kextd: cannot list the Bom of $_uik_p; taking $1 to install a kernel"
+            return 0
+        fi
+        if printf '%s\n' "$_uik_list" | grep -qx './mach_kernel'; then
+            rm -rf "$_uik_dir"
+            _uik_with=$_uik_p
+            return 0
+        fi
+    done
+    rm -rf "$_uik_dir"
+    return 1
+}
+
+# hold_kextd_for <update>: kextd's job unloaded before an update that
+# brings its own kernel, and left unloaded until the restart after it, when
+# launchd starts it again from its plist with the new kernel. Elsewhere it
+# does nothing, and says so. Returns 0 when it held kextd off.
+#
+# On 10.9 too (install_updates, docs/decisions/0036): 2016-004 brings a
+# kernel, and kextd held off there runs no prelinked-kernel rebuild of the
+# old kernel's asking, before the restart_into_updates that follows it.
+#
+# On 10.6, why:
+#
+# 10.6.0's kextd (kext_tools-177) watches /System/Library/Extensions. From
+# 300 s after it starts (kextd_watchvol.c: kAutoUpdateDelay, whose timer
+# checks every watched volume), and 5 s after every change to the folder
+# after that, it asks whether its kext caches are current (check_rebuild),
+# and if not rescans ("Rescanning kernel extensions") and sends every
+# kext's personalities to the running kernel. From the combo's payload
+# landing until kext_caches_current, those are 10.6.8's kexts and the
+# kernel is 10.6.0's, which matches them and has kextd load them: a
+# 10.6.8 AudioAUUC (1.57; 10.6.0 has none) loaded so panicked a build's
+# first boot 5 min in, in its own code under OSKext::loadFromMkext. The
+# first boot starts the combo some 20 s after kextd; on an idle host the
+# install and kext_caches_current end inside kextd's 300 s, and a slower
+# one runs past them (F24, docs/decisions/0026: MEASURED 2026-10-18, a
+# combo started 150-200 s into kextd's life rescanned mid-install and
+# loaded 10.6.8's AudioAUUC and AppleSMBusPCI into 10.6.0's kernel in 3 of
+# 3, and with kextd held off, 0 of 4). kextd also sends the personalities on
+# every start (REASONED from kextd_main.c's main), so it is not restarted
+# after the install: it stays off until the new kernel boots. Nothing in the
+# install needs it: kextcache, the installer's and kext_caches_current's,
+# takes kextd's volume lock only when kextd is there to give it
+# (kextcache_main.c's takeVolumeForPath), and shutdown(8) restarts without
+# kextd's reboot lock when there is no kextd to ask (REASONED from source;
+# what was measured is the outcome: kextcache rc 0, the restart, 5 of 5).
+#
+# The check after the unload, `launchctl list com.apple.kextd` failing, says
+# launchd has taken the job out (its job_find skips a job being removed),
+# not that kextd has exited; it did within the second in every run that
+# logged it, and launchd kills it at its exit timeout if not. That the
+# check answers 0 for a job that is loaded, which the COULD NOT branch
+# relies on, is REASONED from launchctl's source: every real run listed it
+# only after the unload took (F24 review, N1).
+hold_kextd_for() {
+    _uik_with=
+    if ! update_installs_kernel "$1"; then
+        say "kextd: ${1##*/} installs no kernel; kextd left running"
+        return 1
+    fi
+    run_with_timeout 60 launchctl unload "$KEXTD_PLIST"
+    if launchctl list "$KEXTD_JOB" >/dev/null 2>&1; then
+        say "kextd: COULD NOT unload $KEXTD_JOB; ${1##*/} installs a kernel" \
+            "(${_uik_with:-unreadable}), and kextd may hand that kernel's kexts" \
+            "to the running one before the restart"
+        return 1
+    fi
+    say "kextd: held off until the restart: ${1##*/} installs a kernel" \
+        "(${_uik_with:-unreadable}), and kextd would hand its kexts to the" \
+        "running kernel ($(uname -r 2>/dev/null)) whenever it found its caches" \
+        "out of date; launchd starts it again with the new kernel"
+    return 0
+}
+
+# kext_caches_current: before a restart on 10.6, the kext caches brought up
+# to date with /System/Library/Extensions where kextd would not use them.
+#
+# An update's installer rebuilds them (`kextcache -system-caches`,
+# `-update-volume /`) before its postinstall actions run, and the combo's
+# actions then change /System/Library/Extensions again (touchBrailleDrivers,
+# removeAppleHDAPlatformDriver, removeGeForceDriver...). The restart's
+# shutdown asks kextd for the volume; kextd finds its cache out of date,
+# "Rescanning kernel extensions", and sends their personalities to the
+# running kernel, which still is 10.6.0's. With the combo restarted
+# straight after its install, 10.6.0's kernel panicked loading a kext from
+# kextd's mkext (OSKext::setVMProtections, a page fault in
+# nextsegfromheader) in 2 builds of 3 (MEASURED 2026-10-17). 2013-004's
+# install, which used to follow the combo on the same boot, rebuilt the
+# caches after the combo's actions, so its shutdown found them current: 0
+# of 3. So the caches are rebuilt here when they need it, and left alone
+# when they do not, and the log says which. Returns 0.
+kext_caches_current() {
+    if kext_caches_are_current; then
+        say "kext caches: up to date ($_kcc_names each at $KEXT_DIR's mtime" \
+            "$_kcc_dir + 1, kextd's test); nothing to rebuild before the restart"
+        return 0
+    fi
+    say "kext caches: not current by kextd's test, which wants each at" \
+        "$KEXT_DIR's mtime ${_kcc_dir:-unreadable} + 1: $_kcc_stale; changed after" \
+        "the update's own kextcache run; rebuilding them before the restart, so" \
+        "kextd has nothing to rescan under the kernel this boot started"
+    run_with_timeout 900 kextcache -system-caches
+    run_with_timeout 900 kextcache -update-volume /
+    if kext_caches_are_current; then
+        say "kext caches: now up to date ($_kcc_names each at $KEXT_DIR's mtime $_kcc_dir + 1)"
+    else
+        say "kext caches: STILL not current by kextd's test, which wants each at" \
+            "$KEXT_DIR's mtime ${_kcc_dir:-unreadable} + 1: $_kcc_stale; restarting anyway"
+    fi
+    return 0
+}
+
+# kext_caches_are_current: kextd's own test of each cache its rescan
+# decision reads, each current only when its mtime is exactly $KEXT_DIR's
+# + 1 s; not merely newer. One stale is enough for a rescan.
+#
+# Which caches: kextd rescans ("Rescanning kernel extensions", and sends the
+# personalities to the running kernel) on SIGHUP, which check_rebuild
+# (kextd_watchvol.c) sends it for / when plistCachesNeedRebuild() says so;
+# that is directoryPlistCachesNeedRebuild() (bootcaches.c), which reads, in
+# $KEXT_CACHE_DIR, KextIdentifiers.plist.gz, IOKitPersonalities_<arch>
+# .ioplist.gz and KextPropertyValues_OSBundleHelper_<arch>.plist.gz, <arch>
+# the running kernel's (__OSKextCreateCacheFileURL, OSKext.c). The same in
+# kext_tools-177 and -180.2.1 and IOKitUser-502 and -514.16.50, 10.6.0's and
+# 10.6.8's, so it does not matter which kextd runs at the restart.
+# kextcache -system-caches writes all three (updateDirectoryCaches). The
+# mkext is judged apart, and a stale one is rebuilt with no rescan.
+#
+# The rule: OSKext.c writes each cache with utimes() to the folder's
+# st_mtime + 1 (_OSKextWriteCache) and reads it only if
+# `cacheFileStat.st_mtime == folderAbsPathStat.st_mtime + 1`, otherwise
+# "Cache file %s is out of date; not using." (__OSKextCacheNeedsUpdate). A
+# cache written in the same second the folder changed, or across a backward
+# clock step, is newer than the folder and still one kextd rescans.
+#
+# <arch> is uname -m, the running kernel's, as kextd's own (the registry's
+# OSKernelCPUType) is: x86_64 under 10.6's K64, i386 under K32 (REASONED,
+# not read from source). 10.6's BSD stat; seconds, as kextd compares them.
+# Leaves, for the log, the folder's mtime in _kcc_dir (empty if unreadable),
+# the three names in _kcc_names and the stale ones, each with its mtime or
+# "missing", in _kcc_stale. Returns 0 when all are current.
+kext_caches_are_current() {
+    _kcc_arch=$(uname -m 2>/dev/null)
+    _kcc_dir=$(stat -f %m "$KEXT_DIR" 2>/dev/null)
+    case $_kcc_dir in '' | *[!0-9]*) _kcc_dir= ;; esac
+    _kcc_names=
+    _kcc_stale=
+    for _kcc_f in KextIdentifiers.plist.gz \
+        "IOKitPersonalities_$_kcc_arch.ioplist.gz" \
+        "KextPropertyValues_OSBundleHelper_$_kcc_arch.plist.gz"; do
+        _kcc_names=${_kcc_names:+$_kcc_names, }$_kcc_f
+        _kcc_m=$(stat -f %m "$KEXT_CACHE_DIR/$_kcc_f" 2>/dev/null)
+        case $_kcc_m in '' | *[!0-9]*) _kcc_m= ;; esac
+        if [ -n "$_kcc_m" ] && [ -n "$_kcc_dir" ] &&
+            [ "$_kcc_m" -eq $((_kcc_dir + 1)) ]; then
+            continue
+        fi
+        _kcc_m=${_kcc_m:+mtime $_kcc_m}
+        _kcc_stale="${_kcc_stale:+$_kcc_stale, }$_kcc_f (${_kcc_m:-missing})"
+    done
+    [ -z "$_kcc_stale" ]
+}
+
+# restart_into_updates: the end of a 10.9 first boot whose update installed a
+# kernel or asked for a restart (install_updates sets GUEST_MACOSX_FB_RESTART_WHY):
+# its prelinked kernel made current without kextd (kernelcache_current), as
+# 10.6's kext caches are before its restarts, so kextd finds nothing to
+# rebuild on the next boot, and
+# the restart through the shutdown helper, which every 10.9 shutdown takes
+# (docs/decisions/0019), into the updated system. Remote Login is on from
+# that boot (remote_login_on). Does not return then. Elsewhere it does
+# nothing (docs/decisions/0036).
+restart_into_updates() {
+    [ -n "$GUEST_MACOSX_FB_RESTART_WHY" ] || return 0
+    kernelcache_current
+    say "restarting into the updated system: $GUEST_MACOSX_FB_RESTART_WHY"
+    say "done"
+    cp "$LOG" "$LOG_COPY" 2>/dev/null
+    "$SHUTDOWN_HELPER" -r || {
+        say "restart: $SHUTDOWN_HELPER -r failed (rc=$?); nothing else restarts" \
+            "this guest, so it stays on this boot, with no SSH, until the build" \
+            "times out"
+        cp "$LOG" "$LOG_COPY" 2>/dev/null
+    }
+    exit 0
+}
+
+# kernelcache_current: before 10.9's restart into its updates, the prelinked
+# kernel brought up to date with its kexts where kextd would not judge it
+# stale. kextd launches `kextcache -u /` when it finds it stale, at its
+# reboot lock (a shutdown) and 300 s after it starts, and a build's shutdown
+# waits for that run (docs/decisions/0036). The update's installer rebuilds
+# it (`kextcache -update-volume / -Installer`) after its payload lands; this
+# is for whatever changed a folder after that. kextcache makes it current,
+# without kextd, from the folders' and the kernel's mtimes, as kextd tests
+# it. Returns 0.
+kernelcache_current() {
+    if kernelcache_is_current; then
+        say "prelinked kernel: up to date ($KERNELCACHE at $_kci_valid, the newest of its" \
+            "extensions folders' and its kernel's mtimes + 1, kextd's test); nothing to" \
+            "rebuild before the restart"
+        return 0
+    fi
+    say "prelinked kernel: not current by kextd's test, which wants $KERNELCACHE at" \
+        "${_kci_valid:-unreadable} (it is ${_kci_cache:-missing}); rebuilding it before the" \
+        "restart, so kextd finds nothing to rebuild on the next boot"
+    run_with_timeout 900 kextcache -update-volume /
+    if kernelcache_is_current; then
+        say "prelinked kernel: now up to date ($KERNELCACHE at $_kci_valid)"
+    else
+        say "prelinked kernel: STILL not current by kextd's test, which wants $KERNELCACHE at" \
+            "${_kci_valid:-unreadable} (it is ${_kci_cache:-missing}); restarting anyway"
+    fi
+    return 0
+}
+
+# kernelcache_is_current: kextd's own test of 10.9's prelinked kernel
+# (check_kext_boot_cache_file, kext_tools-326's bootcaches.c), which decides
+# whether kextd launches `kextcache -u /`: current only when its mtime is
+# exactly the newest of its extensions folders' mtimes + 1 s, or its
+# kernel's + 1 s where the kernel is newer still; a missing one is stale.
+# kextcache stamps it so when it writes it (getFilePathModTimePlusOne,
+# kextcache_main.c). Leaves the wanted mtime in _kci_valid (empty if no
+# folder could be read) and the cache's in _kci_cache (empty if missing).
+# Returns 0 when it is current.
+kernelcache_is_current() {
+    _kci_valid=
+    for _kci_d in $KEXT_DIRS; do
+        _kci_m=$(stat -f %m "$_kci_d" 2>/dev/null)
+        case $_kci_m in '' | *[!0-9]*) continue ;; esac
+        if [ -z "$_kci_valid" ] || [ $((_kci_m + 1)) -gt "$_kci_valid" ]; then
+            _kci_valid=$((_kci_m + 1))
+        fi
+    done
+    _kci_m=$(stat -f %m "$KERNEL_FILE" 2>/dev/null)
+    case $_kci_m in '' | *[!0-9]*) _kci_m= ;; esac
+    if [ -n "$_kci_m" ] && [ -n "$_kci_valid" ] && [ "$_kci_m" -gt "$_kci_valid" ]; then
+        _kci_valid=$((_kci_m + 1))
+    fi
+    _kci_cache=$(stat -f %m "$KERNELCACHE" 2>/dev/null)
+    case $_kci_cache in '' | *[!0-9]*) _kci_cache= ;; esac
+    [ -n "$_kci_valid" ] && [ -n "$_kci_cache" ] && [ "$_kci_cache" -eq "$_kci_valid" ]
+}
+
+# snow_leopard_updates: installs the updates in $UPDATES_LEFT (from
+# GUEST_MACOSX_FB_UPDATE_PKGS on the first boot) in order, and restarts before the
+# next one when the last one needs it. Returns when none is left, or when
+# it cannot go on.
+#
+# The state across the restarts is in two files. $UPDATES_LEFT existing,
+# empty or not, is a boot between updates: the main line resumes here, and
+# only the first boot, with no list, writes one (whole, or not at all).
+# $UPDATES_CURRENT names the update being installed: written before it is
+# taken off the list, removed only once its installer succeeds. A failed or
+# timed-out installer leaves it and logs STOPPED, which verification rejects.
+# So a guest that
+# goes down in the middle of an update (a power loss, a panic, a reset)
+# finds it on its next boot, logs it and installs no more, and verify.sh
+# fails the build on the missing receipt, rather than this installing the
+# next update onto a base it was not made for, or the whole first boot and
+# every update running again.
+snow_leopard_updates() {
+    if [ -e "$UPDATES_CURRENT" ]; then
+        say "updates: STOPPED: $(cat "$UPDATES_CURRENT" 2>&1) was being installed when" \
+            "this guest last went down, and never finished; installing none of the rest" \
+            "($(tr '\n' ' ' < "$UPDATES_LEFT" 2>/dev/null | sed 's/ $//')), so verify.sh" \
+            "fails the build on its receipt rather than the next update going onto the" \
+            "wrong base"
+        snow_leopard_updates_after
+        return 0
+    fi
+    if [ ! -e "$UPDATES_LEFT" ]; then
+        say "updates: $GUEST_MACOSX_FB_UPDATES, each on a boot of its own where it needs one"
+        if ! { for _u in $GUEST_MACOSX_FB_UPDATE_PKGS; do
+            printf '%s\n' "$_u"
+        done > "$UPDATES_LEFT.new" && mv -f "$UPDATES_LEFT.new" "$UPDATES_LEFT"; } 2>/dev/null; then
+            say "updates: cannot write $UPDATES_LEFT; installing none of them"
+            snow_leopard_updates_after
+            return 0
+        fi
+    fi
+    say "updates: build before: $(sw_vers -buildVersion 2>&1)"
+    while :; do
+        _u=$(sed -n 1p "$UPDATES_LEFT")
+        [ -n "$_u" ] || break
+        # A list that cannot be rewritten (a full or read-only disk) would
+        # hand this loop the same update forever.
+        if ! { printf '%s\n' "$_u" > "$UPDATES_CURRENT" &&
+            sed 1d "$UPDATES_LEFT" > "$UPDATES_LEFT.new" &&
+            mv -f "$UPDATES_LEFT.new" "$UPDATES_LEFT"; } 2>/dev/null; then
+            say "updates: cannot update $UPDATES_LEFT or $UPDATES_CURRENT; stopping" \
+                "the updates, $_u and the rest not installed"
+            break
+        fi
+        if [ ! -f "$CONF_DIR/updates/$_u" ]; then
+            say "updates: STOPPED: NOT ON THE TARGET VOLUME: $_u; installing none of the rest"
+            break
+        fi
+        _held=
+        hold_kextd_for "$CONF_DIR/updates/$_u" && _held=1
+        # 3600s: see install_updates.
+        if run_with_timeout --checked 3600 installer -verbose -pkg "$CONF_DIR/updates/$_u" -target /; then
+            rm -f "$UPDATES_CURRENT"
+        else
+            _u_rc=$?
+            say "updates: STOPPED: $_u installer failed (rc=$_u_rc); installing none of the rest"
+            break
+        fi
+        [ -s "$UPDATES_LEFT" ] || break
+        _why=
+        if [ -e "$DEFERRED_INSTALL" ]; then
+            _why="it left a deferred install ($DEFERRED_INSTALL), which only a restart applies"
+        elif update_wants_restart "$CONF_DIR/updates/$_u"; then
+            _why="$_u asks for a restart"
+        elif [ -n "$_held" ]; then
+            _why="$_u installed a kernel, and kextd stays off until that kernel runs"
+        fi
+        if [ -n "$_why" ]; then
+            say "updates: restarting before the next update ($(tr '\n' ' ' < "$UPDATES_LEFT" | sed 's/ $//')): $_why"
+            set_bootcache_aside
+            kext_caches_current
+            cp "$LOG" "$LOG_COPY" 2>/dev/null
+            shutdown -r now || {
+                say "restart: shutdown -r now failed (rc=$?); nothing else restarts" \
+                    "this guest, so it stays on this boot, with no SSH, until the build" \
+                    "times out"
+                cp "$LOG" "$LOG_COPY" 2>/dev/null
+            }
+            exit 0
+        fi
+        say "updates: $_u needs no restart; installing the next one on this boot"
+    done
+    snow_leopard_updates_after
+}
+
+# snow_leopard_updates_after: what the last of 10.6's updates leaves in the
+# log, and the packages' space back. The list stays until
+# finish_snow_leopard's marker, so a guest that goes down before that
+# resumes into the finish, not into the first boot again.
+snow_leopard_updates_after() {
+    say "updates: build after: $(sw_vers -buildVersion 2>&1)"
+    say "updates: receipts: $(pkgutil --pkgs 2>/dev/null | grep -i -E 'update|safari|itunes' | tr '\n' ' ')"
+    rm -rf "$CONF_DIR/updates"
+}
+
+# finish_snow_leopard: the end of a 10.6 first boot with updates, on the boot
+# that installed the last of them: Remote Login on from the next boot (not
+# before, so no SSH session meets a restart between the updates), the marker,
+# the LaunchDaemon gone, and the last update's restart, after which sshd
+# starts on a fully updated system.
+finish_snow_leopard() {
+    run_with_timeout 60 defaults write "$SSHD_OVERRIDES" \
+        com.openssh.sshd -dict Disabled -bool false
+    say "remote login: on from the next boot"
+    cp "$LOG" "$LOG_COPY" 2>/dev/null
+    mkdir -p "$CONF_DIR" 2>/dev/null
+    # The updates' state goes only once the marker is there: until then it
+    # is what sends a boot back here rather than into the first boot again.
+    if date -u '+%Y-%m-%dT%H:%M:%SZ' > "$DONE_MARKER"; then
+        rm -f "$UPDATES_LEFT" "$UPDATES_CURRENT"
+    else
+        say "cannot write the marker $DONE_MARKER; keeping the updates' state"
+    fi
+    say "removing the LaunchDaemon so this never runs again"
+    rm -f "$DAEMON"
+    say "LaunchDaemon gone: $([ -e "$DAEMON" ] && echo NO || echo yes)"
+    set_bootcache_aside
+    kext_caches_current
+    say "restarting into the updated system"
+    say "done"
+    cp "$LOG" "$LOG_COPY" 2>/dev/null
+    shutdown -r now || {
+        say "restart: shutdown -r now failed (rc=$?); nothing else restarts" \
+            "this guest, so it stays on this boot, with no SSH, until the build" \
+            "times out"
+        cp "$LOG" "$LOG_COPY" 2>/dev/null
+    }
+    exit 0
+}
+
+# --- BootCache, set aside where it deadlocks (docs/decisions/0025) ----------
+#
+# At every boot launchctl runs /usr/sbin/BootCacheControl start, which has
+# BootCache.kext hook the root device's strategy routine, and stop 60 s
+# after it began (launchd's launchctl.c, do_BootCache_magic). Between the
+# end of its read-ahead and that stop, 10.6.8's BootCache 31.1 checks its
+# hit rate on every read through the hook, and once it falls under 50 %
+# after 500 lookups it shuts the cache down right there, on the reading
+# thread: it closes /var/db/BootCache.data, and HFS's inactive call on that
+# vnode wants a journal transaction. When the read is one of HFS's
+# B-trees' (the catalog's for a readdir or a lookup the name cache missed,
+# the attributes file's for an extended attribute a stat looks at), its
+# thread holds that B-tree's lock, shared, while it waits. A thread
+# already in a transaction that wants the lock exclusively (a create, a
+# remove) holds the journal, and neither moves; or the reader takes the
+# journal first and then wants the catalog lock it holds shared. The stop's
+# own teardown runs on BootCacheControl's thread, which holds no such lock.
+# MEASURED 2026-10-18 in seven hung guests' memory, with the kernel's
+# symbols and BootCache's own code: the thread in BootCache's hook
+# (BootCache+0x26f8, after "hit rate below threshold"; +0x9f7, vnode_close
+# of BootCache.data) waiting for the journal, whose owner, in a create or
+# a remove, waited for the catalog's or the attributes file's lock (5); or
+# owning the journal and waiting for the catalog lock it held (2); the
+# kext's counters frozen at 49.99 % in each dump kept; 6 of the 7 hung at
+# 40-44 s, before the stop. Every lookup after that queues on the lock and
+# every write on the journal: no new sshd, no sync, and the log's last
+# minutes never reach the disk (F22).
+#
+# The hook goes in only on BootCacheControl start, and launchctl runs
+# BootCacheControl only when it is at that path, so moving it aside leaves
+# the kext loaded and never started: no hook, no check, no shutdown in it.
+# What it costs is the boot cache's read-ahead.
+#
+# Only the BootCache measured to deadlock is set aside: another version
+# (10.6.0's 31, which the build boots before the updates) is left as it
+# is, and the log says which it found. 10.6.8's combo puts 31.1 and its own
+# BootCacheControl on the disk, so 10.6 with updates runs this before each
+# restart between them (snow_leopard_updates), and again after the last one
+# (finish_snow_leopard).
+set_bootcache_aside() {
+    _bcv=$(grep -A1 '<key>CFBundleVersion</key>' "$BOOTCACHE_KEXT_PLIST" 2>/dev/null |
+        sed -n 's/.*<string>\(.*\)<\/string>.*/\1/p')
+    if [ ! -e "$BOOTCACHE_CONTROL" ]; then
+        if [ -e "$BOOTCACHE_CONTROL-disabled" ]; then
+            say "BootCache: $BOOTCACHE_CONTROL already set aside ($BOOTCACHE_CONTROL-disabled);" \
+                "launchd starts no boot cache"
+        else
+            say "BootCache: no $BOOTCACHE_CONTROL, so launchd starts no boot cache; nothing to set aside"
+        fi
+        return 0
+    fi
+    case " $BOOTCACHE_DEADLOCKS " in
+        *" ${_bcv:-unreadable} "*) ;;
+        *)
+            say "BootCache: BootCache.kext is ${_bcv:-unreadable}, not one measured to" \
+                "deadlock ($BOOTCACHE_DEADLOCKS); BootCacheControl left in place"
+            return 0
+            ;;
+    esac
+    if mv -f "$BOOTCACHE_CONTROL" "$BOOTCACHE_CONTROL-disabled"; then
+        say "BootCache: BootCache.kext $_bcv deadlocks HFS when it shuts its cache down;" \
+            "BootCacheControl set aside to $BOOTCACHE_CONTROL-disabled, so launchd starts" \
+            "no boot cache"
+    else
+        say "BootCache: COULD NOT set $BOOTCACHE_CONTROL aside; BootCache $_bcv starts at" \
+            "the next boot and can deadlock in its first minute"
+    fi
+}
+
+# --- 10.6: launchctl waits for IPv6 before it binds sockets (docs/decisions/0029)
+#
+# 10.6's launchctl, bootstrapping the system, creates the listening sockets
+# of the jobs it loads itself, in two passes: the first pass's jobs, then,
+# once those are loaded (mDNSResponder among them), the jobs whose sockets
+# Bonjour advertises, ssh's (Remote Login) among them. For each socket it
+# binds each address getaddrinfo gives, [::] before 0.0.0.0 for ssh, and at
+# the first that fails it prints "bind(): Can't assign requested address"
+# to the console and returns: the job loads with no socket at all, IPv4
+# included (launchd-328's launchctl.c, sock_dict_edit_entry). The kernel
+# refuses every IPv6 bind, even to [::], while it has no IPv6 address
+# anywhere (xnu's in6_pcbbind: "if (!in6_ifaddrs) return EADDRNOTAVAIL"),
+# and its first one, lo0's ::1, it adds from a timer of its own, armed for
+# a second after the network stack starts (ip6_init2), not when launchctl
+# asks: launchctl's own attempt at ::1, earlier, fails on every boot ("Bug:
+# launchctl.c:3557 ... SIOCAIFADDR_IN6", ENXIO). A guest gets to the ssh
+# bind about a second into the boot, so it is a race, and when the bind
+# wins, sshd has no listener for the whole boot: a TCP reset on port 22, the
+# login window drawn, nothing logged (F18; MEASURED 2026-10-19: the job's
+# Listeners empty, the console's second bind() error, and with every IPv6
+# address removed `launchctl load ssh.plist` does the same on demand).
+#
+# launchctl runs /etc/rc.server, when there is one, after fsck and before
+# it loads any job, and waits for it (fwexec: no time limit); a client 10.6
+# has none. So the first boot writes one that waits there until the guest
+# has an IPv6 address, bound by the clock: it gives up once 10 s have passed
+# (whole seconds, so 9 to 10 s), so the longest it can hold a boot is 10 s
+# and the one check then running. On a working 10.6 that never happens: the
+# kernel adds lo0's ::1 itself, with nothing a user can turn off (ip6_init2
+# -> in6_ifattach -> in6_ifattach_loopback), about a second in (MEASURED:
+# 5-11 checks 50 ms apart at every boot here, never the limit). It logs at
+# every boot whether it had to wait, keeping the last 100 lines; a boot
+# whose address came in time waits for nothing. The script is installed only when it was written
+# whole. 10.6 only: from 10.8 on the kernel gives lo0 its IPv6
+# addresses before it starts launchd (net_init_add, not a timer), so 10.9
+# has no race to lose (REASONED from xnu's source; no 10.9 boot was seen to
+# lose a listener). An rc.server that is not ours (Mac OS X Server's) is left
+# alone, and the log says so.
+set_ipv6_wait() {
+    if [ -e "$RC_SERVER" ] && ! grep -qxF "$RC_SERVER_OURS" "$RC_SERVER" 2>/dev/null; then
+        say "rc.server: $RC_SERVER is there and not ours; left alone, so launchctl can still" \
+            "bind sockets before IPv6 is up and lose ssh's listener for a boot (F18)"
+        return 0
+    fi
+    _was=new
+    [ -e "$RC_SERVER" ] && _was=replaced
+    _tmp=$RC_SERVER.tmp
+    _why=
+    # Its second line is $RC_SERVER_OURS, word for word (a test holds them
+    # equal), and its last is "exit 0": a copy without both is incomplete.
+    if ! cat 2>/dev/null > "$_tmp" <<'GUEST_MACOSX_RC_SERVER_EOF'
+#!/bin/sh
+# guest-macosx: wait for IPv6 before launchctl binds sockets (docs/decisions/0029)
+# Written by guest-macosx-firstboot (set_ipv6_wait). launchctl runs this at
+# every boot, after fsck and before it loads a single job, and waits for it.
+# Until the kernel has an IPv6 address it refuses every IPv6 bind, and
+# launchctl, at the first bind that fails, drops all of a job's sockets:
+# ssh's, IPv4 too, for the whole boot (F18). The kernel adds lo0's ::1 from a
+# timer of its own about a second into the boot, so this checks for an
+# address every 50 ms, and says at every boot whether it had to wait. It gives
+# up once the clock's whole seconds say 10 have passed (9 to 10 s of real
+# time), so the longest it can hold the boot is 10 s and the one check then
+# running; a clock it cannot read ends the wait at once. The log keeps its
+# last 100 lines.
+PATH=/usr/bin:/bin:/usr/sbin:/sbin
+export PATH
+LOG=/private/var/log/guest-macosx-rc.server.log
+LIMIT=10
+msg=
+n=0
+start=$(date +%s 2>/dev/null)
+case $start in
+    '' | *[!0-9]*) msg="cannot read the clock (date +%s); not waiting, and launchctl's IPv6 binds can fail this boot" ;;
+esac
+while [ -z "$msg" ] && ! ifconfig -a 2>/dev/null | grep -q 'inet6 '; do
+    now=$(date +%s 2>/dev/null)
+    case $now in
+        '' | *[!0-9]*)
+            msg="cannot read the clock (date +%s); not waiting, and launchctl's IPv6 binds can fail this boot"
+            break
+            ;;
+    esac
+    if [ $((now - start)) -ge "$LIMIT" ]; then
+        msg="still no IPv6 address after $n checks in $LIMIT s; going on, and launchctl's IPv6 binds can fail this boot"
+        break
+    fi
+    sleep 0.05
+    n=$((n + 1))
+done
+if [ -z "$msg" ] && [ "$n" -eq 0 ]; then
+    msg="IPv6 address already there; no wait"
+elif [ -z "$msg" ]; then
+    msg="waited $n checks 50 ms apart for the first IPv6 address"
+fi
+echo "$(date -u '+%Y-%m-%dT%H:%M:%SZ') rc.server: $msg" >> "$LOG"
+if [ "$(wc -l < "$LOG")" -gt 100 ]; then
+    tail -n 100 "$LOG" > "$LOG.tmp" && mv -f "$LOG.tmp" "$LOG"
+fi
+exit 0
+GUEST_MACOSX_RC_SERVER_EOF
+    then
+        _why="the write failed"
+    elif [ "$(sed -n 2p "$_tmp")" != "$RC_SERVER_OURS" ] || [ "$(tail -n 1 "$_tmp")" != "exit 0" ]; then
+        _why="it came out incomplete"
+    elif ! chmod 755 "$_tmp" || ! mv -f "$_tmp" "$RC_SERVER"; then
+        _why="it could not be put in place"
+    fi
+    if [ -z "$_why" ]; then
+        chown root:wheel "$RC_SERVER" 2>/dev/null
+        say "rc.server: $_was $RC_SERVER: at every boot launchctl waits there for the kernel's" \
+            "first IPv6 address before it binds sockets, so ssh's cannot lose its listener (F18)"
+    else
+        rm -f "$_tmp"
+        say "rc.server: COULD NOT write $RC_SERVER ($_why); launchctl can bind sockets before IPv6" \
+            "is up and lose ssh's listener for a boot (F18)"
+    fi
 }
 
 if [ -e "$DONE_MARKER" ]; then
@@ -206,6 +1044,16 @@ fi
 mkdir -p "$(dirname "$LOG")" 2>/dev/null
 say "starting on $(sw_vers -productVersion 2>/dev/null) build $(sw_vers -buildVersion 2>/dev/null)"
 
+# A boot between 10.6's updates (snow_leopard_updates): the account and the
+# rest were done on the first; only the updates are left, or only their
+# finish. The list's existence is the state, not its size: the last
+# update's boot empties it before its finish.
+if [ -e "$UPDATES_LEFT" ]; then
+    say "resuming the updates after a restart; left: $(tr '\n' ' ' < "$UPDATES_LEFT" | sed 's/ $//')"
+    snow_leopard_updates
+    finish_snow_leopard
+fi
+
 # --- Setup Assistant -------------------------------------------------------
 #
 # ./postinstall already created this at install time, which is what actually
@@ -215,6 +1063,39 @@ say "starting on $(sw_vers -productVersion 2>/dev/null) build $(sw_vers -buildVe
 touch /private/var/db/.AppleSetupDone 2>/dev/null
 touch /private/var/db/.AppleDiagnosticsSetupDone 2>/dev/null
 say ".AppleSetupDone present: $([ -e /private/var/db/.AppleSetupDone ] && echo yes || echo no)"
+
+# --- Keyboard Setup Assistant, told QEMU's keyboard (docs/decisions/0035) ---
+#
+# QEMU's usb-kbd is not a keyboard Mac OS X knows, so Keyboard Setup
+# Assistant opens to identify it: on 10.6.8 over the login window, at every
+# boot; on 10.9.5 in every desktop session, not at the login window. It
+# goes only once it is quit, and quitting it writes one entry into
+# /Library/Preferences/com.apple.keyboardtype.plist's keyboardtype
+# dictionary: "1-1575-0" = 40 (MEASURED 2026-10-27 on both, with the
+# keyboard on EHCI; with that entry written by defaults, the assistant did
+# not open on 2 boots of each). So the first boot writes that entry, and
+# only it, when the dictionary has no entry for QEMU's keyboard; one that is
+# there, whatever its value, is left as it is. The key is the device's own
+# identity, so any other keyboard is still asked about. The log says which.
+seed_keyboard_type() {
+    _kt_have=$("$DEFAULTS" read "$KEYBOARDTYPE_DOMAIN" keyboardtype 2>/dev/null |
+        sed -n "s/^[[:space:]]*\"\{0,1\}$QEMU_KEYBOARD_TYPE_KEY\"\{0,1\}[[:space:]]*=[[:space:]]*\([^;]*\);.*/\1/p")
+    if [ -n "$_kt_have" ]; then
+        say "keyboard type: $KEYBOARDTYPE_DOMAIN already has QEMU's keyboard" \
+            "($QEMU_KEYBOARD_TYPE_KEY = $_kt_have); left as it is"
+        return 0
+    fi
+    if "$DEFAULTS" write "$KEYBOARDTYPE_DOMAIN" keyboardtype -dict-add \
+        "$QEMU_KEYBOARD_TYPE_KEY" -int "$QEMU_KEYBOARD_TYPE" >/dev/null 2>&1; then
+        say "keyboard type: $KEYBOARDTYPE_DOMAIN had no entry for QEMU's keyboard;" \
+            "$QEMU_KEYBOARD_TYPE_KEY = $QEMU_KEYBOARD_TYPE (ANSI) added, so Keyboard Setup" \
+            "Assistant does not open for it"
+    else
+        say "keyboard type: COULD NOT add $QEMU_KEYBOARD_TYPE_KEY to $KEYBOARDTYPE_DOMAIN;" \
+            "Keyboard Setup Assistant opens for QEMU's keyboard until it is quit once"
+    fi
+}
+seed_keyboard_type
 
 # --- wait for Open Directory ----------------------------------------------
 #
@@ -240,50 +1121,84 @@ say "opendirectoryd answered after ${waited}s"
 # Idempotent on purpose: the payload is also tested against a clone that
 # already has this account, and an account half-created by an interrupted
 # run must be repairable by running this again.
-if dscl . -read "/Users/$MQG_FB_USER" >/dev/null 2>&1; then
-    say "account $MQG_FB_USER already exists; updating it rather than failing"
+if dscl . -read "/Users/$GUEST_MACOSX_FB_USER" >/dev/null 2>&1; then
+    say "account $GUEST_MACOSX_FB_USER already exists; updating it rather than failing"
 else
-    say "creating account $MQG_FB_USER"
-    run_with_timeout 60 dscl . -create "/Users/$MQG_FB_USER"
+    say "creating account $GUEST_MACOSX_FB_USER"
+    run_with_timeout 60 dscl . -create "/Users/$GUEST_MACOSX_FB_USER"
 fi
 
-run_with_timeout 60 dscl . -create "/Users/$MQG_FB_USER" UserShell "$MQG_FB_SHELL"
-run_with_timeout 60 dscl . -create "/Users/$MQG_FB_USER" RealName "$MQG_FB_REALNAME"
-run_with_timeout 60 dscl . -create "/Users/$MQG_FB_USER" UniqueID "$MQG_FB_UID"
-run_with_timeout 60 dscl . -create "/Users/$MQG_FB_USER" PrimaryGroupID "$MQG_FB_GID"
-run_with_timeout 60 dscl . -create "/Users/$MQG_FB_USER" \
-    NFSHomeDirectory "/Users/$MQG_FB_USER"
-run_with_timeout 60 dscl . -append /Groups/admin GroupMembership "$MQG_FB_USER"
+run_with_timeout 60 dscl . -create "/Users/$GUEST_MACOSX_FB_USER" UserShell "$GUEST_MACOSX_FB_SHELL"
+run_with_timeout 60 dscl . -create "/Users/$GUEST_MACOSX_FB_USER" RealName "$GUEST_MACOSX_FB_REALNAME"
+run_with_timeout 60 dscl . -create "/Users/$GUEST_MACOSX_FB_USER" UniqueID "$GUEST_MACOSX_FB_UID"
+run_with_timeout 60 dscl . -create "/Users/$GUEST_MACOSX_FB_USER" PrimaryGroupID "$GUEST_MACOSX_FB_GID"
+run_with_timeout 60 dscl . -create "/Users/$GUEST_MACOSX_FB_USER" \
+    NFSHomeDirectory "/Users/$GUEST_MACOSX_FB_USER"
+run_with_timeout 60 dscl . -append /Groups/admin GroupMembership "$GUEST_MACOSX_FB_USER"
 run_with_timeout 60 dscl . -append /Groups/admin GroupMembers \
-    "$(dscl . -read "/Users/$MQG_FB_USER" GeneratedUID 2>/dev/null | awk 'NR==1{print $2}')"
+    "$(dscl . -read "/Users/$GUEST_MACOSX_FB_USER" GeneratedUID 2>/dev/null | awk 'NR==1{print $2}')"
 
 # The secret, if there is one, arrives in the conf file the build writes --
-# never in this script, and never in the repository. An image with no
-# secret in it is the default: MQG_FB_PASSWORD unset means the account has
-# none, which is right for a local image that is never published and is
-# reached by key.
-if [ -n "${MQG_FB_PASSWORD:-}" ]; then
-    run_with_timeout 60 dscl . -passwd "/Users/$MQG_FB_USER" "$MQG_FB_PASSWORD"
-else
-    say "no account secret configured; the account is reached by SSH key"
-fi
+# never in this script, and never in the repository. The default build sets
+# none (the owner's decision, 2026-10-15): GUEST_MACOSX_FB_PASSWORD unset means no
+# password anyone knows, which is right for a local image that is never
+# published and is reached by key. It does not mean an empty one. 10.9's
+# `dscl . -create` gives a new account a random password of its own
+# (MEASURED 2026-10-15: a SALTED-SHA512-PBKDF2 hash that neither "" nor the
+# account name matches), so on 10.9 the account cannot log in at the
+# console. 10.6's gives it no AuthenticationAuthority at all; that 10.6's
+# console then refuses it too is REASONED, not measured.
+#
+# A password the build did set is checked with `dscl . -authonly` right
+# after it is set: auto-login (below) is turned on only for one that
+# passed. It goes to dscl through run_secret_with_timeout, so no log shows
+# it, and it leaves firstboot.conf once auto-login is done
+# (forget_account_secret).
+SECRET_LIMIT=60
 
-say "group $MQG_FB_ADMIN_GID (admin) now: $(dscl . -read /Groups/admin GroupMembership 2>/dev/null)"
-say "group $MQG_FB_ADMIN_GID gid check: $(dscl . -read /Groups/admin PrimaryGroupID 2>/dev/null)"
+# set_account_secret: sets the configured password, if any, and SECRET_STATE
+# to verified, rejected or none.
+set_account_secret() {
+    SECRET_STATE=none
+    if [ -z "${GUEST_MACOSX_FB_PASSWORD:-}" ]; then
+        if [ "${GUEST_MACOSX_FB_SECRET_FORGOTTEN:-}" = 1 ]; then
+            say "no account secret: an earlier run used the configured one and" \
+                "removed it from $CONF_DIR/firstboot.conf; the account keeps the" \
+                "password that run set, and auto-login is treated as for none"
+        else
+            say "no account secret configured; the account is reached by SSH key"
+        fi
+        return 0
+    fi
+    run_secret_with_timeout "$SECRET_LIMIT" "$GUEST_MACOSX_FB_PASSWORD" \
+        dscl . -passwd "/Users/$GUEST_MACOSX_FB_USER" "$GUEST_MACOSX_FB_PASSWORD"
+    if run_secret_with_timeout "$SECRET_LIMIT" "$GUEST_MACOSX_FB_PASSWORD" \
+        dscl . -authonly "$GUEST_MACOSX_FB_USER" "$GUEST_MACOSX_FB_PASSWORD"; then
+        SECRET_STATE=verified
+    else
+        SECRET_STATE=rejected
+    fi
+    say "account secret configured; dscl . -authonly: $SECRET_STATE"
+}
+
+set_account_secret
+
+say "group $GUEST_MACOSX_FB_ADMIN_GID (admin) now: $(dscl . -read /Groups/admin GroupMembership 2>/dev/null)"
+say "group $GUEST_MACOSX_FB_ADMIN_GID gid check: $(dscl . -read /Groups/admin PrimaryGroupID 2>/dev/null)"
 
 # --- home directory --------------------------------------------------------
-if [ -d "/Users/$MQG_FB_USER" ]; then
-    say "/Users/$MQG_FB_USER already exists"
+if [ -d "/Users/$GUEST_MACOSX_FB_USER" ]; then
+    say "/Users/$GUEST_MACOSX_FB_USER already exists"
 else
-    run_with_timeout 120 createhomedir -c -u "$MQG_FB_USER"
+    run_with_timeout 120 createhomedir -c -u "$GUEST_MACOSX_FB_USER"
 fi
-if [ ! -d "/Users/$MQG_FB_USER" ]; then
+if [ ! -d "/Users/$GUEST_MACOSX_FB_USER" ]; then
     say "createhomedir produced nothing; falling back to the user template"
-    mkdir -p "/Users/$MQG_FB_USER"
-    ditto "/System/Library/User Template/English.lproj" "/Users/$MQG_FB_USER" \
+    mkdir -p "/Users/$GUEST_MACOSX_FB_USER"
+    ditto "/System/Library/User Template/English.lproj" "/Users/$GUEST_MACOSX_FB_USER" \
         >> "$LOG" 2>&1
 fi
-chown -R "$MQG_FB_UID:$MQG_FB_GID" "/Users/$MQG_FB_USER" 2>/dev/null
+chown -R "$GUEST_MACOSX_FB_UID:$GUEST_MACOSX_FB_GID" "/Users/$GUEST_MACOSX_FB_USER" 2>/dev/null
 
 # --- the SSH key -----------------------------------------------------------
 #
@@ -291,11 +1206,11 @@ chown -R "$MQG_FB_UID:$MQG_FB_GID" "/Users/$MQG_FB_USER" 2>/dev/null
 # Vagrant's insecure key by default), so it travels in the package rather
 # than in the repository.
 if [ -s "$CONF_DIR/authorized_keys" ]; then
-    mkdir -p "/Users/$MQG_FB_USER/.ssh"
-    cp "$CONF_DIR/authorized_keys" "/Users/$MQG_FB_USER/.ssh/authorized_keys"
-    chmod 700 "/Users/$MQG_FB_USER/.ssh"
-    chmod 600 "/Users/$MQG_FB_USER/.ssh/authorized_keys"
-    chown -R "$MQG_FB_UID:$MQG_FB_GID" "/Users/$MQG_FB_USER/.ssh"
+    mkdir -p "/Users/$GUEST_MACOSX_FB_USER/.ssh"
+    cp "$CONF_DIR/authorized_keys" "/Users/$GUEST_MACOSX_FB_USER/.ssh/authorized_keys"
+    chmod 700 "/Users/$GUEST_MACOSX_FB_USER/.ssh"
+    chmod 600 "/Users/$GUEST_MACOSX_FB_USER/.ssh/authorized_keys"
+    chown -R "$GUEST_MACOSX_FB_UID:$GUEST_MACOSX_FB_GID" "/Users/$GUEST_MACOSX_FB_USER/.ssh"
     say "installed $(wc -l < "$CONF_DIR/authorized_keys") authorized key line(s)"
 else
     say "no authorized_keys in the package; SSH will accept no key"
@@ -305,7 +1220,7 @@ fi
 #
 # Vagrant's darwin guest capability halts a box with `sudo shutdown -h
 # now`, and expects that to need no prompt. Written only when the build
-# asked for it (MQG_FB_SUDO=1): a build that never mentions Sudo gets no
+# asked for it (GUEST_MACOSX_FB_SUDO=1): a build that never mentions Sudo gets no
 # sudoers.d file at all, and the account's sudo rule is whatever stock
 # 10.9 gives it (none, without a password).
 #
@@ -369,13 +1284,13 @@ sudo_reads_includedir() {
 }
 
 SUDO_VERSION=$(sudo -V 2>/dev/null | sed -n '1s/^Sudo version //p')
-if [ "$MQG_FB_SUDO" = "1" ] && ! sudo_reads_includedir "$SUDO_VERSION"; then
+if [ "$GUEST_MACOSX_FB_SUDO" = "1" ] && ! sudo_reads_includedir "$SUDO_VERSION"; then
     SUDOERS_MAIN=/private/etc/sudoers
-    SUDOERS_RULE="$MQG_FB_USER ALL=(ALL) NOPASSWD: ALL"
+    SUDOERS_RULE="$GUEST_MACOSX_FB_USER ALL=(ALL) NOPASSWD: ALL"
     if grep -qxF "$SUDOERS_RULE" "$SUDOERS_MAIN" 2>/dev/null; then
         say "sudoers: $SUDOERS_MAIN already has '$SUDOERS_RULE'"
     else
-        SUDOERS_MAIN_CANDIDATE=$(mktemp "${TMPDIR:-/tmp}/mqg-sudoers-main.XXXXXX")
+        SUDOERS_MAIN_CANDIDATE=$(mktemp "${TMPDIR:-/tmp}/guest-macosx-sudoers-main.XXXXXX")
         cp "$SUDOERS_MAIN" "$SUDOERS_MAIN_CANDIDATE"
         echo "$SUDOERS_RULE" >> "$SUDOERS_MAIN_CANDIDATE"
         if visudo -cf "$SUDOERS_MAIN_CANDIDATE" >> "$LOG" 2>&1; then
@@ -387,13 +1302,13 @@ if [ "$MQG_FB_SUDO" = "1" ] && ! sudo_reads_includedir "$SUDO_VERSION"; then
         fi
         rm -f "$SUDOERS_MAIN_CANDIDATE"
     fi
-elif [ "$MQG_FB_SUDO" = "1" ]; then
+elif [ "$GUEST_MACOSX_FB_SUDO" = "1" ]; then
     SUDOERS_MAIN=/private/etc/sudoers
     SUDOERS_DIR=/private/etc/sudoers.d
     SUDOERS_INCLUDE="#includedir $SUDOERS_DIR"
 
     if [ -f "$SUDOERS_MAIN" ] && ! grep -qF "$SUDOERS_INCLUDE" "$SUDOERS_MAIN" 2>/dev/null; then
-        SUDOERS_MAIN_CANDIDATE=$(mktemp "${TMPDIR:-/tmp}/mqg-sudoers-main.XXXXXX")
+        SUDOERS_MAIN_CANDIDATE=$(mktemp "${TMPDIR:-/tmp}/guest-macosx-sudoers-main.XXXXXX")
         cp "$SUDOERS_MAIN" "$SUDOERS_MAIN_CANDIDATE"
         echo "$SUDOERS_INCLUDE" >> "$SUDOERS_MAIN_CANDIDATE"
         if visudo -cf "$SUDOERS_MAIN_CANDIDATE" >> "$LOG" 2>&1; then
@@ -408,12 +1323,12 @@ elif [ "$MQG_FB_SUDO" = "1" ]; then
 
     if [ -f "$SUDOERS_MAIN" ] && grep -qF "$SUDOERS_INCLUDE" "$SUDOERS_MAIN" 2>/dev/null; then
         mkdir -p "$SUDOERS_DIR" 2>/dev/null
-        SUDOERS_CANDIDATE=$(mktemp "${TMPDIR:-/tmp}/mqg-sudoers.XXXXXX")
-        printf '%s ALL=(ALL) NOPASSWD: ALL\n' "$MQG_FB_USER" > "$SUDOERS_CANDIDATE"
+        SUDOERS_CANDIDATE=$(mktemp "${TMPDIR:-/tmp}/guest-macosx-sudoers.XXXXXX")
+        printf '%s ALL=(ALL) NOPASSWD: ALL\n' "$GUEST_MACOSX_FB_USER" > "$SUDOERS_CANDIDATE"
         if visudo -cf "$SUDOERS_CANDIDATE" >> "$LOG" 2>&1; then
-            SUDOERS_FILE="$SUDOERS_DIR/$MQG_FB_USER"
+            SUDOERS_FILE="$SUDOERS_DIR/$GUEST_MACOSX_FB_USER"
             install -m 0440 -o root -g wheel "$SUDOERS_CANDIDATE" "$SUDOERS_FILE"
-            say "sudoers: wrote $SUDOERS_FILE (passwordless sudo for $MQG_FB_USER)"
+            say "sudoers: wrote $SUDOERS_FILE (passwordless sudo for $GUEST_MACOSX_FB_USER)"
         else
             say "sudoers: visudo rejected the candidate; NOT installing it (see $LOG for its complaint)"
         fi
@@ -423,7 +1338,7 @@ elif [ "$MQG_FB_SUDO" = "1" ]; then
             "not writing a fragment it would never read"
     fi
 else
-    say "sudoers: not requested; $MQG_FB_USER keeps whatever sudo rule it already had"
+    say "sudoers: not requested; $GUEST_MACOSX_FB_USER keeps whatever sudo rule it already had"
 fi
 
 # --- Apple's post-10.9.5 updates ------------------------------------------
@@ -464,33 +1379,51 @@ fi
 # Both are logged below, before and after, so the log says what happened
 # rather than what was attempted.
 #
-# A RESTART IS WANTED AND IS NOT TAKEN HERE
+# A RESTART IS WANTED, AND TAKEN AT THE END OF THIS BOOT
 #
-# 2016-004's PackageInfo declares postinstall-action="restart". This script
-# does not reboot: the build shuts the guest down once it has checked it,
-# and every later boot is a cold one, so the restart happens anyway, once,
-# without this script racing the build that is waiting for SSH.
+# 2016-004's PackageInfo declares postinstall-action="restart", and its Bom
+# puts a kernel at /mach_kernel. On the boot that installed it the kernel
+# still running is 10.9.5's own, and the kexts on disk are the update's:
+# once per boot, 60 s after its IOKit registry last went quiet, that kernel
+# asks kextd for a prelinked kernel when it has loaded a kext the prelinked
+# one lacked, and kextd runs `kextcache -system-prelinked-kernel`, which
+# rebuilds it whether or not it is current. When that came after the
+# installer's own kextcache had taken the volume, it waited for it and then
+# built the same kernel again, offline for minutes, into the build's
+# provisioners, and the build's last shutdown waited for it on kextd's
+# reboot lock: "'/' updating, delaying reboot" (F29, docs/decisions/0036).
+# So, as on 10.6, an update that installs a kernel goes in with kextd held
+# off (hold_kextd_for), and the first boot ends in a restart into it when an
+# update installed a kernel or asked for one (restart_into_updates), with
+# Remote Login on only from the boot after it (remote_login_on), so no SSH
+# session meets that restart. The build's provisioners and its shutdown then
+# run on a boot of the updated system.
 #
-# 10.6 INSTALLS THEM LAST, THEN RESTARTS
+# 10.6 INSTALLS THEM LAST, EACH ON A BOOT OF ITS OWN, THEN RESTARTS
 #
 # 10.6.8's combo replaces libSystem, dyld and launchd under the running
 # system, and until a restart a new process can load a new library under
 # the old dyld. MEASURED 2026-10-04: with 10.6.8 and 2013-004 installed
 # and no restart, sshd answered and every session hung. So on 10.6, with
-# updates to install, this script does everything else first, turns
-# Remote Login on for the next boot without starting sshd on this one,
-# installs the updates last and restarts: the first sshd is 10.6.8's, on
-# a 10.6.8 boot. 10.9's security update needs no such care (above).
-MQG_FB_RESTART=0
-if [ "$MQG_FB_RELEASE" = snowleopard ] && [ -n "$MQG_FB_UPDATE_PKGS" ]; then
-    MQG_FB_RESTART=1
+# updates to install, this script does everything else first, installs the
+# updates last -- restarting between them where one needs it
+# (snow_leopard_updates, above) -- and turns Remote Login on for the boot
+# after the last one: the first sshd is 10.6.8's, on a fully updated boot.
+# 10.9 uses its own kernel-update restart path above; it has neither
+# 10.6's deferred install nor its BootCache issue.
+GUEST_MACOSX_FB_RESTART=0
+# Why 10.9's first boot ends in a restart into its updates (install_updates
+# sets it; restart_into_updates reads it); empty when it does not.
+GUEST_MACOSX_FB_RESTART_WHY=
+if [ "$GUEST_MACOSX_FB_RELEASE" = snowleopard ] && [ -n "$GUEST_MACOSX_FB_UPDATE_PKGS" ]; then
+    GUEST_MACOSX_FB_RESTART=1
 fi
 
 install_updates() {
-    say "updates: $MQG_FB_UPDATES"
+    say "updates: $GUEST_MACOSX_FB_UPDATES"
     say "updates: build before: $(sw_vers -buildVersion 2>&1)"
 
-    if [ -n "$MQG_FB_UPDATE_PKGS" ]; then
+    if [ -n "$GUEST_MACOSX_FB_UPDATE_PKGS" ]; then
         _upd_count=0
         _upd_missing=0
         # An update is a package or, for 10.6.8's combo, Apple's product
@@ -498,14 +1431,25 @@ install_updates() {
         # carried beside it in one run, in its order and by its conditions.
         # MEASURED 2026-10-04: those packages installed one at a time leave
         # 10.6 with a new libSystem under 10.6.0's dyld, and nothing runs.
-        for _u in $MQG_FB_UPDATE_PKGS; do
+        for _u in $GUEST_MACOSX_FB_UPDATE_PKGS; do
             if [ -f "$CONF_DIR/updates/$_u" ]; then
                 _upd_count=$((_upd_count + 1))
+                # An update that installs a kernel goes in with kextd held
+                # off, and the first boot then ends in a restart into it, as
+                # one that asks for a restart does (restart_into_updates,
+                # docs/decisions/0036).
+                if hold_kextd_for "$CONF_DIR/updates/$_u"; then
+                    GUEST_MACOSX_FB_RESTART_WHY=${GUEST_MACOSX_FB_RESTART_WHY:-"$_u installed a kernel, and kextd stays off until that kernel runs"}
+                fi
                 # 3600s: 2016-004 is 354 MB of package over 6891 files, and it
                 # rebuilds the kernel and dyld caches on the way out. The
                 # OpenSSH base package gets 900s and is 12 MB.
                 run_with_timeout 3600 installer -verbose \
                     -pkg "$CONF_DIR/updates/$_u" -target /
+                if [ -z "$GUEST_MACOSX_FB_RESTART_WHY" ] &&
+                    update_wants_restart "$CONF_DIR/updates/$_u"; then
+                    GUEST_MACOSX_FB_RESTART_WHY="$_u asks for a restart"
+                fi
             else
                 _upd_missing=$((_upd_missing + 1))
                 say "updates: NOT ON THE TARGET VOLUME: $_u"
@@ -525,10 +1469,221 @@ install_updates() {
     fi
 }
 
-if [ "$MQG_FB_RESTART" = 0 ]; then
+if [ "$GUEST_MACOSX_FB_RESTART" = 0 ]; then
     install_updates
 else
-    say "updates: $MQG_FB_UPDATES, installed last on 10.6, then a restart"
+    say "updates: $GUEST_MACOSX_FB_UPDATES, installed last on 10.6, a boot each where one needs a restart"
+fi
+
+# --- UserEventAgent's telemetry plugin, again --------------------------------
+#
+# The postinstall set /System/Library/UserEventPlugins/com.apple.telemetry.plugin
+# aside at install time, because UserEventAgent (System) crashed in 11 of
+# 335 boots in the runs that saw it, while it loaded it (see the
+# postinstall's "THE TELEMETRY PLUGIN", and docs/decisions/0020). REASONED
+# from the Bom of Security Update 2016-004, which lists the plugin, and
+# never observed: installing the updates above puts it back.
+# UserEventAgent started on this boot without it and loads plugins only as
+# it starts, so setting it aside again here, before any other boot, is
+# enough. The update's copy is the one kept aside (also REASONED: the
+# first build's guest-macosx-firstboot.log shows whether "set aside again" fired,
+# and where PackageKit put the copy). 10.6 has no such plugin (REASONED:
+# the plugin is 10.9's, and 10.6 has no UserEventAgent plugin directory
+# that this install touches; the install's -d check makes it a no-op
+# either way).
+# $1 is the volume: / here (a test runs it against a fake one).
+set_telemetry_plugin_aside() {
+    _uep="${1%/}/System/Library/UserEventPlugins"
+    _aside="${1%/}/System/Library/UserEventPlugins-disabled"
+    [ -d "$_uep/com.apple.telemetry.plugin" ] || return 0
+    if mkdir -p "$_aside" && rm -rf "$_aside/com.apple.telemetry.plugin" &&
+        mv "$_uep/com.apple.telemetry.plugin" "$_aside/"; then
+        say "telemetry plugin set aside again, after the updates: $_aside/com.apple.telemetry.plugin"
+    else
+        say "telemetry plugin: COULD NOT set it aside; UserEventAgent will load it at the next boot"
+    fi
+}
+if [ -z "$GUEST_MACOSX_FB_RELEASE" ]; then
+    set_telemetry_plugin_aside /
+fi
+
+# --- 10.9: syslogd waits on a throttled aslmanager (docs/decisions/0031) ---
+#
+# 10.9's syslogd (syslog-217) asks aslmanager to check the log files as it
+# starts, more than once. Each ask is asl_trigger_aslmanager(), an XPC
+# message sent with xpc_connection_send_message_with_reply_sync(), which
+# waits for the answer. READ: the first is on syslogd's main thread, as it
+# sets up its outputs (init_modules -> asl_action_init ->
+# _act_file_checkpoint_all); the second is on its serial "ASL Action Queue",
+# as it first opens the ASL store (db_asl_open), and that queue writes every
+# message to /var/log/system.log, the ASL store and every other asl.conf
+# file. aslmanager is launched on demand; it answers, runs its maintenance
+# and exits. When an ask reaches launchd after that exit but within 10 s of
+# the run's start, launchd throttles the relaunch for the rest of its
+# default 10 s ("(com.apple.aslmanager): Throttling respawn: Will start in
+# 10 seconds", about 1 s into the boot), and syslogd writes nothing until
+# then: the whole boot so far waits in its memory. syslogd has no SIGTERM
+# handler, so a shutdown in that window loses all of it, in system.log and
+# the ASL store alike. MEASURED 2026-10-25 (F9): syslogd's ASL Action Queue
+# sampled in that wait, the live system.log at the moment of the shutdown,
+# and launchd's line; restarts 7-12 s into a warm boot lost their boot's
+# log 11 times in 100 (16 in 100 in F7), and two asks 1 s apart from a
+# running guest waited 9 s for the second every time. That the window opens
+# at about 1 s, before anything here could shut a boot down, is REASONED
+# from the throttle line's time. A boot that is not shut down writes its
+# first 12 s late. 10.10's syslogd (syslog-267) asks from its main queue
+# instead, at most once per interval. Here the job's own launchd key does
+# it: ThrottleInterval 0 lets launchd relaunch aslmanager at once, so the
+# ask is answered in milliseconds. 0 changes nothing else (launchd-842 reads
+# it only in its throttle test). An on-demand job is relaunched only for an
+# ask waiting on its port, so a working aslmanager cannot loop; a broken one
+# (one that exits before it takes the ask) would be relaunched at once
+# rather than every 10 s, and syslogd would wait either way. A job launchd
+# keeps alive or starts at load could be relaunched with no ask at all, so
+# it is left throttled. It runs after the updates, so whatever they install
+# stays edited. A job that already sets ThrottleInterval is left as it is,
+# and one that is not aslmanager's on-demand service, or no plist at all,
+# is not touched; the log says which.
+unthrottle_aslmanager() {
+    if [ ! -f "$ASLMANAGER_PLIST" ]; then
+        say "aslmanager: no $ASLMANAGER_PLIST; syslogd has no aslmanager to wait on, nothing to change"
+        return 0
+    fi
+    if ! "$PLISTBUDDY" -c "Print :MachServices:com.apple.aslmanager" "$ASLMANAGER_PLIST" >/dev/null 2>&1; then
+        say "aslmanager: $ASLMANAGER_PLIST is not the on-demand com.apple.aslmanager" \
+            "service; left as it is"
+        return 0
+    fi
+    for _key in KeepAlive RunAtLoad; do
+        if "$PLISTBUDDY" -c "Print :$_key" "$ASLMANAGER_PLIST" >/dev/null 2>&1; then
+            say "aslmanager: $ASLMANAGER_PLIST sets $_key, so launchd can relaunch it" \
+                "without a waiting ask; left throttled, as it is"
+            return 0
+        fi
+    done
+    if _ti=$("$PLISTBUDDY" -c "Print :ThrottleInterval" "$ASLMANAGER_PLIST" 2>/dev/null); then
+        say "aslmanager: the job already sets ThrottleInterval ($_ti); left as it is"
+        return 0
+    fi
+    if "$PLISTBUDDY" -c "Add :ThrottleInterval integer 0" "$ASLMANAGER_PLIST" >/dev/null 2>&1; then
+        say "aslmanager: the job had launchd's default 10 s throttle, which can hold" \
+            "syslogd's first writes; ThrottleInterval 0 added to $ASLMANAGER_PLIST, from the next boot"
+    else
+        say "aslmanager: COULD NOT add ThrottleInterval to $ASLMANAGER_PLIST; a shutdown" \
+            "in about a boot's first 12 s can still lose that boot's log"
+    fi
+}
+if [ -z "$GUEST_MACOSX_FB_RELEASE" ]; then
+    unthrottle_aslmanager
+fi
+
+# --- netbiosd's signal-initialization window (docs/decisions/0037) ------------
+# The saved SMB preferences must still be published at every boot. Do not
+# remove smb-sync-preferences' RunAtLoad or change its events. Its early HUP
+# can reach netbiosd before netbiosd's own SIG_IGN/dispatch-source setup.
+# POSIX exec preserves SIG_IGN: initialize it first, then exec the same binary
+# with the same argv. The native late-HUP dispatch callback remains intact.
+netbiosd_hup_wrapper() {
+    cat <<'NETBIOSD_HUP_EOF'
+#!/bin/sh
+# guest-macosx: initialize HUP before netbiosd exec (docs/decisions/0037)
+trap '' HUP
+exec "$@"
+NETBIOSD_HUP_EOF
+}
+initialize_netbiosd_hup() {
+    if [ ! -f "$NETBIOSD_PLIST" ] || [ -L "$NETBIOSD_PLIST" ] ||
+        [ ! -f "$NETBIOSD_BIN" ] || [ -L "$NETBIOSD_BIN" ] || [ ! -x "$NETBIOSD_BIN" ]; then
+        say "netbiosd HUP: no regular job/executable; left as it is"
+        return 0
+    fi
+    # smbx-276.92.2, the actual 10.9.5 binary measured in the F27 experiments.
+    _nb_hash=$(shasum -a 256 "$NETBIOSD_BIN" 2>/dev/null | awk '{print $1}')
+    if [ "$_nb_hash" != 946d5e1d843c55c902cbefc493ff072e88e4eb00077d6edf3b077ee5b7a5c95a ]; then
+        say "netbiosd HUP: executable not the measured version; left as it is"
+        return 0
+    fi
+    _nb_label=$("$PLISTBUDDY" -c 'Print :Label' "$NETBIOSD_PLIST" 2>/dev/null) || _nb_label=
+    _nb_arg0=$("$PLISTBUDDY" -c 'Print :ProgramArguments:0' "$NETBIOSD_PLIST" 2>/dev/null) || _nb_arg0=
+    _nb_has_program=0
+    if _nb_program=$("$PLISTBUDDY" -c 'Print :Program' "$NETBIOSD_PLIST" 2>/dev/null); then
+        _nb_has_program=1
+    else
+        _nb_program=
+    fi
+    _nb_already=0
+    if [ "$_nb_arg0" = "$NETBIOSD_HUP_WRAPPER" ] &&
+        [ "$("$PLISTBUDDY" -c 'Print :ProgramArguments:1' "$NETBIOSD_PLIST" 2>/dev/null)" = "$NETBIOSD_BIN" ] &&
+        ! "$PLISTBUDDY" -c 'Print :ProgramArguments:2' "$NETBIOSD_PLIST" >/dev/null 2>&1 &&
+        { [ "$_nb_has_program" = 0 ] || [ "$_nb_program" = "$NETBIOSD_HUP_WRAPPER" ]; }; then
+        _nb_already=1
+    elif [ "$_nb_arg0" != "$NETBIOSD_BIN" ] ||
+        "$PLISTBUDDY" -c 'Print :ProgramArguments:1' "$NETBIOSD_PLIST" >/dev/null 2>&1 ||
+        { [ "$_nb_has_program" = 1 ] && [ "$_nb_program" != "$NETBIOSD_BIN" ]; }; then
+        say "netbiosd HUP: custom program/arguments; left as it is"
+        return 0
+    fi
+    if [ "$_nb_label" != com.apple.netbiosd ] ||
+        ! "$PLISTBUDDY" -c 'Print :Sockets:NetbiosNameServices' "$NETBIOSD_PLIST" >/dev/null 2>&1 ||
+        ! "$PLISTBUDDY" -c 'Print :Sockets:NetbiosDatagramServices' "$NETBIOSD_PLIST" >/dev/null 2>&1; then
+        say "netbiosd HUP: not the measured socket job; left as it is"
+        return 0
+    fi
+    if [ -e "$NETBIOSD_HUP_WRAPPER" ] || [ -L "$NETBIOSD_HUP_WRAPPER" ]; then
+        # One fixed path; read only numeric ownership/mode, never its filename.
+        # shellcheck disable=SC2012
+        _nb_wrapper_mode=$(LC_ALL=C ls -ln "$NETBIOSD_HUP_WRAPPER" | awk '{print $1, $3 ":" $4}')
+        if [ ! -f "$NETBIOSD_HUP_WRAPPER" ] || [ -L "$NETBIOSD_HUP_WRAPPER" ] ||
+            ! netbiosd_hup_wrapper | cmp -s "$NETBIOSD_HUP_WRAPPER" - ||
+            [ "$_nb_wrapper_mode" != '-rwxr-xr-x 0:0' ]; then
+            say "netbiosd HUP: existing wrapper is not ours/root-owned mode 755; left as it is"
+            return 0
+        fi
+    else
+        _nb_new=$NETBIOSD_HUP_WRAPPER.guest-macosx.$$
+        if ! { mkdir -p "$(dirname "$NETBIOSD_HUP_WRAPPER")" &&
+            netbiosd_hup_wrapper > "$_nb_new" && chmod 755 "$_nb_new" &&
+            chown 0:0 "$_nb_new" && mv -f "$_nb_new" "$NETBIOSD_HUP_WRAPPER"; }; then
+            rm -f "$_nb_new"
+            say "netbiosd HUP: COULD NOT install wrapper; job left as it is"
+            return 0
+        fi
+    fi
+    if [ "$_nb_already" = 1 ]; then
+        say "netbiosd HUP: already initialized before exec; nothing to change"
+        return 0
+    fi
+    # Stage the entire job edit. Failure cannot leave argv pointing at a
+    # wrapper with no command. Never unload the live socket-owning job.
+    _nb_tmp=$NETBIOSD_PLIST.guest-macosx.$$
+    if cp -p "$NETBIOSD_PLIST" "$_nb_tmp" &&
+        "$PLISTBUDDY" -c "Set :ProgramArguments:0 $NETBIOSD_HUP_WRAPPER" "$_nb_tmp" >/dev/null 2>&1 &&
+        "$PLISTBUDDY" -c "Add :ProgramArguments:1 string $NETBIOSD_BIN" "$_nb_tmp" >/dev/null 2>&1 &&
+        { [ "$_nb_has_program" = 0 ] || "$PLISTBUDDY" -c "Set :Program $NETBIOSD_HUP_WRAPPER" "$_nb_tmp" >/dev/null 2>&1; } &&
+        mv -f "$_nb_tmp" "$NETBIOSD_PLIST"; then
+        say "netbiosd HUP: ignored before exec from next boot; native late handler, sockets and SMB boot preferences unchanged"
+    else
+        rm -f "$_nb_tmp"
+        say "netbiosd HUP: COULD NOT stage job edit; job left as it is"
+    fi
+}
+if [ -z "$GUEST_MACOSX_FB_RELEASE" ]; then
+    initialize_netbiosd_hup
+fi
+
+# 10.6 with no updates to install: its BootCache is the one it booted with
+# (set_bootcache_aside, above, says which, and sets it aside only where it
+# is one measured to deadlock). With updates, finish_snow_leopard does it,
+# after the last one.
+if [ "$GUEST_MACOSX_FB_RELEASE" = snowleopard ] && [ "$GUEST_MACOSX_FB_RESTART" = 0 ]; then
+    set_bootcache_aside
+fi
+
+# 10.6, with updates or without: the wait for IPv6 before launchctl binds
+# sockets (set_ipv6_wait, above). No update writes /etc/rc.server, so the
+# first boot's is the box's.
+if [ "$GUEST_MACOSX_FB_RELEASE" = snowleopard ]; then
+    set_ipv6_wait
 fi
 
 # --- the family's own OpenSSH ---------------------------------------------
@@ -575,13 +1730,13 @@ fi
 # EXIT CONDITION: delete write_sshd_keygen_wrapper when
 # Mavergreen/openssh ships a sshd-keygen-wrapper of its own. Until
 # then this is a compensation for a sibling defect, stated as one.
-say "openssh: requested=$MQG_FB_OPENSSH tag=${MQG_FB_OPENSSH_TAG:-none}"
+say "openssh: requested=$GUEST_MACOSX_FB_OPENSSH tag=${GUEST_MACOSX_FB_OPENSSH_TAG:-none}"
 
 write_sshd_keygen_wrapper() {
     mkdir -p /usr/local/libexec 2>/dev/null
-    cat > /usr/local/libexec/sshd-keygen-wrapper <<'MQG_WRAPPER_EOF'
+    cat > /usr/local/libexec/sshd-keygen-wrapper <<'GUEST_MACOSX_WRAPPER_EOF'
 #!/bin/sh
-# Written by mqg-firstboot. Apple's /usr/libexec/sshd-keygen-wrapper, but
+# Written by guest-macosx-firstboot. Apple's /usr/libexec/sshd-keygen-wrapper, but
 # for the OpenSSH in /usr/local: generate whatever host keys are missing,
 # then exec the modern sshd. See write_sshd_keygen_wrapper in firstboot.sh.
 for _t in rsa ecdsa ed25519; do
@@ -590,7 +1745,7 @@ for _t in rsa ecdsa ed25519; do
         -N "" -C "" < /dev/null > /dev/null 2>&1
 done
 exec /usr/local/sbin/sshd "$@"
-MQG_WRAPPER_EOF
+GUEST_MACOSX_WRAPPER_EOF
     chmod 755 /usr/local/libexec/sshd-keygen-wrapper 2>/dev/null
 }
 
@@ -622,7 +1777,7 @@ openssh_usable() {
     return 0
 }
 
-if [ "$MQG_FB_OPENSSH" = "1" ]; then
+if [ "$GUEST_MACOSX_FB_OPENSSH" = "1" ]; then
     fb_base=
     fb_replace=
     for _p in "$CONF_DIR"/pkgs/*.pkg; do
@@ -668,18 +1823,154 @@ fi
 # documented one but asks an interactive yes/no question without -f; loading
 # the job directly is what actually has to end up true.
 #
-# On 10.6 with updates to install, launchd's override alone: sshd is on
-# from the next boot, and does not start on this one (see the updates).
-if [ "$MQG_FB_RESTART" = 1 ]; then
-    run_with_timeout 60 defaults write \
-        /private/var/db/launchd.db/com.apple.launchd/overrides \
-        com.openssh.sshd -dict Disabled -bool false
-    say "remote login: on from the next boot; sshd waits for the restart"
+# On 10.6 with updates to install, launchd's override alone, written by
+# finish_snow_leopard on the boot that installs the last update: sshd is on
+# from the boot after it, and starts on no boot before (see the updates).
+# On 10.9 with an update that wants the restart this boot ends in
+# (restart_into_updates), the same override, written here: sshd is on from
+# the boot after that restart.
+remote_login_on() {
+    if [ "$GUEST_MACOSX_FB_RESTART" = 1 ]; then
+        say "remote login: on from the boot after the last update (finish_snow_leopard)"
+    elif [ -n "$GUEST_MACOSX_FB_RESTART_WHY" ]; then
+        run_with_timeout 60 defaults write "$SSHD_OVERRIDES" \
+            com.openssh.sshd -dict Disabled -bool false
+        say "remote login: on from the next boot, after the restart into the updates" \
+            "($GUEST_MACOSX_FB_RESTART_WHY)"
+    else
+        run_with_timeout 60 systemsetup -f -setremotelogin on
+        run_with_timeout 60 launchctl load -w "$SSH_PLIST"
+        say "remote login: $(systemsetup -getremotelogin 2>&1)"
+    fi
+}
+remote_login_on
+
+# --- ByHost settings -------------------------------------------------------
+#
+# A ByHost preference lives in a file named for the host:
+# ~/Library/Preferences/ByHost/<domain>.<host>.plist, where <host> is the
+# host UUID, or, for a UUID the guest made itself from its NIC's MAC
+# (00000000-0000-1000-8000-<MAC>), that MAC in lower case: CoreFoundation's
+# rule (CF-550's _CFPreferencesGetByHostIdentifierString; MEASURED on 10.9,
+# fnv-report.md). Each machine has its own host UUID (docs/decisions/0024),
+# so a setting the build makes under the build VM's UUID is in a file no box
+# reads. byhost_setting makes the setting now, for this host, and records it
+# in $BYHOST_TABLE; guest-macosx-byhost, run at every boot by the
+# guest-macosx.byhost LaunchDaemon, adds each recorded setting to this
+# host's file when that file lacks it, and otherwise leaves the file alone:
+# a value the user set on this host stays.
+BYHOST_TABLE=/Library/Preferences/guest-macosx/byhost.tsv
+
+# byhost_setting <user> <domain> <key> <type> <value>: type is one that both
+# defaults(1) (-<type>) and PlistBuddy know: string, integer or bool.
+byhost_setting() {
+    mkdir -p "${BYHOST_TABLE%/*}" 2>/dev/null
+    printf '%s\t%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "$4" "$5" >> "$BYHOST_TABLE"
+    su - "$1" -c "defaults -currentHost write $2 $3 -$4 $5" >> "$LOG" 2>&1
+}
+
+write_byhost_helper() {
+    say "ByHost settings: writing /usr/local/libexec/guest-macosx-byhost and its LaunchDaemon"
+    mkdir -p /usr/local/libexec 2>/dev/null
+    cat > /usr/local/libexec/guest-macosx-byhost <<'GUEST_MACOSX_BYHOST_EOF'
+#!/bin/sh
+# Written by guest-macosx-firstboot (see its "ByHost settings" section, and
+# packer-plugin-macosx's docs/decisions/0024); run at every boot by
+# /Library/LaunchDaemons/guest-macosx.byhost.plist. Waits for the host UUID,
+# says where it came from, and gives this host's ByHost files each setting
+# the build recorded that they lack. A setting a file already has stays.
+ROOT=${GUEST_MACOSX_BYHOST_ROOT:-}
+PLISTBUDDY=${GUEST_MACOSX_BYHOST_PLISTBUDDY:-/usr/libexec/PlistBuddy}
+WAIT=${GUEST_MACOSX_BYHOST_WAIT:-120}
+TABLE=$ROOT/Library/Preferences/guest-macosx/byhost.tsv
+note() {
+    logger -t guest-macosx-byhost -- "$*" 2>/dev/null
+    printf 'guest-macosx-byhost: %s\n' "$*"
+}
+# The kernel publishes IOPlatformUUID at boot from the firmware's system-id;
+# without one, configd makes it from the NIC's MAC some 35 s in.
+waited=0
+while :; do
+    uuid=$(ioreg -rd1 -c IOPlatformExpertDevice 2>/dev/null | sed -n -e 's/.*"IOPlatformUUID" = "\([^"]*\)".*/\1/p' | sed -n 1p)
+    [ -z "$uuid" ] || break
+    if [ "$waited" -ge "$WAIT" ]; then
+        note "no host UUID after $WAIT s: the build's ByHost settings were not checked"
+        exit 1
+    fi
+    sleep 1
+    waited=$((waited + 1))
+done
+if ioreg -p IODeviceTree -n platform -rd1 2>/dev/null | grep -qF '"system-id"'; then
+    note "host UUID $uuid, from the firmware's system-id"
 else
-    run_with_timeout 60 systemsetup -f -setremotelogin on
-    run_with_timeout 60 launchctl load -w /System/Library/LaunchDaemons/ssh.plist
-    say "remote login: $(systemsetup -getremotelogin 2>&1)"
+    note "host UUID $uuid, made by the guest from its NIC's MAC after $waited s: the firmware named none (no -uuid from QEMU?)"
 fi
+case $uuid in
+    00000000-0000-1000-8000-????????????) host=$(printf '%s\n' "${uuid#00000000-0000-1000-8000-}" | tr 'A-F' 'a-f') ;;
+    *) host=$uuid ;;
+esac
+if [ ! -r "$TABLE" ]; then
+    note "the build recorded no ByHost settings ($TABLE)"
+    exit 0
+fi
+tab=$(printf '\t')
+while IFS=$tab read -r user domain key type value; do
+    case $user in ''|'#'*) continue ;; esac
+    dir=$ROOT/Users/$user/Library/Preferences/ByHost
+    file=$dir/$domain.$host.plist
+    # The folder is the user's, and so is the file: never followed through a link.
+    if [ -L "$file" ]; then
+        note "$user's $domain $key: $file is a symlink; left alone"
+        continue
+    fi
+    if "$PLISTBUDDY" -c "Print :$key" "$file" >/dev/null 2>&1; then
+        note "$user's $domain $key: already set for host $host"
+        continue
+    fi
+    if [ ! -d "$dir" ] && ! { mkdir "$dir" && chown "$user:staff" "$dir" && chmod 700 "$dir"; }; then
+        note "$user's $domain $key: could not make $dir"
+        continue
+    fi
+    if "$PLISTBUDDY" -c "Add :$key $type $value" "$file" >/dev/null 2>&1; then
+        chown -h "$user:staff" "$file"
+        chmod 600 "$file"
+        note "$user's $domain $key: set to $value for host $host (the build set it for its own)"
+        # A session already running has read the domain, or may have: its
+        # cfprefsd sees the key from its next read (a boot whose UUID came
+        # late, or an opt-in auto-login).
+        if ps -axo user=,comm= 2>/dev/null | awk -v u="$user" '$1 == u && ($2 ~ /cfprefsd$/ || $2 ~ /loginwindow$/) { f = 1 } END { exit !f }'; then
+            note "$user's session started before this job: it sees the setting from its next read of the domain"
+        fi
+    else
+        note "$user's $domain $key: could not set it in $file"
+    fi
+done < "$TABLE"
+exit 0
+GUEST_MACOSX_BYHOST_EOF
+    chown root:wheel /usr/local/libexec/guest-macosx-byhost 2>/dev/null
+    chmod 755 /usr/local/libexec/guest-macosx-byhost 2>/dev/null
+    cat > /Library/LaunchDaemons/guest-macosx.byhost.plist <<'GUEST_MACOSX_BYHOST_PLIST_EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>guest-macosx.byhost</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/bin/sh</string>
+		<string>/usr/local/libexec/guest-macosx-byhost</string>
+	</array>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>StandardOutPath</key>
+	<string>/dev/null</string>
+</dict>
+</plist>
+GUEST_MACOSX_BYHOST_PLIST_EOF
+    chown root:wheel /Library/LaunchDaemons/guest-macosx.byhost.plist 2>/dev/null
+    chmod 644 /Library/LaunchDaemons/guest-macosx.byhost.plist 2>/dev/null
+}
 
 # --- sleep, screensaver ----------------------------------------------------
 #
@@ -692,9 +1983,9 @@ run_with_timeout 60 systemsetup -setdisplaysleep Never
 run_with_timeout 60 systemsetup -setharddisksleep Never
 
 defaults write /Library/Preferences/com.apple.screensaver loginWindowIdleTime 0
-su - "$MQG_FB_USER" -c \
-    'defaults -currentHost write com.apple.screensaver idleTime 0' \
-    >> "$LOG" 2>&1
+byhost_setting "$GUEST_MACOSX_FB_USER" com.apple.screensaver idleTime string 0
+write_byhost_helper
+say "ByHost settings: $(cat "$BYHOST_TABLE" 2>&1)"
 pmset -a displaysleep 0 disksleep 0 sleep 0 >> "$LOG" 2>&1
 
 # --- software update -------------------------------------------------------
@@ -703,60 +1994,511 @@ pmset -a displaysleep 0 disksleep 0 sleep 0 >> "$LOG" 2>&1
 # servers about updates. Under run_with_timeout, non-fatal. Which
 # post-10.9.5 updates a guest carries is decided at build time and
 # installed above from pinned packages (docs/decisions/0011). Turning the
-# *schedule* off stops the guest reaching out on its own, which a
-# reproducible image must not do.
+# *schedule* off is for the box's later life: it stops the periodic
+# checks, and nothing else. During the build the guest reaches out to no
+# one because its network goes nowhere (restrict=on in the templates'
+# -netdev): 10.9's first-run Software Update scan, apsd and ocspd all ran
+# before this line did, and 10.6.8's XProtectUpdater and crsud take no
+# notice of it (docs/decisions/0034).
 run_with_timeout 120 softwareupdate --schedule off
 
 # --- identity --------------------------------------------------------------
 #
 # Left to itself, Setup Assistant derived "Maverickss-iMac" from the full
 # name. The hostname is set deliberately instead.
-run_with_timeout 30 scutil --set ComputerName "$MQG_FB_HOSTNAME"
-run_with_timeout 30 scutil --set HostName "$MQG_FB_HOSTNAME"
-run_with_timeout 30 scutil --set LocalHostName "$MQG_FB_HOSTNAME"
+run_with_timeout 30 scutil --set ComputerName "$GUEST_MACOSX_FB_HOSTNAME"
+run_with_timeout 30 scutil --set HostName "$GUEST_MACOSX_FB_HOSTNAME"
+run_with_timeout 30 scutil --set LocalHostName "$GUEST_MACOSX_FB_HOSTNAME"
 
 # --- auto-login ------------------------------------------------------------
 #
 # Setup Assistant, on a hand-driven install, turned this on for a
-# single-user system, and everything unattended leans on it: an unattended
-# boot must not stall at a login window. Skipping Setup Assistant means
-# nothing turned it on, so we do.
+# single-user system. Skipping Setup Assistant means nothing turned it on.
+#
+# loginwindow logs in by itself only with the account's password, which it
+# reads from /etc/kcpassword. Without one this script set, there is nothing
+# to put there (see "The secret" above), and an autoLoginUser can only fail:
+# "authorizationhost: Failed to authenticate user <user> (error: 9)" at
+# every boot, and the login window stays (MEASURED 2026-10-15 on 10.9: 6 of
+# 6 boots; an empty password, without kcpassword or with an empty one, 10 of
+# 10 the same; the password in kcpassword, the desktop on 5 of 5 warm
+# boots, 0 error lines; 10.6 showed its login window too). So auto-login is
+# turned on only when the password is one this script set and dscl
+# accepted, and otherwise neither autoLoginUser nor kcpassword is left
+# behind, and the log says why. The default build sets no password (the
+# owner's decision, 2026-10-15), so it boots to the login window; a desktop
+# needs a password the builder configures.
 #
 # /etc/kcpassword holds the account secret obfuscated -- not encrypted --
 # with a fixed key. That is Apple's design, it is why auto-login and "never
 # publish the guest image" belong in the same sentence, and it is written
-# here only when a secret was configured at build time.
-if [ "$MQG_FB_AUTOLOGIN" = "1" ]; then
-    defaults write /Library/Preferences/com.apple.loginwindow \
-        autoLoginUser "$MQG_FB_USER"
-    if [ -n "${MQG_FB_PASSWORD:-}" ]; then
-        printf '%s' "$MQG_FB_PASSWORD" | perl -e '
-            my @k = (0x7D,0x89,0x52,0x23,0xD2,0xBC,0xDD,0xEA,0xA3,0xB9,0x1F);
-            my $p = do { local $/; <STDIN> };
-            my @o;
-            for my $i (0 .. length($p) - 1) {
-                push @o, ord(substr($p, $i, 1)) ^ $k[$i % 11];
-            }
-            push @o, $k[scalar(@o) % 11] while scalar(@o) % 12;
-            print pack("C*", @o);
-        ' > /private/etc/kcpassword 2>>"$LOG"
-        chmod 600 /private/etc/kcpassword 2>/dev/null
+# here only when a secret was configured at build time and verified.
+KC_FILE=/private/etc/kcpassword
+LOGINWINDOW_PREFS=/Library/Preferences/com.apple.loginwindow
+
+# autologin_plan <GUEST_MACOSX_FB_AUTOLOGIN> <verified|rejected|none>: on, or
+# off-<why>. The second argument is SECRET_STATE.
+autologin_plan() {
+    if [ "$1" != 1 ]; then
+        echo off-not-asked
+        return 0
     fi
-    say "auto-login set to $MQG_FB_USER"
+    case $2 in
+        verified) echo on ;;
+        rejected) echo off-password-rejected ;;
+        *) echo off-no-password ;;
+    esac
+}
+
+# kcpassword_encode: the password on stdin, as /etc/kcpassword holds it:
+# the password and a NUL, each byte XORed with the key, then NULs XORed
+# with the key to a multiple of 12 bytes. Nothing at all for an empty
+# stdin. MEASURED for an 11-character password (the guest logged in with
+# these bytes); that a password whose length is a multiple of 12 needs the
+# NUL too is REASONED, from the published format.
+kcpassword_encode() {
+    perl -e '
+        my @k = (0x7D,0x89,0x52,0x23,0xD2,0xBC,0xDD,0xEA,0xA3,0xB9,0x1F);
+        my $p = do { local $/; <STDIN> };
+        exit 0 unless length $p;
+        $p .= "\0";
+        my @o;
+        for my $i (0 .. length($p) - 1) {
+            push @o, ord(substr($p, $i, 1)) ^ $k[$i % 11];
+        }
+        push @o, $k[scalar(@o) % 11] while scalar(@o) % 12;
+        print pack("C*", @o);
+    '
+}
+
+# configure_autologin: does what autologin_plan says, and leaves AUTOLOGIN
+# saying what it did: on, or off-<why>. Every way but on leaves neither
+# autoLoginUser nor kcpassword, because a clone that ran an older payload
+# may carry either: an autoLoginUser that can only fail, or an old password
+# in kcpassword. On writes kcpassword first, created root's-only, and sets
+# autoLoginUser only once kcpassword has something in it.
+configure_autologin() {
+    AUTOLOGIN=$(autologin_plan "$GUEST_MACOSX_FB_AUTOLOGIN" "$SECRET_STATE")
+    if [ "$AUTOLOGIN" = on ]; then
+        rm -f "$KC_FILE"
+        (
+            umask 077
+            printf '%s' "$GUEST_MACOSX_FB_PASSWORD" | kcpassword_encode > "$KC_FILE"
+        ) 2>>"$LOG"
+        if [ -s "$KC_FILE" ]; then
+            defaults write "$LOGINWINDOW_PREFS" autoLoginUser "$GUEST_MACOSX_FB_USER"
+            say "auto-login: on: $GUEST_MACOSX_FB_USER's password, which dscl . -authonly" \
+                "verified, is in $KC_FILE"
+        else
+            AUTOLOGIN=off-kcpassword-failed
+        fi
+    fi
+    if [ "$AUTOLOGIN" != on ]; then
+        defaults delete "$LOGINWINDOW_PREFS" autoLoginUser >/dev/null 2>&1
+        rm -f "$KC_FILE"
+        case $AUTOLOGIN in
+            off-not-asked)
+                say "auto-login: off ($AUTOLOGIN): the build did not ask for it;" \
+                    "the console shows the login window"
+                ;;
+            off-kcpassword-failed)
+                say "auto-login: off ($AUTOLOGIN): $KC_FILE could not be written;" \
+                    "the console shows the login window"
+                ;;
+            *)
+                say "auto-login: off ($AUTOLOGIN): loginwindow needs $GUEST_MACOSX_FB_USER's" \
+                    "password in $KC_FILE, and this build set none it could check;" \
+                    "the console shows the login window"
+                ;;
+        esac
+    fi
+    forget_account_secret
+}
+
+# forget_account_secret: firstboot.conf with its GUEST_MACOSX_FB_PASSWORD line
+# replaced by GUEST_MACOSX_FB_SECRET_FORGOTTEN=1, once nothing here needs it, so a
+# run after this one says why it has no password. The password then stays
+# in the image only as the account's own hash and, with auto-login on, in
+# kcpassword; the old conf's freed blocks keep it until the build's last
+# step zeroes the free space. A conf with no such line is left alone.
+forget_account_secret() {
+    _conf=$CONF_DIR/firstboot.conf
+    _key=GUEST_MACOSX_FB_PASSWORD
+    grep -q "^$_key=" "$_conf" 2>/dev/null || return 0
+    rm -f "$_conf.new"
+    if (
+        umask 077
+        sed -e "s/^$_key=.*/GUEST_MACOSX_FB_SECRET_FORGOTTEN=1/" "$_conf" > "$_conf.new"
+    ) && mv -f "$_conf.new" "$_conf"; then
+        say "account secret removed from $_conf"
+    else
+        rm -f "$_conf.new"
+        say "could not remove the account secret from $_conf"
+    fi
+}
+
+configure_autologin
+
+# --- the shutdown helper ---------------------------------------------------
+#
+# A bare `shutdown` over SSH can hold 10.9's userspace shutdown for a
+# launchd job's 20 s exit timeout, and com.apple.shutdown_monitor then files
+# a .shutdownStall report (docs/decisions/0019, 0021). Three causes, all
+# MEASURED:
+#
+# 1. loginwindow's `ManagedClient -s` opens a DiskArbitration session about
+#    30 s after boot that only loginwindow would close. `shutdown` bypasses
+#    loginwindow, launchd does not signal that anonymous process until the
+#    end, and diskarbitrationd waits for its session (8 of 8 restarts
+#    stalled, 2026-10-13).
+# 2. UserEventAgent (System)'s XPC activity scheduler records each activity
+#    it runs in root's com.apple.xpc.activity preferences. CFPreferences
+#    keeps the process "dirty" until the write reaches cfprefsd, seconds
+#    later. On SIGTERM, UserEventAgent saves what is pending through
+#    cfprefsd and exits, in milliseconds. But a shutdown kills cfprefsd at
+#    once (it is clean) and only then SIGTERMs the dirty UserEventAgent,
+#    whose save can no longer land. securityd and diskarbitrationd wait for
+#    UserEventAgent, their client, and all three run out their 20 s.
+#    Waiting for UserEventAgent to be clean is not enough: an activity can
+#    start and finish in the 50 ms between the check and the shutdown
+#    (caught once in 40 restarts). Unloading it first, while cfprefsd still
+#    runs, leaves no window.
+# 3. A job still starting. launchd's shutdown signals every job at once and
+#    relaunches none. A job in its first seconds is dirty, so it gets SIGTERM
+#    rather than SIGKILL, and is not ready for it: warmd and SleepServicesD
+#    ignore SIGTERM before their handlers exist, so the signal is lost;
+#    xpcd's and kextd's start-up waits on opendirectoryd or securityd, which
+#    the shutdown has already stopped. A warm boot's last jobs start 5-8 s
+#    in, and restarts at about 7 s stalled this way (15 of 100, 2026-10-14/15).
+#    AppleIDAuthAgent's account check, 10-15 s after it starts, can leave a
+#    preference write pending for 3-4 s, as in 2.: on a cold boot of the base
+#    box, a restart at 58 s stalled every time (8 of 8). A 20 s wait for jobs
+#    still starting ended that (0 of 8), and the dirty wait on
+#    AppleIDAuthAgent below did not fire in any of the 266 shutdowns measured
+#    with it (a 10 s wait without it still stalled 7 of 8, which says nothing
+#    about whether the dirty wait is needed). It stays for the same check's
+#    later runs in a long-lived guest: the mechanism, unmeasured.
+#
+# So every shutdown and restart -- the build's, the gate's, the box's
+# `vagrant halt` -- is `sudo /usr/local/sbin/guest-macosx-shutdown -h|-r`, which
+# waits until no job launchd started is under 20 s old, unloads
+# UserEventAgent (System) and waits until it is gone, waits until any other
+# UserEventAgent and AppleIDAuthAgent have nothing pending (the LoginWindow
+# agent once held a shutdown 20 s, just after it started: cause 3), stops
+# ManagedClient, and only then shuts down. Each wait is bounded: a guest
+# that does not settle still shuts down, says so in system.log, and the
+# stall shows. Each says what it found when it had nothing to wait for, too.
+write_shutdown_helper() {
+    say "shutdown helper: writing /usr/local/sbin/guest-macosx-shutdown"
+    mkdir -p /usr/local/sbin 2>/dev/null
+    cat > /usr/local/sbin/guest-macosx-shutdown <<'GUEST_MACOSX_SHUTDOWN_EOF'
+#!/bin/sh
+# Written by guest-macosx-firstboot (see its "shutdown helper" section, and
+# packer-plugin-macosx's docs/decisions/0019, 0021). Shut down (-h) or restart
+# (-r) without letting launchd wait out a 20 s exit timeout.
+case ${1:-} in -h|-r) ;; *) echo "usage: guest-macosx-shutdown -h|-r" >&2; exit 2 ;; esac
+[ "$(id -u)" = 0 ] || { echo "guest-macosx-shutdown: run it as root" >&2; exit 2; }
+# launchd's shutdown signals every job at once and never relaunches one it
+# has stopped. A job still starting up is dirty (so it gets SIGTERM, not
+# SIGKILL) and is not yet ready for it: its SIGTERM handler is not armed yet,
+# so the signal is lost, or its start-up waits on a daemon the shutdown has
+# already stopped. Either way it runs out its 20 s. So first wait until no
+# job launchd started is under SETTLE seconds old.
+# UserEventAgent saves pending preferences on SIGTERM, through cfprefsd, and
+# exits. A shutdown kills cfprefsd first, so one with a write pending then
+# waits out its 20 s. Stop UserEventAgent (System) while cfprefsd still runs
+# (not for good: the next boot loads it), and wait out any other one, and
+# AppleIDAuthAgent, until it has nothing pending.
+/usr/bin/python - <<'GUEST_MACOSX_PY_EOF'
+import ctypes, os, re, subprocess, sys, time
+LIMIT = 30.0
+AGENT = '/usr/libexec/UserEventAgent ('
+APPLEID = '/System/Library/CoreServices/AppleIDAuthAgent'
+SYSTEM = '/System/Library/LaunchDaemons/com.apple.UserEventAgent-System.plist'
+TRACKED, DIRTY = 1, 4
+def say(msg):
+    # system.log first. Then the caller, if it is still there: a caller that
+    # has gone (a timeout, a dropped session) must not change what this does.
+    subprocess.call(['/usr/bin/logger', '-t', 'guest-macosx-shutdown', msg])
+    try:
+        sys.stderr.write('guest-macosx-shutdown: %s\n' % msg)
+        sys.stderr.flush()
+    except Exception:
+        pass
+# GUEST_MACOSX_SHUTDOWN_TEST_LIMIT shortens all three waits for internal/payload's helper
+# tests. It can reach a guest (`sudo -E`, `sudo VAR=...`, Vagrant's own
+# `sudo -E -H`, root without sudo), so only 0 < x <= 30 is taken, and said
+# in the log; anything else is logged and ignored, and the waits stay at
+# most 30 s.
+raw = os.environ.get('GUEST_MACOSX_SHUTDOWN_TEST_LIMIT')
+if raw is not None:
+    try:
+        x = float(raw)
+    except ValueError:
+        x = 0.0
+    if 0 < x <= 30:
+        LIMIT = x
+        say('GUEST_MACOSX_SHUTDOWN_TEST_LIMIT=%r in effect: waiting at most %gs' % (raw, LIMIT))
+    else:
+        say('GUEST_MACOSX_SHUTDOWN_TEST_LIMIT=%r ignored: waiting at most 30s' % raw)
+libc = ctypes.CDLL('/usr/lib/libSystem.B.dylib')
+can_tell = hasattr(libc, 'proc_get_dirty')
+if not can_tell:
+    say('no proc_get_dirty in libSystem: cannot tell what UserEventAgent or AppleIDAuthAgent has pending')
+# The waits are timed by mach_absolute_time, which does not step when the
+# wall clock does (ntpd, a host resume): Python 2.7 has no time.monotonic.
+class Timebase(ctypes.Structure):
+    _fields_ = [('numer', ctypes.c_uint32), ('denom', ctypes.c_uint32)]
+tb, no_clock = Timebase(), None
+if not hasattr(libc, 'mach_absolute_time'):
+    no_clock = 'no mach_absolute_time in libSystem'
+elif not hasattr(libc, 'mach_timebase_info'):
+    no_clock = 'no mach_timebase_info in libSystem'
+else:
+    rc = libc.mach_timebase_info(ctypes.byref(tb))
+    if rc != 0 or not tb.denom:
+        no_clock = 'mach_timebase_info returned %d, denominator %d' % (rc, tb.denom)
+if no_clock:
+    clock = time.time
+    say('%s: timing the waits by the wall clock' % no_clock)
+else:
+    libc.mach_absolute_time.restype = ctypes.c_uint64
+    def clock():
+        return libc.mach_absolute_time() * (tb.numer / float(tb.denom)) / 1e9
+def agents():
+    # -ww: never truncated to a terminal's width
+    out = subprocess.Popen(['/bin/ps', '-axwwo', 'pid=,command='],
+                           stdout=subprocess.PIPE).communicate()[0]
+    found = []
+    for line in out.decode('utf-8', 'replace').splitlines():
+        pid, _, cmd = line.strip().partition(' ')
+        cmd = cmd.strip()
+        if cmd.startswith(AGENT):
+            found.append((int(pid), 'UserEventAgent ' + cmd[len(AGENT) - 1:]))
+        elif cmd == APPLEID or cmd.startswith(APPLEID + ' '):
+            found.append((int(pid), 'AppleIDAuthAgent'))
+    return found
+def running(name):
+    return [a for a in agents() if a[1] == name]
+def dirty(pid):
+    if not can_tell:
+        return False
+    flags = ctypes.c_uint32(0)
+    if libc.proc_get_dirty(pid, ctypes.byref(flags)) != 0:
+        return False
+    return flags.value & (TRACKED | DIRTY) == TRACKED | DIRTY
+# The boot's last jobs start about 5-8 s after a warm boot's kernel (about
+# 38 s after a cold one, behind DSMOS). Most come ready in 1-4 s; the
+# latest is AppleIDAuthAgent's account check, 10 s after it starts (with 5 s
+# of leeway), which can then hold a preference write for 3-4 s: 10 + 5 + 4
+# is 19 s, so waiting out SETTLE carries the agent past it. That is what
+# ended the cold-boot stalls (8 of 8 to 0 of 8, MEASURED). The dirty wait
+# below on AppleIDAuthAgent never fired in the 266 shutdowns measured with
+# it; it is there for the check's later runs in a long-lived guest (a
+# mechanism, not measured). Not counted: launchproxy (each SSH
+# session's sshd, this one's too) and per-user launchds (an SSH login starts
+# one). A process an earlier session or command left behind (`nohup ... &`)
+# is counted: launchd adopted it, and it is as young as it looks. One this
+# same command left behind is in the helper's process group, and is not.
+SETTLE = 20.0
+POLL = 0.5
+ETIME = re.compile(r'^(?:([0-9]+)-)?(?:([0-9]+):)?([0-9]+):([0-9]+)$')
+def age(etime):
+    # ps's etime: [[dd-]hh:]mm:ss. A clock stepped back prints negative parts
+    # ("-1:-30", "-5:00", "00:-30"): not an age.
+    m = ETIME.match(etime)
+    if not m:
+        raise ValueError(etime)
+    d, h, mi, s = [int(x or 0) for x in m.groups()]
+    return ((d * 24 + h) * 60 + mi) * 60 + s
+def starting():
+    # (young, checked, unreadable, why): young is [(name, pid)] of the
+    # jobs launchd started under SETTLE seconds ago; checked is how many it
+    # could age; unreadable is how many it could not; why is None, or the
+    # reason ps could not answer. Not counted: a zombie, this helper, its
+    # parents that launchd adopted (`nohup sudo ... &`) and its process group
+    # (the rest of a backgrounded pipeline).
+    try:
+        ps = subprocess.Popen(['/bin/ps', '-axwwo', 'pid=,ppid=,pgid=,uid=,etime=,stat=,command='],
+                              stdout=subprocess.PIPE)
+        out = ps.communicate()[0]
+    except OSError as e:
+        return [], 0, 0, 'ps: %s' % e
+    if ps.returncode != 0:
+        return [], 0, 0, 'ps exited %d' % ps.returncode
+    rows, parent = [], {}
+    for line in out.decode('utf-8', 'replace').splitlines():
+        f = line.split(None, 6)
+        if len(f) < 7:
+            continue
+        try:
+            parent[int(f[0])] = int(f[1])
+        except ValueError:
+            continue
+        rows.append(f)
+    mine, pid = set(), os.getpid()
+    while pid in parent and pid not in mine:
+        mine.add(pid)
+        pid = parent[pid]
+    group = str(os.getpgrp())
+    listed, checked, unreadable, found = 0, 0, 0, []
+    for pid, ppid, pgid, uid, etime, stat, cmd in rows:
+        if ppid != '1':
+            continue
+        listed += 1
+        cmd = cmd.strip()
+        if int(pid) in mine or pgid == group or stat.startswith('Z'):
+            continue
+        # ps prints a live process whose arguments it cannot read (one
+        # exiting, say) as "(name)": the same process as "name".
+        if cmd.startswith('(') and cmd.endswith(')'):
+            cmd = cmd[1:-1]
+        if os.path.basename(cmd.split(' ')[0]) in ('launchproxy', 'launchd'):
+            continue
+        try:
+            a = age(etime)
+        except ValueError:
+            unreadable += 1
+            continue
+        checked += 1
+        if a < SETTLE:
+            found.append((cmd.split(' -')[0].rsplit('/', 1)[-1], int(pid)))
+    if not listed:
+        return [], 0, 0, 'ps listed no job launchd started'
+    return found, checked, unreadable, None
+def names(jobs):
+    jobs = sorted(set(jobs))
+    more = len(jobs) - 8
+    return ', '.join(jobs[:8]) + (' and %d more' % more if more > 0 else '')
+# Bounded by LIMIT on the clock, and by LIMIT / POLL looks should the clock
+# not move. Every young process is waited for, whatever its name: root's
+# xpcd and _softwareupdate's are two. A job launchd keeps respawning holds
+# the wait only while a copy of it is young at each look: one that lives
+# past launchd's 10 s throttle holds it to its bound, and is named; one that
+# dies on start is usually gone, so the wait ends between copies, and a
+# copy that meets the shutdown is reported by the last look if it is there
+# then.
+start, young, seen, polls = clock(), set(), set(), 0
+now, last, unreadable, why = [], [], 0, None
+while True:
+    jobs, checked, bad, why = starting()
+    if why:
+        now = []
+        break
+    unreadable = max(unreadable, bad)
+    seen.update(j[1] for j in jobs)
+    now = [j[0] for j in jobs]
+    if not now:
+        break
+    young.update(now)
+    last = now
+    if polls >= int(LIMIT / POLL) or clock() - start >= LIMIT:
+        break
+    polls += 1
+    time.sleep(POLL)
+# Every way this wait can end says so: a guest that was settled, a ps that
+# could not tell, and a wait that gave up are not the same thing.
+if now:
+    say('jobs still starting after %gs: %s; shutting down anyway' % (LIMIT, names(now)))
+elif young:
+    # The list is in order and cut at eight, so the job that held the wait
+    # longest can be past it: name the ones still young at the last look,
+    # unless that was every one. A ps that failed mid-wait left jobs that
+    # never settled, so it names none.
+    lastly = '' if why or set(last) == young else '; the last to settle: %s' % names(last)
+    say('waited %.1fs for jobs still starting: %s%s' % (clock() - start, names(young), lastly))
+elif not why:
+    say('no job launchd started is under %gs old (%d checked)' % (SETTLE, checked))
+if why:
+    say('could not tell which jobs are still starting (%s); not waiting for any' % why)
+if unreadable:
+    say('could not read the age of %d process(es) launchd started; not waited for' % unreadable)
+blind = why
+start = clock()
+was = running('UserEventAgent (System)')
+pending = [a for a in was if dirty(a[0])]
+rc = subprocess.call(['/bin/launchctl', 'unload', SYSTEM])
+if rc != 0:
+    say('launchctl unload %s exited %d' % (SYSTEM, rc))
+# Each wait checks its condition before it looks at the clock, so even a
+# bound too small for one pass says what it found. Each is also bounded by
+# its number of looks, should the clock not move.
+polls = 0
+while running('UserEventAgent (System)'):
+    if polls >= int(LIMIT / 0.05) or clock() - start >= LIMIT:
+        break
+    polls += 1
+    time.sleep(0.05)
+if running('UserEventAgent (System)'):
+    say('UserEventAgent (System) still running %gs after its unload; shutting down anyway' % LIMIT)
+elif not was:
+    say('UserEventAgent (System) was not running')
+else:
+    say('UserEventAgent (System) stopped in %.2fs%s' % (clock() - start, ', with a write pending' if pending else ''))
+start, held, polls = clock(), set(), 0
+while True:
+    now = [a for a in agents() if dirty(a[0])]
+    if not now:
+        break
+    held.update(a[1] for a in now)
+    if polls >= int(LIMIT / 0.1) or clock() - start >= LIMIT:
+        break
+    polls += 1
+    time.sleep(0.1)
+if now:
+    say('%s still dirty after %gs; shutting down anyway' % (', '.join(sorted(set(a[1] for a in now))), LIMIT))
+elif held:
+    say('waited %.1fs for %s to settle' % (clock() - start, ', '.join(sorted(held))))
+# The unload and the dirty wait took time, and a job launchd started in it
+# meets the shutdown young. Look once more, say so, and do not wait again.
+# What started is a pid the first wait never saw: not one it gave up on, but
+# a fresh copy of one, under a new pid, is. A pid, not its name or uid: a
+# job's uid changes under its pid in its first second (setuid), and Darwin
+# does not reuse a pid this soon. When the first wait could not tell, say
+# what is starting now.
+jobs, checked, bad, why = starting()
+late = [j[0] for j in jobs if j[1] not in seen]
+if why:
+    say('could not tell whether a job started during the waits (%s)' % why)
+elif blind and jobs:
+    say('jobs still starting at the shutdown: %s; shutting down anyway' % names(j[0] for j in jobs))
+elif blind:
+    say('no job launchd started is under %gs old at the shutdown' % SETTLE)
+elif late:
+    say('jobs started during the waits: %s; shutting down anyway' % names(late))
+else:
+    say('no new job started during the waits')
+GUEST_MACOSX_PY_EOF
+# ManagedClient's DiskArbitration session closes when it exits. Last, just
+# before the shutdown, so loginwindow has no time to start another.
+killall ManagedClient 2>/dev/null
+exec /sbin/shutdown "$1" now
+GUEST_MACOSX_SHUTDOWN_EOF
+    chown root:wheel /usr/local/sbin/guest-macosx-shutdown 2>/dev/null
+    chmod 755 /usr/local/sbin/guest-macosx-shutdown 2>/dev/null
+}
+
+# 10.9's alone. 10.6 has neither cause: no cfprefsd and no XPC activity
+# scheduler, and its shutdowns 70 s after boot, ManagedClient running, took
+# 0.4 s (MEASURED 2026-10-14). Its shutdowns stay a bare `shutdown`.
+if [ -z "$GUEST_MACOSX_FB_RELEASE" ]; then
+    write_shutdown_helper
+    say "shutdown helper: $(ls -l /usr/local/sbin/guest-macosx-shutdown 2>&1)"
 fi
 
 # --- verdict ---------------------------------------------------------------
-say "account: $(id "$MQG_FB_USER" 2>&1)"
+say "account: $(id "$GUEST_MACOSX_FB_USER" 2>&1)"
 say "ssh: $(ssh -V 2>&1)"
 say "sshd job: $(launchctl list 2>/dev/null | grep -c com.openssh.sshd) entries"
 
-if [ "$MQG_FB_RESTART" = 1 ]; then
-    install_updates
+if [ "$GUEST_MACOSX_FB_RESTART" = 1 ]; then
+    snow_leopard_updates
+    finish_snow_leopard
 fi
 
 # Copy the log somewhere a host can find it without a running VM: the log in
 # /private/var/log is fine once SSH works, and useless when it does not.
-cp "$LOG" /.mqg-firstboot.log 2>/dev/null
+cp "$LOG" /.guest-macosx-firstboot.log 2>/dev/null
 
 # Written BEFORE the LaunchDaemon is removed, so that a machine losing power
 # between the two lines still refuses to run this again.
@@ -782,66 +2524,67 @@ say "removing the LaunchDaemon so this never runs again"
 rm -f "$DAEMON"
 say "LaunchDaemon gone: $([ -e "$DAEMON" ] && echo NO || echo yes)"
 
-# 10.6 with updates: the restart they need, after which sshd starts and
-# auto-login applies.
-if [ "$MQG_FB_RESTART" = 1 ]; then
-    say "restarting into the updated system"
-    say "done"
-    cp "$LOG" /.mqg-firstboot.log 2>/dev/null
-    shutdown -r now
-    exit 0
-fi
+# 10.9 with an update that installed a kernel or asked for a restart: the
+# restart into it, which does not return. Otherwise nothing.
+restart_into_updates
 
 # Restart loginwindow so auto-login takes effect on this boot rather than
 # the next one. loginwindow started before the account existed, so it has no
 # idea about it; this is what turns a login window into a desktop without a
-# reboot.
-if [ "$MQG_FB_AUTOLOGIN" = "1" ]; then
+# reboot. With auto-login off, the default build's case, loginwindow is left
+# alone: nothing in a build waits for a desktop (firstboot-wait.sh, verify.sh
+# and the shutdown all go through SSH), and a restart would only start a new
+# loginwindow session, and its ManagedClient, close to the build's shutdown
+# (REASONED; see docs/decisions/0019).
+if [ "$AUTOLOGIN" = on ]; then
     say "restarting loginwindow so auto-login applies now"
     killall -HUP loginwindow 2>/dev/null || killall loginwindow 2>/dev/null
 fi
 
 say "done"
 exit 0
-MQG_EOF_FIRSTBOOT_SH
+GUEST_MACOSX_EOF_FIRSTBOOT_SH
 chmod 755 "$CONF_DIR/firstboot.sh" 2>/dev/null
 
 say "writing $CONF_DIR/firstboot.conf"
-cat > "$CONF_DIR/firstboot.conf" <<'MQG_EOF_FIRSTBOOT_CONF'
+cat > "$CONF_DIR/firstboot.conf" <<'GUEST_MACOSX_EOF_FIRSTBOOT_CONF'
 # Generated by packer-plugin-macosx. Do not edit.
-MQG_FB_USER=mavsuser
-MQG_FB_UID=501
-MQG_FB_GID=20
-MQG_FB_ADMIN_GID=80
-MQG_FB_REALNAME=Mavericks\ User
-MQG_FB_SHELL=/bin/bash
-MQG_FB_HOSTNAME=mavericks
-MQG_FB_AUTOLOGIN=1
-MQG_FB_SUDO=0
-MQG_FB_OPENSSH=0
-MQG_EOF_FIRSTBOOT_CONF
+GUEST_MACOSX_FB_USER=mavsuser
+GUEST_MACOSX_FB_UID=501
+GUEST_MACOSX_FB_GID=20
+GUEST_MACOSX_FB_ADMIN_GID=80
+GUEST_MACOSX_FB_REALNAME=Mavericks\ User
+GUEST_MACOSX_FB_SHELL=/bin/bash
+GUEST_MACOSX_FB_HOSTNAME=mavericks
+GUEST_MACOSX_FB_AUTOLOGIN=1
+GUEST_MACOSX_FB_SUDO=0
+GUEST_MACOSX_FB_OPENSSH=0
+GUEST_MACOSX_EOF_FIRSTBOOT_CONF
 chmod 600 "$CONF_DIR/firstboot.conf" 2>/dev/null
 
 say "writing $CONF_DIR/authorized_keys"
-cat > "$CONF_DIR/authorized_keys" <<'MQG_EOF_AUTHORIZED_KEYS'
+cat > "$CONF_DIR/authorized_keys" <<'GUEST_MACOSX_EOF_AUTHORIZED_KEYS'
 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDVWVopDxbErEjP85pydLW1qZwfUfyGg9t6hJTHAUcW6bLoTcQk+KR6IyrsfSdPnlh5FwOkJg2Agvjqp+6q4nmw4z5Dx7QljjuTPuZkDvSe1k2I0WdLNeoKFCNeAPreonL4LuynVbe3DD+zW1E/Z8YEkcQlAForWb7zyLcrNR9q8ncE0PMzU3C+9poHWZNTP6/ob109dh+GGbTKQSI812K274HEUkqKNqANX5JNPkqDGoawYohjNxXoQbZ+2y8wekM0VAmfPv6+VB+l3uh+xFdAKN1sftHL0TsmiGiojKYDa6RCV6nI6xavsTAaWGRaV3jxtahxTtp6Dt9jPLUqD7YD
-MQG_EOF_AUTHORIZED_KEYS
+GUEST_MACOSX_EOF_AUTHORIZED_KEYS
 chmod 644 "$CONF_DIR/authorized_keys" 2>/dev/null
 
 say "writing $DAEMON"
-cat > "$DAEMON" <<'MQG_EOF_LAUNCHDAEMON'
+cat > "$DAEMON" <<'GUEST_MACOSX_EOF_LAUNCHDAEMON'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
-  Installed at /Library/LaunchDaemons/com.mqg.firstboot.plist by
-  ./postinstall, which the OS X Installer runs because mqg-firstboot.pkg is
+  Installed at /Library/LaunchDaemons/guest-macosx.firstboot.plist by
+  ./postinstall, which the OS X Installer runs because guest-macosx-firstboot.pkg is
   listed in OSInstall.collection.
 
   RunAtLoad with no KeepAlive: launchd starts it once at boot and does not
   restart it when it exits. firstboot.sh then deletes THIS FILE as its last
   act, so there is no second boot on which it could run. Two independent
   guards, because a first-boot script that keeps running is a fault whose
-  symptom appears long after its cause.
+  symptom appears long after its cause. The one exception is by design: on
+  10.6 with updates, the file stays through the boots between the updates,
+  one each, and the boot that installs the last of them, or stops them,
+  deletes it.
 
   Owned root:wheel, mode 0644. launchd refuses to load a job from a file it
   does not trust ("Dubious ownership on file (skipping)"), and the installer
@@ -854,23 +2597,23 @@ cat > "$DAEMON" <<'MQG_EOF_LAUNCHDAEMON'
 <plist version="1.0">
 <dict>
 	<key>Label</key>
-	<string>com.mqg.firstboot</string>
+	<string>guest-macosx.firstboot</string>
 	<key>ProgramArguments</key>
 	<array>
 		<string>/bin/sh</string>
-		<string>/private/var/db/.mqg-firstboot/firstboot.sh</string>
+		<string>/private/var/db/.guest-macosx-firstboot/firstboot.sh</string>
 	</array>
 	<key>RunAtLoad</key>
 	<true/>
 	<key>KeepAlive</key>
 	<false/>
 	<key>StandardOutPath</key>
-	<string>/private/var/log/mqg-firstboot.out</string>
+	<string>/private/var/log/guest-macosx-firstboot.out</string>
 	<key>StandardErrorPath</key>
-	<string>/private/var/log/mqg-firstboot.err</string>
+	<string>/private/var/log/guest-macosx-firstboot.err</string>
 </dict>
 </plist>
-MQG_EOF_LAUNCHDAEMON
+GUEST_MACOSX_EOF_LAUNCHDAEMON
 chmod 644 "$DAEMON" 2>/dev/null
 
 
@@ -906,14 +2649,21 @@ if [ -r "$CONF_DIR/firstboot.conf" ]; then
 fi
 
 # carry_pkgs <destdir> <space-separated names> -- copy each named package
-# off the media into <destdir>, reporting every one that is not there.
+# off the media into <destdir>, reporting every one that is not there. The
+# names arrive as one word and are split here, one per line, by awk, rather
+# than by the shell's word splitting, which would also glob them: a name
+# never holds whitespace (internal/payload refuses one), so a space is
+# always a separator. awk, not tr: 10.6's install DVD has awk and sed but
+# no tr, and no dirname (internal/payload/testdata/commands/ lists what
+# each release's installer has, and environment_test.go holds this script
+# to it).
 carry_pkgs() {
     _dest=$1
-    shift
     mkdir -p "$_dest"
-    for pkgname in $*; do
+    printf '%s\n' "$2" | awk '{ for (i = 1; i <= NF; i++) print $i }' | while IFS= read -r pkgname; do
+        [ -n "$pkgname" ] || continue
         copied=no
-        for dir in "$(dirname "${MQG_PKG_PATH:-/nonexistent}")" \
+        for dir in "${GUEST_MACOSX_PKG_PATH%/*}" \
                    /System/Installation/Packages; do
             if [ -f "$dir/$pkgname" ]; then
                 if cp "$dir/$pkgname" "$_dest/$pkgname"; then
@@ -925,21 +2675,21 @@ carry_pkgs() {
         done
         [ "$copied" = yes ] || say "NOT FOUND on the media: $pkgname"
     done
-    say "$_dest now: $(ls "$_dest" 2>&1 | tr '\n' ' ')"
+    say "$_dest now: $(names_in "$_dest")"
 }
 
-# $1 is the full path to THIS package; carry_pkgs shifts its own arguments,
-# so it is captured here rather than read as $1 inside.
-MQG_PKG_PATH=${1:-/nonexistent}
+# $1 is the full path to THIS package; inside carry_pkgs $1 is its own
+# argument, so it is captured here rather than read as $1 there.
+GUEST_MACOSX_PKG_PATH=${1:-/nonexistent}
 
-if [ -n "${MQG_FB_EXTRA_PKGS:-}" ]; then
-    carry_pkgs "$CONF_DIR/pkgs" $MQG_FB_EXTRA_PKGS
+if [ -n "${GUEST_MACOSX_FB_EXTRA_PKGS:-}" ]; then
+    carry_pkgs "$CONF_DIR/pkgs" "$GUEST_MACOSX_FB_EXTRA_PKGS"
 fi
-if [ -n "${MQG_FB_UPDATE_PKGS:-}" ]; then
-    say "updates: ${MQG_FB_UPDATES:-none}"
-    # MQG_FB_UPDATE_MEMBERS: the packages an update's distribution
+if [ -n "${GUEST_MACOSX_FB_UPDATE_PKGS:-}" ]; then
+    say "updates: ${GUEST_MACOSX_FB_UPDATES:-none}"
+    # GUEST_MACOSX_FB_UPDATE_MEMBERS: the packages an update's distribution
     # installs, carried beside it so installer finds them by name.
-    carry_pkgs "$CONF_DIR/updates" $MQG_FB_UPDATE_PKGS ${MQG_FB_UPDATE_MEMBERS:-}
+    carry_pkgs "$CONF_DIR/updates" "$GUEST_MACOSX_FB_UPDATE_PKGS ${GUEST_MACOSX_FB_UPDATE_MEMBERS:-}"
 fi
 
 chmod 755 "$CONF_DIR/firstboot.sh" 2>/dev/null
@@ -949,6 +2699,95 @@ chmod 644 "$DAEMON" 2>/dev/null
 chown -R 0:0 "$CONF_DIR" 2>/dev/null
 chown 0:0 "$DAEMON" 2>/dev/null
 
+# THE TELEMETRY PLUGIN (docs/decisions/0020)
+#
+# UserEventAgent (System) crashed in 11 of 335 boots in the runs that saw
+# it, and the crash report fails the boot gate. MEASURED 2026-10-14, with dtrace and the
+# crash reports symbolicated against the guest's own binaries: its
+# com.apple.telemetry plugin, just loaded, opens each USB device through
+# IOUSBLib, a CFPlugIn, on its own thread. Releasing a device's interface
+# leaves no instance, so CoreFoundation schedules IOUSBLib for unloading,
+# from inside IOUSBLib's own Release, before that code has returned.
+# Meanwhile the main thread, before it loads its next plugin
+# (com.apple.time, the last), frees the CFBundle that checked that plugin's
+# signature, which runs CoreFoundation's scheduled unloads: dlclose unmaps
+# IOUSBLib under the telemetry thread, which returns into nothing. That
+# is Apple's bug, in CoreFoundation's deferred plugin unloading; the
+# telemetry plugin is the only code in UserEventAgent that walks into it,
+# and it only feeds systemstatsd's power and usage statistics.
+#
+# Moved, not deleted, so it can go back: mv it into UserEventPlugins and
+# restart. Here, not at first boot, because UserEventAgent starts before
+# firstboot.sh does. Security Update 2016-004 puts it back (REASONED, from
+# its Bom), so firstboot.sh sets it aside again after the updates. Snow
+# Leopard is not known to have such a plugin (REASONED); the -d check makes
+# this a no-op there. verify.sh requires the "set aside:" line below in
+# this log, since firstboot.sh's second move would hide a failure here.
+TELEMETRY="$TARGET/System/Library/UserEventPlugins/com.apple.telemetry.plugin"
+TELEMETRY_ASIDE="$TARGET/System/Library/UserEventPlugins-disabled"
+if [ -d "$TELEMETRY" ]; then
+    if mkdir -p "$TELEMETRY_ASIDE" && rm -rf "$TELEMETRY_ASIDE/com.apple.telemetry.plugin" &&
+        mv "$TELEMETRY" "$TELEMETRY_ASIDE/"; then
+        say "telemetry plugin set aside: $TELEMETRY_ASIDE/com.apple.telemetry.plugin"
+    else
+        say "telemetry plugin: COULD NOT set it aside; UserEventAgent will load it"
+    fi
+elif ! grep -A1 ProductVersion "$TARGET/System/Library/CoreServices/SystemVersion.plist" 2>/dev/null | grep -q '<string>10\.6'; then
+    # Already absent (a medium without it, a re-run): verify.sh wants this
+    # line on 10.9. Snow Leopard's verify.sh does not, so a volume that says
+    # it is 10.6 logs nothing.
+    say "telemetry plugin set aside: not present at install"
+fi
+
+# THE SYSTEMSTATS JOBS (docs/decisions/0022)
+#
+# The telemetry plugin is systemstatsd's only source. systemstatsd answers a
+# request for statistics (systemstats --daily's spindump, at 00:15 every
+# day) by posting com.apple.telemetry.immediate and holding an XPC
+# transaction open until the plugin's next event delivers data. With the
+# plugin set aside that event never comes: systemstatsd stays dirty for the
+# rest of the boot, ignores SIGTERM as a transaction-tracked job does, and
+# every later shutdown waits out its 20 s exit timeout and leaves a
+# .shutdownStall report (MEASURED 2026-10-15, with dtrace and its
+# transaction count). The daily job's report, empty without the plugin,
+# is a DiagnosticReports file the boot gate fails on, and
+# systemstats --xpc waits forever for the plugin's sample of processes
+# (REASONED, from its code). So where the plugin is set aside, its three
+# consumers are set aside with it; where it is still in place, they stay.
+# Moved, not deleted, as the plugin is: to restore them, move them back to
+# LaunchDaemons with the plugin, and restart. Security Update 2016-004
+# carries systemstatsd and systemstats but not their plists (MEASURED, its
+# Bom: no LaunchDaemons entry at all), so the update does not undo this. 10.6 has none of
+# them, and says nothing.
+DAEMONS="$TARGET/System/Library/LaunchDaemons"
+DAEMONS_ASIDE="$TARGET/System/Library/LaunchDaemons-disabled"
+SYSTEMSTATS_PRESENT=
+for job in com.apple.systemstatsd com.apple.systemstats.daily com.apple.systemstats.analysis; do
+    [ -f "$DAEMONS/$job.plist" ] && SYSTEMSTATS_PRESENT="$SYSTEMSTATS_PRESENT $job"
+done
+if [ -z "$SYSTEMSTATS_PRESENT" ]; then
+    # Logs which, as the plugin's block does: none here (a re-run, a medium
+    # without them) must not read like a postinstall that died before this
+    # block. A volume that says it is 10.6 logs nothing.
+    if ! grep -A1 ProductVersion "$TARGET/System/Library/CoreServices/SystemVersion.plist" 2>/dev/null | grep -q '<string>10\.6'; then
+        say "systemstats jobs set aside: none in LaunchDaemons at install"
+    fi
+elif [ -d "$TELEMETRY" ]; then
+    say "systemstats jobs left in place: the telemetry plugin is still in UserEventPlugins"
+else
+    moved=''
+    failed=''
+    for job in $SYSTEMSTATS_PRESENT; do
+        if mkdir -p "$DAEMONS_ASIDE" && mv -f "$DAEMONS/$job.plist" "$DAEMONS_ASIDE/"; then
+            moved="$moved $job"
+        else
+            failed="$failed $job"
+        fi
+    done
+    [ -z "$moved" ] || say "systemstats jobs set aside, with the telemetry plugin:$moved"
+    [ -z "$failed" ] || say "systemstats jobs: COULD NOT set aside:$failed; launchd will load them"
+fi
+
 # The race described above. Do this last, so a failure earlier leaves Setup
 # Assistant in place and the image visibly unfinished rather than an image
 # that boots to a login window with no account on it.
@@ -956,7 +2795,7 @@ mkdir -p "$TARGET/private/var/db"
 touch "$TARGET/private/var/db/.AppleSetupDone"
 touch "$TARGET/private/var/db/.AppleDiagnosticsSetupDone"
 
-say "installed: $(ls "$CONF_DIR" 2>&1 | tr '\n' ' ')"
+say "installed: $(names_in "$CONF_DIR")"
 say "LaunchDaemon: $(ls -l "$DAEMON" 2>&1)"
 say "firstboot.sh: $(wc -c < "$CONF_DIR/firstboot.sh" 2>&1) bytes"
 say "authorized_keys: $(wc -l < "$CONF_DIR/authorized_keys" 2>&1) line(s)"

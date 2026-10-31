@@ -21,8 +21,8 @@ import (
 const DefaultTimeout = 15 * time.Minute
 
 // A Disk is an extra image the microVM gets after the target: "ro" is
-// mounted read-only as $MQG_SRC<n>, "raw" is handed over as a block
-// device $MQG_RAW<n> and not mounted -- which is how a payload gives a
+// mounted read-only as $GUEST_MACOSX_SRC<n>, "raw" is handed over as a block
+// device $GUEST_MACOSX_RAW<n> and not mounted -- which is how a payload gives a
 // file back to the host.
 type Disk struct{ Role, Path string }
 
@@ -80,10 +80,10 @@ func (b Backend) Run(ctx context.Context, target string, payload []byte, disks [
 		return nil, err
 	}
 	if !b.KernelIsKeyed(kernel) {
-		b.logf("warning: %s is not keyed to the running kernel (%s): if it is a different build, none of the modules staged from %s will load",
+		b.logf("warning: %s is not keyed to the release whose modules are staged (%s): if it is a different build, none of them will load from %s",
 			kernel, b.KVer, filepath.Join(b.ModulesDir, b.KVer))
 	}
-	tmp, err := os.MkdirTemp("", "mavericks-privops-")
+	tmp, err := os.MkdirTemp("", "guest-macosx-privops-")
 	if err != nil {
 		return nil, err
 	}
@@ -98,7 +98,7 @@ func (b Backend) Run(ctx context.Context, target string, payload []byte, disks [
 	}
 	args := []string{"-enable-kvm", "-m", fmt.Sprint(b.MemMiB), "-nographic", "-no-reboot",
 		"-kernel", kernel, "-initrd", initrdPath,
-		"-append", "console=ttyS0 loglevel=3 panic=1 mqg_modules=" + strings.Join(b.Modules, ","),
+		"-append", "console=ttyS0 loglevel=3 panic=1 gm_modules=" + strings.Join(b.Modules, ","),
 		"-drive", "file=" + driveFile(target) + ",format=raw,if=virtio"}
 	// readonly=on is belt and braces over the guest's own mount -o ro: a
 	// source QEMU will not write is one a buggy payload cannot corrupt.
@@ -148,22 +148,22 @@ func (b Backend) Run(ctx context.Context, target string, payload []byte, disks [
 	}
 	b.logPayload(console)
 	text := string(console)
-	if strings.Contains(text, "MQG-PRIVOPS-SOURCE-MOUNT-FAILED") {
+	if strings.Contains(text, "GUEST-MACOSX-PRIVOPS-SOURCE-MOUNT-FAILED") {
 		for _, l := range cleanLines(console) {
-			if strings.Contains(l, "MQG-PRIVOPS-SOURCE-MOUNT-FAILED") {
+			if strings.Contains(l, "GUEST-MACOSX-PRIVOPS-SOURCE-MOUNT-FAILED") {
 				b.logf("  %s", l)
 			}
 		}
 		return console, errors.New("a disk the microVM was given was not there, or held no mountable HFS+ volume -- the conversion that produced it is the suspect, not the target image, which was not written to")
 	}
-	if !strings.Contains(text, "MQG-PRIVOPS-OK") {
+	if !strings.Contains(text, "GUEST-MACOSX-PRIVOPS-OK") {
 		b.logTail(console)
 		if runErr != nil {
 			return console, fmt.Errorf("privileged operations failed inside the microVM: %w", runErr)
 		}
 		return console, errors.New("privileged operations failed inside the microVM")
 	}
-	if !strings.Contains(text, "MQG-PRIVOPS-OK rc=0") {
+	if !strings.Contains(text, "GUEST-MACOSX-PRIVOPS-OK rc=0") {
 		return console, errors.New("the payload script reported a failure inside the microVM")
 	}
 	b.logf("privileged operations completed and the image unmounted cleanly")
@@ -194,7 +194,7 @@ func cleanLines(console []byte) []string {
 // lines are left out.
 func (b Backend) logPayload(console []byte) {
 	for _, l := range cleanLines(console) {
-		if l == "" || kernelLine.MatchString(l) || strings.HasPrefix(l, "MQG-PRIVOPS-") {
+		if l == "" || kernelLine.MatchString(l) || strings.HasPrefix(l, "GUEST-MACOSX-PRIVOPS-") {
 			continue
 		}
 		b.logf("    %s", l)

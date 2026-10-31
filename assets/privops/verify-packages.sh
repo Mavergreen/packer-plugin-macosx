@@ -5,7 +5,7 @@
 # directive instead of a shebang.
 #
 # Runs as uid 0 inside the privops microVM, the finished media mounted at
-# $MQG_MNT. Prints one "MQG-SUM-MEDIA <sha256>  <name>" line per file in
+# $GUEST_MACOSX_MNT. Prints one "GUEST-MACOSX-SUM-MEDIA <sha256>  <name>" line per file in
 # System/Installation/Packages and nothing else; the host compares them
 # against assets/pins/apple-packages.sha256.
 #
@@ -25,7 +25,7 @@
 # promise, and it is the check docs/host-profile.md G20 exists to keep
 # working.
 
-d=$MQG_MNT/System/Installation/Packages
+d=$GUEST_MACOSX_MNT/System/Installation/Packages
 
 if [ ! -d "$d" ]; then
     echo "no Packages directory on the media at $d"
@@ -36,7 +36,7 @@ n=0
 cd "$d" || exit 1
 for f in *; do
     [ -f "$f" ] || continue
-    echo "MQG-SUM-MEDIA $($B sha256sum "$f")"
+    echo "GUEST-MACOSX-SUM-MEDIA $($B sha256sum "$f")"
     n=$((n + 1))
 done
 echo "checksummed $n files in System/Installation/Packages"

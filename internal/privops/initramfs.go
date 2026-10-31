@@ -212,9 +212,12 @@ func (b Backend) modprobeDeps(ctx context.Context, m string) []string {
 // ModulesDir/KVer, in sorted path order ("" when there is none): not
 // find's first, which is directory order; sorting makes the choice the
 // same on every run.
-func (b Backend) findModule(m string) string {
+func (b Backend) findModule(m string) string { return b.findModuleIn(b.KVer, m) }
+
+// findModuleIn is findModule under ModulesDir/rel.
+func (b Backend) findModuleIn(rel, m string) string {
 	var found []string
-	root := filepath.Join(b.ModulesDir, b.KVer)
+	root := filepath.Join(b.ModulesDir, rel)
 	_ = filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return nil

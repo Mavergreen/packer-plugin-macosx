@@ -226,11 +226,11 @@ func knownConsole(t *testing.T, mutate func(sums map[string]string)) (string, Kn
 		mutate(sums)
 	}
 	var b strings.Builder
-	b.WriteString("noise before\nMQG-DISC-BUILD " + k.Build + "\n")
+	b.WriteString("noise before\nGUEST-MACOSX-DISC-BUILD " + k.Build + "\n")
 	for n, s := range sums {
-		b.WriteString("MQG-SUM-DISC " + s + "  " + n + "\n")
+		b.WriteString("GUEST-MACOSX-SUM-DISC " + s + "  " + n + "\n")
 	}
-	b.WriteString("MQG-PRIVOPS-OK rc=0\n")
+	b.WriteString("GUEST-MACOSX-PRIVOPS-OK rc=0\n")
 	return b.String(), k
 }
 
@@ -254,7 +254,7 @@ func TestVerifyAcceptsTheKnownDisc(t *testing.T) {
 
 func TestVerifyRefusesAnotherBuild(t *testing.T) {
 	console, _ := knownConsole(t, nil)
-	console = strings.Replace(console, "MQG-DISC-BUILD 10A432", "MQG-DISC-BUILD 10D573", 1)
+	console = strings.Replace(console, "GUEST-MACOSX-DISC-BUILD 10A432", "GUEST-MACOSX-DISC-BUILD 10D573", 1)
 	_, err := Verify(context.Background(), &fakeVM{console: console}, "/s.img", "/v.hfs")
 	want := "build 10D573 is not a disc this plugin knows (it knows 10A432)"
 	if err == nil || err.Error() != want {
@@ -302,13 +302,13 @@ func TestVerifyAttachesTheVolumeReadOnly(t *testing.T) {
 	if len(vm.disks) != 1 || vm.disks[0] != (privops.Disk{Role: "ro", Path: "/v.hfs"}) {
 		t.Fatalf("disks = %v; want the volume alone, read-only", vm.disks)
 	}
-	if !bytes.Contains(vm.payload, []byte("MQG-DISC-BUILD")) {
+	if !bytes.Contains(vm.payload, []byte("GUEST-MACOSX-DISC-BUILD")) {
 		t.Fatal("the payload is not verify-disc.sh")
 	}
 }
 
 func TestVerifyFailsOnAnEmptyConsole(t *testing.T) {
-	if _, err := Verify(context.Background(), &fakeVM{console: "MQG-PRIVOPS-OK rc=0\n"}, "/s.img", "/v.hfs"); err == nil {
+	if _, err := Verify(context.Background(), &fakeVM{console: "GUEST-MACOSX-PRIVOPS-OK rc=0\n"}, "/s.img", "/v.hfs"); err == nil {
 		t.Fatal("Verify passed a console that reported nothing")
 	}
 }

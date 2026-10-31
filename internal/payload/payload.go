@@ -22,7 +22,7 @@ import (
 
 // Identifier and Version are the package's own identity, fixed.
 const (
-	Identifier = "com.mqg.firstboot"
+	Identifier = "guest-macosx.firstboot"
 	Version    = "1.0"
 )
 
@@ -41,7 +41,15 @@ type Config struct {
 	UID       int
 	GID       int
 	AutoLogin bool
-	Password  string
+	// Password, when set, is the account's password: firstboot.sh sets it,
+	// checks it with `dscl . -authonly`, and with AutoLogin writes it to
+	// /etc/kcpassword. It travels in firstboot.conf: in plain text inside
+	// this package, and so in any media built from it, and on the guest's
+	// disk until firstboot.sh rewrites the conf without it (and in the old
+	// conf's freed blocks until the template zeroes free space). firstboot.sh
+	// redacts it from its logs. No template or data source option sets
+	// it today.
+	Password string
 
 	// Sudo, when true, gives User passwordless sudo through
 	// /etc/sudoers.d/<User> (assets/guest/firstboot.sh's "passwordless
@@ -73,7 +81,7 @@ type Config struct {
 	Updates    string
 
 	// Release is the OS the payload is for: "" or "mavericks" for 10.9,
-	// "snowleopard" for 10.6, which firstboot.sh reads as MQG_FB_RELEASE.
+	// "snowleopard" for 10.6, which firstboot.sh reads as GUEST_MACOSX_FB_RELEASE.
 	// A 10.9 conf says nothing about it, so it is what it always was.
 	Release string
 }
@@ -97,8 +105,12 @@ type MediaFile struct {
 
 // DefaultConfig is the first-boot defaults: user mavsuser, uid 501, gid
 // 20 (staff), realname "Mavericks User", hostname mavericks, shell
-// /bin/bash, auto-login on, no password, no sudo, no OpenSSH, updates
-// none.
+// /bin/bash, auto-login asked for, no password, no sudo, no OpenSSH,
+// updates none. Auto-login asked for without a password stays off:
+// firstboot.sh turns it on only with a password it set and checked. No
+// password is the default for every build (the owner's decision,
+// 2026-10-15), so no build reaches a desktop unless its builder sets
+// Password.
 func DefaultConfig() Config {
 	return Config{
 		User:      "mavsuser",
@@ -258,7 +270,7 @@ func fieldErrorf(field, format string, a ...any) error {
 	return fmt.Errorf("%s: %w", field, fmt.Errorf(format, a...))
 }
 
-// Conf renders firstboot.conf: the header, the account fields, MQG_FB_ADMIN_GID
+// Conf renders firstboot.conf: the header, the account fields, GUEST_MACOSX_FB_ADMIN_GID
 // (fixed at 80, macOS's admin group, never configurable), the
 // OpenSSH block, the updates block (only when there are packages to
 // name), and the password (only when set). Every value is bashQuote'd.
@@ -286,22 +298,22 @@ func Conf(c Config) ([]byte, error) {
 	}
 
 	for _, f := range []kv{
-		{"User", "MQG_FB_USER", c.User},
-		{"UID", "MQG_FB_UID", strconv.Itoa(c.UID)},
-		{"GID", "MQG_FB_GID", strconv.Itoa(c.GID)},
+		{"User", "GUEST_MACOSX_FB_USER", c.User},
+		{"UID", "GUEST_MACOSX_FB_UID", strconv.Itoa(c.UID)},
+		{"GID", "GUEST_MACOSX_FB_GID", strconv.Itoa(c.GID)},
 	} {
 		if err := line(f); err != nil {
 			return nil, err
 		}
 	}
-	b.WriteString("MQG_FB_ADMIN_GID=80\n")
+	b.WriteString("GUEST_MACOSX_FB_ADMIN_GID=80\n")
 
 	for _, f := range []kv{
-		{"RealName", "MQG_FB_REALNAME", c.RealName},
-		{"Shell", "MQG_FB_SHELL", c.Shell},
-		{"Hostname", "MQG_FB_HOSTNAME", c.Hostname},
-		{"AutoLogin", "MQG_FB_AUTOLOGIN", boolDigit(c.AutoLogin)},
-		{"Sudo", "MQG_FB_SUDO", boolDigit(c.Sudo)},
+		{"RealName", "GUEST_MACOSX_FB_REALNAME", c.RealName},
+		{"Shell", "GUEST_MACOSX_FB_SHELL", c.Shell},
+		{"Hostname", "GUEST_MACOSX_FB_HOSTNAME", c.Hostname},
+		{"AutoLogin", "GUEST_MACOSX_FB_AUTOLOGIN", boolDigit(c.AutoLogin)},
+		{"Sudo", "GUEST_MACOSX_FB_SUDO", boolDigit(c.Sudo)},
 	} {
 		if err := line(f); err != nil {
 			return nil, err
@@ -309,22 +321,22 @@ func Conf(c Config) ([]byte, error) {
 	}
 
 	if len(c.OpenSSHPkgs) > 0 {
-		b.WriteString("MQG_FB_OPENSSH=1\n")
-		if err := line(kv{"OpenSSHTag", "MQG_FB_OPENSSH_TAG", c.OpenSSHTag}); err != nil {
+		b.WriteString("GUEST_MACOSX_FB_OPENSSH=1\n")
+		if err := line(kv{"OpenSSHTag", "GUEST_MACOSX_FB_OPENSSH_TAG", c.OpenSSHTag}); err != nil {
 			return nil, err
 		}
-		if err := line(kv{"OpenSSHPkgs", "MQG_FB_EXTRA_PKGS", spaceBasenames(c.OpenSSHPkgs)}); err != nil {
+		if err := line(kv{"OpenSSHPkgs", "GUEST_MACOSX_FB_EXTRA_PKGS", spaceBasenames(c.OpenSSHPkgs)}); err != nil {
 			return nil, err
 		}
 	} else {
-		b.WriteString("MQG_FB_OPENSSH=0\n")
+		b.WriteString("GUEST_MACOSX_FB_OPENSSH=0\n")
 	}
 
 	// Written only when there is something to say: a conf built with
 	// updates "none" has no updates lines at all (docs/decisions/0011).
 	// See TestANoneConfSaysNothingAboutUpdates.
 	if len(c.UpdatePkgs) > 0 {
-		if err := line(kv{"Updates", "MQG_FB_UPDATES", c.Updates}); err != nil {
+		if err := line(kv{"Updates", "GUEST_MACOSX_FB_UPDATES", c.Updates}); err != nil {
 			return nil, err
 		}
 		var installs, members []MediaFile
@@ -335,22 +347,22 @@ func Conf(c Config) ([]byte, error) {
 				installs = append(installs, u)
 			}
 		}
-		if err := line(kv{"UpdatePkgs", "MQG_FB_UPDATE_PKGS", spaceNames(installs)}); err != nil {
+		if err := line(kv{"UpdatePkgs", "GUEST_MACOSX_FB_UPDATE_PKGS", spaceNames(installs)}); err != nil {
 			return nil, err
 		}
 		if len(members) > 0 {
-			if err := line(kv{"UpdatePkgs", "MQG_FB_UPDATE_MEMBERS", spaceNames(members)}); err != nil {
+			if err := line(kv{"UpdatePkgs", "GUEST_MACOSX_FB_UPDATE_MEMBERS", spaceNames(members)}); err != nil {
 				return nil, err
 			}
 		}
 	}
 
 	if c.Release == "snowleopard" {
-		b.WriteString("MQG_FB_RELEASE=snowleopard\n")
+		b.WriteString("GUEST_MACOSX_FB_RELEASE=snowleopard\n")
 	}
 
 	if c.Password != "" {
-		if err := line(kv{"Password", "MQG_FB_PASSWORD", c.Password}); err != nil {
+		if err := line(kv{"Password", "GUEST_MACOSX_FB_PASSWORD", c.Password}); err != nil {
 			return nil, err
 		}
 	}
@@ -360,7 +372,7 @@ func Conf(c Config) ([]byte, error) {
 
 // embedMarker is the line Postinstall substitutes in
 // assets/guest/postinstall.
-const embedMarker = "#MQG_EMBEDDED_FILES\n"
+const embedMarker = "#GUEST_MACOSX_EMBEDDED_FILES\n"
 
 // embedBlock writes one of Postinstall's four blocks: say, a quoted
 // heredoc, then a chmod. Content with no trailing newline would put the
@@ -370,17 +382,17 @@ const embedMarker = "#MQG_EMBEDDED_FILES\n"
 // TestAMissingTrailingNewlineStillTerminatesTheHeredoc.
 func embedBlock(b *bytes.Buffer, v, dst, mode string, content []byte) {
 	fmt.Fprintf(b, "say \"writing %s\"\n", dst)
-	fmt.Fprintf(b, "cat > \"%s\" <<'MQG_EOF_%s'\n", dst, v)
+	fmt.Fprintf(b, "cat > \"%s\" <<'GUEST_MACOSX_EOF_%s'\n", dst, v)
 	b.Write(content)
 	if len(content) == 0 || content[len(content)-1] != '\n' {
 		b.WriteByte('\n')
 	}
-	fmt.Fprintf(b, "MQG_EOF_%s\n", v)
+	fmt.Fprintf(b, "GUEST_MACOSX_EOF_%s\n", v)
 	fmt.Fprintf(b, "chmod %s \"%s\" 2>/dev/null\n\n", mode, dst)
 }
 
 // Postinstall assembles the package's one Scripts member: the embedded
-// assets/guest/postinstall template with its #MQG_EMBEDDED_FILES line
+// assets/guest/postinstall template with its #GUEST_MACOSX_EMBEDDED_FILES line
 // replaced by four heredocs -- firstboot.sh, conf, the authorized key and
 // the LaunchDaemon plist. $CONF_DIR and $DAEMON are written
 // literally: they are variables for the installed script to expand on the
@@ -394,7 +406,7 @@ func Postinstall(conf, key []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	plist, err := fs.ReadFile(macosx.Files, "assets/guest/com.mqg.firstboot.plist")
+	plist, err := fs.ReadFile(macosx.Files, "assets/guest/guest-macosx.firstboot.plist")
 	if err != nil {
 		return nil, err
 	}
@@ -638,7 +650,7 @@ func Build(ctx context.Context, r proc.Runner, c Config, out string, log func(st
 		return "", err
 	}
 
-	tmp, err := os.CreateTemp("", "mqg-postinstall-*")
+	tmp, err := os.CreateTemp("", "guest-macosx-postinstall-*")
 	if err != nil {
 		return "", err
 	}

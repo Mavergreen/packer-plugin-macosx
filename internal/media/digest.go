@@ -58,7 +58,7 @@ func (b *Builder) ContentDigest(ctx context.Context, img string, listing io.Writ
 		}
 		return Digest{}, fmt.Errorf("the privops microVM is not available on this host, and it is how this reads an HFS+ volume at all -- nothing here mounts anything or installs anything. Missing: %s", strings.Join(m, "; "))
 	}
-	tmp, err := os.MkdirTemp("", "mavericks-digest-")
+	tmp, err := os.MkdirTemp("", "guest-macosx-digest-")
 	if err != nil {
 		return Digest{}, err
 	}
@@ -68,7 +68,7 @@ func (b *Builder) ContentDigest(ctx context.Context, img string, listing io.Writ
 	// writes nothing to it: a throwaway 32 MiB volume, sparse, of which
 	// mkfs writes about 2 MB.
 	scratch := filepath.Join(tmp, "scratch.img")
-	if err := CreateHFS(ctx, b.Runner, scratch, 32, "MQG DIGEST"); err != nil {
+	if err := CreateHFS(ctx, b.Runner, scratch, 32, "GUEST MACOSX DIGEST"); err != nil {
 		return Digest{}, err
 	}
 	// Sparse, so its size is a ceiling and not a cost; the guest refuses
@@ -89,8 +89,8 @@ func (b *Builder) ContentDigest(ctx context.Context, img string, listing io.Writ
 
 	// Each marker is read by privops.Marker's rule, as the build reads
 	// its own: printed once, or not an answer.
-	raw := [4]string{marker(console, "MQG-DIGEST-FILES"), marker(console, "MQG-DIGEST-HASHED"),
-		marker(console, "MQG-DIGEST-BYTES"), marker(console, "MQG-DIGEST-SIZE")}
+	raw := [4]string{marker(console, "GUEST-MACOSX-DIGEST-FILES"), marker(console, "GUEST-MACOSX-DIGEST-HASHED"),
+		marker(console, "GUEST-MACOSX-DIGEST-BYTES"), marker(console, "GUEST-MACOSX-DIGEST-SIZE")}
 	var n [4]int64
 	for i, s := range raw {
 		var ok bool
@@ -109,7 +109,7 @@ func (b *Builder) ContentDigest(ctx context.Context, img string, listing io.Writ
 	// The host's own read, against what the guest read back off the
 	// device: a short or torn write through the raw disk would otherwise
 	// be a digest that is simply wrong, with nothing to say so.
-	want := marker(console, "MQG-DIGEST-SHA256")
+	want := marker(console, "GUEST-MACOSX-DIGEST-SHA256")
 	got, err := fetch.SHA256File(list)
 	if err != nil {
 		return Digest{}, err

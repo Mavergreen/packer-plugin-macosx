@@ -26,7 +26,7 @@ import (
 )
 
 // Config is macosx-download's HCL configuration. url and sha256 are
-// required; cache_dir empty means packer.CachePath("mavericks").
+// required; cache_dir empty means packer.CachePath("guest-macosx").
 type Config struct {
 	URL      string `mapstructure:"url"`
 	SHA256   string `mapstructure:"sha256"`
@@ -87,7 +87,7 @@ func (d *Datasource) Execute() (cty.Value, error) {
 	cacheDir := d.config.CacheDir
 	if cacheDir == "" {
 		var err error
-		if cacheDir, err = packersdk.CachePath("mavericks"); err != nil {
+		if cacheDir, err = packersdk.CachePath("guest-macosx"); err != nil {
 			return null, err
 		}
 	}

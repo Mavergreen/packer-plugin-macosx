@@ -1,4 +1,4 @@
-// Package hostcheck is whether this host can build Mavericks media and
+// Package hostcheck is whether this host can build Mac OS X media and
 // run the guest at all: an Intel CPU with VT-x or an AMD one with AMD-V,
 // and a /dev/kvm this user can write. The media build's privops microVM
 // runs under KVM, and so does the guest. On AMD the guest's CPU must say
@@ -100,7 +100,7 @@ func virtualization(flags, flag, name string) Fact {
 func Supported(h Host) bool { return h.GOOS == "linux" }
 
 // ErrNeedsLinux is Check's answer on any OS but Linux.
-var ErrNeedsLinux = errors.New("the Mavericks media build needs Linux today: its privops microVM boots the host's own Linux kernel under KVM")
+var ErrNeedsLinux = errors.New("the Mac OS X media build needs Linux today: its privops microVM boots the host's own Linux kernel under KVM")
 
 // CheckHost is nil when h can build media and run the guest, or else an
 // error naming every fact that fails. On an OS other than Linux it is
@@ -116,7 +116,7 @@ func CheckHost(h Host) error {
 		}
 	}
 	if len(failed) > 0 {
-		return fmt.Errorf("this host cannot build or run the Mavericks guest -- %s", strings.Join(failed, "; "))
+		return fmt.Errorf("this host cannot build or run the Mac OS X guest -- %s", strings.Join(failed, "; "))
 	}
 	return nil
 }

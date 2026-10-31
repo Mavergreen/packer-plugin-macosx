@@ -127,10 +127,24 @@ variable "headless" {
   }
 }
 
+variable "display" {
+  type        = string
+  default     = ""
+  description = "The QEMU -display backend for the build's window with headless = false, such as gtk, sdl or cocoa; a display with headless = true is refused. \"\" is the qemu builder's own default, gtk, and none makes it pass no -display. REASONED from packer-plugin-qemu v1.1.6's source, not run: no build has had a window. The builder also always passes its own -vnc, so a headless build's screen is on the VNC address it prints, and with none QEMU is expected to open no window."
+
+  # The qemu builder hands it to QEMU whole, as -display's one argument,
+  # so it is held to what a -display value is made of: a backend, then
+  # its comma-separated options.
+  validation {
+    condition     = can(regex("^([A-Za-z][A-Za-z0-9_.,:=+-]*)?$", var.display))
+    error_message = "Display wants a QEMU -display value: a backend, then comma-separated options, such as gtk, sdl or cocoa."
+  }
+}
+
 variable "install_timeout" {
   type        = string
   default     = "1h"
-  description = "How long the build waits for the guest's SSH communicator to come up."
+  description = "How long the build waits for the guest's SSH communicator to come up. One hour covers a quiet host, where a build answers SSH in about 15 minutes; a busy one can need more: a 10.6 build on a host with 26 busy loops on 12 CPUs took 93 minutes (docs/decisions/0027). A failed install ends the build sooner, on refused logins (docs/decisions/0028)."
 
   validation {
     condition     = can(regex("^[0-9]+(ns|us|ms|s|m|h)$", var.install_timeout))
@@ -163,7 +177,7 @@ variable "authorized_key" {
 variable "ssh_private_key_file" {
   type        = string
   default     = ""
-  description = "The private half of authorized_key, for the build's own SSH login. Required whenever authorized_key is set; \"\" otherwise means templates/mavericks/vagrant-standard-insecure-first-boot-only.key.rsa, the matching half of Vagrant's well-known insecure key, replaced on first boot."
+  description = "The private half of authorized_key, for the build's own SSH login. Required whenever authorized_key is set; \"\" otherwise means templates/snowleopard/vagrant-standard-insecure-first-boot-only.key.rsa, the matching half of Vagrant's well-known insecure key, replaced on first boot."
 
   validation {
     condition     = var.ssh_private_key_file == trimspace(var.ssh_private_key_file)

@@ -28,20 +28,23 @@
 #     in /Library/Extensions or /System/Library/Extensions: install.sh
 #     deselected it. (Not every name holding "tap": 10.9's own
 #     IOATAPIProtocolTransport, say, is no tap.)
-#   - the system's own /usr/bin/curl, which links Secure Transport,
-#     fetches each of the done-check's three URLs.
+#
+# WHAT IT DOES NOT CHECK: that the guest's /usr/bin/curl reaches the
+# network. This build's guest network is restricted (docs/decisions/0034),
+# so every check here is of the guest's own state, and it fetches nothing.
+# The fetch is proven where the finished box boots with a network:
+# bin/gate.sh's reach step (gate/guest-checks.sh), and mavericks-vm's
+# self-test, which fetches github.com, release-assets.githubusercontent.com
+# and downloads.claude.ai with the guest's /usr/bin/curl.
 #
 # AQUATRANSPORT_VERSION is the template's pin, passed in by the
 # provisioner's environment_vars. Unset is a failure: this script cannot
 # tell which version it should find.
 
-# MQG_VERIFY_CURL and MQG_VERIFY_ROOT are test seams
-# (tests/template_aquatransport.bats), never set by the template: the
-# check is of /usr/bin/curl, not of whichever curl is first in PATH, and
-# the files it looks for are the guest's own, under /.
-CURL=${MQG_VERIFY_CURL:-/usr/bin/curl}
-ROOT=${MQG_VERIFY_ROOT:-}
-URLS="https://github.com/ https://release-assets.githubusercontent.com/ https://downloads.claude.ai/claude-code-releases/latest"
+# GUEST_MACOSX_VERIFY_ROOT is a test seam (tests/template_aquatransport.bats),
+# never set by the template: the files it looks for are the guest's own,
+# under /.
+ROOT=${GUEST_MACOSX_VERIFY_ROOT:-}
 AT_PKG=Wowfunhappy.AquaTransport
 ROOTS_PKG=Wowfunhappy.AquaTransport.ModernRootCertificates
 TAP_ID=net.sf.tuntaposx.tap
@@ -60,7 +63,6 @@ echo "modernroots-version=$(pkg_version "$ROOTS_PKG")"
 echo "receipts=$(pkgutil --pkgs 2>/dev/null | grep -E '^(Wowfunhappy\.|net\.sf\.tuntaposx\.)' | xargs echo)"
 echo "tap-kexts=$(kextstat 2>/dev/null | grep -F "$TAP_ID" | xargs echo)"
 echo "security-original=$([ -e "$ROOT$SECURITY/Security.original" ] && echo yes || echo no)"
-echo "curl=$("$CURL" -V 2>&1 | head -n 1)"
 
 # --- the verdict -------------------------------------------------------------
 
@@ -115,18 +117,8 @@ for kext in $TAP_KEXTS; do
     fi
 done
 
-# A failed fetch is named by curl's first line, its error: 10.9.5's curl
-# 7.30 follows a certificate error with a paragraph of advice on CA
-# bundles, which would bury the other verdicts.
-for url in $URLS; do
-    if ! err=$("$CURL" -sS -o /dev/null "$url" 2>&1); then
-        fail "/usr/bin/curl -sS -o /dev/null $url fails: $(printf '%s\n' "$err" | head -n 1)"
-    fi
-done
-
 if [ "$failures" -gt 0 ]; then
     echo "verify: $failures check(s) failed; this guest will not be packaged as a box" >&2
     exit 1
 fi
-echo "verify: ok: 10.9.5 (13F1911), Aqua Transport $AQUATRANSPORT_VERSION with ModernRootCertificates," \
-    "no tap, and /usr/bin/curl reaches $(echo "$URLS" | wc -w | tr -d ' ') hosts"
+echo "verify: ok: 10.9.5 (13F1911), Aqua Transport $AQUATRANSPORT_VERSION with ModernRootCertificates, no tap"

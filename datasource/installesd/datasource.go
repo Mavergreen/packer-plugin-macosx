@@ -31,7 +31,7 @@ import (
 // It names where the built store lives, and, under cache_dir/cache/, the
 // one shared, content-addressed download cache every data source's
 // fetches land in (a listing change never re-downloads Apple's 5.2 GB
-// twice). Empty means packer.CachePath("mavericks").
+// twice). Empty means packer.CachePath("guest-macosx").
 type Config struct {
 	CacheDir string `mapstructure:"cache_dir"`
 }
@@ -101,7 +101,7 @@ func (d *Datasource) Execute() (cty.Value, error) {
 
 	cacheDir := d.config.CacheDir
 	if cacheDir == "" {
-		if cacheDir, err = packersdk.CachePath("mavericks"); err != nil {
+		if cacheDir, err = packersdk.CachePath("guest-macosx"); err != nil {
 			return cty.NullVal(cty.EmptyObject), err
 		}
 	}

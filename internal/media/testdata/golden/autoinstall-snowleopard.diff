@@ -1,0 +1,12 @@
+private/etc/rc.cdrom.local, from autoinstall.sh:
+line 71
+-VOLNAME=${GUEST_MACOSX_TARGET_VOLUME:-Mavericks}
++VOLNAME=${GUEST_MACOSX_TARGET_VOLUME:-Snow Leopard}
+private/etc/minstallconfig.xml, from minstallconfig.xml:
+line 37
+-	<string>/Volumes/Mavericks</string>
++	<string>/Volumes/Snow Leopard</string>
+line 39
+-	<string>Mavericks</string>
++	<string>Snow Leopard</string>
+System/Installation/Packages/OSInstall.collection, from OSInstall.collection: unchanged

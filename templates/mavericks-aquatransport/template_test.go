@@ -39,7 +39,13 @@ var baseBoxFiles = []string{"box_0.img", "OVMF_CODE.fd", "OVMF_VARS.fd", "openco
 // Vagrantfile that names the template that rendered it (measured on a
 // base box built 2026-10-10); a Snow Leopard box's names
 // snowleopard.pkr.hcl instead, and holds the same five file names.
-const mavericksVagrantfile = "# RENDERED FROM THE BUILD'S OWN SETTINGS. mavericks.pkr.hcl renders this\n"
+const mavericksVagrantfile = "# RENDERED FROM THE BUILD'S OWN SETTINGS. mavericks.pkr.hcl renders this\n" + oneShapeRow
+
+// oneShapeRow is the OpenCore row of a base box built with the one machine
+// shape (docs/decisions/0035). The layer's box keeps the base's
+// Vagrantfile, so a base box from before it would give the layer's box the
+// old shape while the layer's build boots the new one.
+const oneShapeRow = "      -device virtio-blk-pci,drive=opencore,bootindex=0,bus=pcie.0,addr=0x10\n"
 
 // fakeBaseBox is a directory holding each of baseBoxFiles, empty except
 // for omit, which it leaves out, and the Vagrantfile, which holds
@@ -168,6 +174,14 @@ func TestValidate(t *testing.T) {
 			t.Fatalf("packer validate: %v\n%s", err, out)
 		}
 	})
+
+	templatetest.ValidateDisplay(t, run, "-var", box)
+}
+
+// TestTheBuilderGetsTheDisplay: the qemu builder's display is the display
+// variable, checked against headless.
+func TestTheBuilderGetsTheDisplay(t *testing.T) {
+	templatetest.QemuSourceTakesDisplay(t, osName, osName+".pkr.hcl")
 }
 
 // TestValidateRejectsANonBox: base_box must be what the base template's
@@ -184,11 +198,14 @@ func TestValidateRejectsANonBox(t *testing.T) {
 		t.Fatal(err)
 	}
 	for name, dir := range map[string]string{
-		"an empty directory":              t.TempDir(),
-		"the .box file itself":            dotBox,
-		"a directory with no Vagrantfile": fakeBaseBox(t, "Vagrantfile", ""),
-		"a Snow Leopard box":              fakeBaseBox(t, "", "# RENDERED FROM THE BUILD'S OWN SETTINGS. snowleopard.pkr.hcl renders this\n"),
-		"an empty Vagrantfile":            fakeBaseBox(t, "", ""),
+		"an empty directory":                               t.TempDir(),
+		"the .box file itself":                             dotBox,
+		"a directory with no Vagrantfile":                  fakeBaseBox(t, "Vagrantfile", ""),
+		"a Snow Leopard box":                               fakeBaseBox(t, "", "# RENDERED FROM THE BUILD'S OWN SETTINGS. snowleopard.pkr.hcl renders this\n"),
+		"an empty Vagrantfile":                             fakeBaseBox(t, "", ""),
+		"a base box from before the one shape":             fakeBaseBox(t, "", "# RENDERED FROM THE BUILD'S OWN SETTINGS. mavericks.pkr.hcl renders this\n      -device usb-storage,bus=usb.0,drive=opencore\n"),
+		"a base box with OpenCore on virtio-blk, unpinned": fakeBaseBox(t, "", "# RENDERED FROM THE BUILD'S OWN SETTINGS. mavericks.pkr.hcl renders this\n      -device virtio-blk-pci,drive=opencore,bootindex=0\n"),
+		"a base box with OpenCore on AHCI":                 fakeBaseBox(t, "", "# RENDERED FROM THE BUILD'S OWN SETTINGS. mavericks.pkr.hcl renders this\n      -device ide-hd,bus=ide.2,drive=opencore,bootindex=0\n"),
 	} {
 		t.Run(name, func(t *testing.T) {
 			out, err := run("validate", "-var", "base_box="+dir)
@@ -197,6 +214,9 @@ func TestValidateRejectsANonBox(t *testing.T) {
 			}
 			if !strings.Contains(out, "Base_box") {
 				t.Errorf("validate's error doesn't name the variable (Base_box):\n%s", out)
+			}
+			if strings.Contains(name, "base box") && !strings.Contains(out, "built before this release's machine shape") {
+				t.Errorf("validate's error doesn't say the base box predates the shape:\n%s", out)
 			}
 		})
 	}
@@ -259,11 +279,22 @@ func TestBaseBoxMarkerIsInTheBaseTemplatesVagrantfile(t *testing.T) {
 		return string(b)
 	}
 
-	// The pattern, as base_box's validation spells it: regexall("...", file(...)).
-	m := regexp.MustCompile(`regexall\("((?:[^"\\]|\\.)*)"`).FindStringSubmatch(read("templates/mavericks-aquatransport/variables.pkr.hcl"))
-	if m == nil {
-		t.Fatal("variables.pkr.hcl: no regexall(\"...\") in base_box's validation")
+	// The patterns, as base_box's validation spells them: regexall("...", file(...)).
+	all := regexp.MustCompile(`regexall\("((?:[^"\\]|\\.)*)"`).FindAllStringSubmatch(read("templates/mavericks-aquatransport/variables.pkr.hcl"), -1)
+	if len(all) != 2 {
+		t.Fatalf("variables.pkr.hcl: %d regexall(\"...\") in base_box's validation, want 2 (the template's marker, the one shape's OpenCore row)", len(all))
 	}
+	shape, err := strconv.Unquote(`"` + all[1][1] + `"`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !regexp.MustCompile(shape).MatchString(read("templates/mavericks/box.Vagrantfile.pkrtpl")) {
+		t.Errorf("base_box's one-shape pattern /%s/ is not in templates/mavericks/box.Vagrantfile.pkrtpl: every new base box would be refused", shape)
+	}
+	if !regexp.MustCompile(shape).MatchString(oneShapeRow) {
+		t.Errorf("base_box's one-shape pattern /%s/ does not match the tests' row %q", shape, oneShapeRow)
+	}
+	m := all[0]
 	pattern, err := strconv.Unquote(`"` + m[1] + `"`)
 	if err != nil {
 		t.Fatalf("unquoting %s: %v", m[1], err)
@@ -278,8 +309,10 @@ func TestBaseBoxMarkerIsInTheBaseTemplatesVagrantfile(t *testing.T) {
 	if marker.MatchString(sl) {
 		t.Errorf("base_box's marker /%s/ is in templates/snowleopard/box.Vagrantfile.pkrtpl: Snow Leopard boxes would pass", pattern)
 	}
-	if !strings.Contains(mav, mavericksVagrantfile) {
-		t.Errorf("the validation tests' Mavericks Vagrantfile line %q is not in box.Vagrantfile.pkrtpl", mavericksVagrantfile)
+	for _, line := range strings.SplitAfter(mavericksVagrantfile, "\n") {
+		if line != "" && !strings.Contains(mav, line) {
+			t.Errorf("the validation tests' Mavericks Vagrantfile line %q is not in box.Vagrantfile.pkrtpl", line)
+		}
 	}
 }
 
@@ -289,7 +322,7 @@ func TestBaseBoxMarkerIsInTheBaseTemplatesVagrantfile(t *testing.T) {
 // default changed in one and not the other would boot the layer a way the
 // base never was.
 func TestTheBootVariablesMatchTheBaseTemplate(t *testing.T) {
-	shared := []string{"cpu", "memory", "cpus", "nic", "accelerator", "headless", "user", "ssh_private_key_file"}
+	shared := []string{"cpu", "memory", "cpus", "nic", "accelerator", "headless", "display", "user", "ssh_private_key_file"}
 	baseSrc, base := parseHCL(t, "templates", "mavericks", "variables.pkr.hcl")
 	layerSrc, layer := parseHCL(t, "templates", osName, "variables.pkr.hcl")
 
@@ -456,7 +489,7 @@ func TestThePostRebootPauseIsAHostSideSleepBeforeVerify(t *testing.T) {
 	if verify < 2 {
 		t.Fatalf("verify.sh provisioner at index %d, want after a reboot and a pause", verify)
 	}
-	if !strings.Contains(text(ps[verify-2]), "shutdown -r now") {
+	if !strings.Contains(text(ps[verify-2]), "sudo /usr/local/sbin/guest-macosx-shutdown -r") {
 		t.Errorf("the provisioner two before verify is not the reboot:\n%s", text(ps[verify-2]))
 	}
 	pause := ps[verify-1]
@@ -468,8 +501,9 @@ func TestThePostRebootPauseIsAHostSideSleepBeforeVerify(t *testing.T) {
 	}
 }
 
-// TestTheGuestScriptsAreTimeBounded: a hung installer, or a curl that hangs
-// on a broken Security patch, would otherwise hang `packer build` forever.
+// TestTheGuestScriptsAreTimeBounded: a hung installer, or a pkgutil or
+// kextstat that hangs on a broken Security patch, would otherwise hang
+// `packer build` forever.
 // Packer's per-provisioner timeout wraps the start retries too, so
 // verify.sh's must exceed the shell-local pause before it (30s) plus its
 // start_retry_timeout, or a slow reboot is cut short by the very bound
@@ -580,4 +614,69 @@ func TestVagrantKeyMatchesEmbedded(t *testing.T) {
 	if !bytes.Equal(got, want) {
 		t.Fatal("templates/mavericks-aquatransport's Vagrant key is not the embedded one")
 	}
+}
+
+// TestEveryShutdownGoesThroughTheGuestsHelper: a bare `shutdown` over SSH can
+// hold launchd's userspace shutdown for a job's 20 s exit timeout, and the
+// shutdown monitor then files a .shutdownStall report into the image. Two
+// causes, both MEASURED (docs/decisions/0019): loginwindow's `ManagedClient
+// -s` holds a DiskArbitration session that only loginwindow would close (8 of
+// 8 restarts stalled without stopping it, 2026-10-13), and UserEventAgent
+// cannot exit while it has a preference to write once cfprefsd is gone. The
+// box's /usr/local/sbin/guest-macosx-shutdown (assets/guest/firstboot.sh) handles both,
+// so every shutdown and restart the template issues is that helper, and none
+// is a bare `shutdown`, `reboot` or `halt`.
+func TestEveryShutdownGoesThroughTheGuestsHelper(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join(templatetest.RepoRoot(t), "templates", osName, osName+".pkr.hcl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var code []string
+	for _, line := range strings.Split(string(b), "\n") {
+		if !strings.HasPrefix(strings.TrimSpace(line), "#") {
+			code = append(code, line)
+		}
+	}
+	src := strings.Join(code, "\n")
+	if bare := regexp.MustCompile(`shutdown -[hr] now|killall|\breboot\b|\bhalt\b`).FindString(src); bare != "" {
+		t.Errorf("the template issues %q itself; want only sudo /usr/local/sbin/guest-macosx-shutdown", bare)
+	}
+	all := regexp.MustCompile(`"[^"\n]*shutdown[^"\n]*"`).FindAllString(src, -1)
+	if len(all) == 0 {
+		t.Fatal("no shutdown in the template")
+	}
+	for _, s := range all {
+		if s != `"sudo /usr/local/sbin/guest-macosx-shutdown -h"` && s != `"sudo /usr/local/sbin/guest-macosx-shutdown -r"` {
+			t.Errorf("a shutdown is %s; want \"sudo /usr/local/sbin/guest-macosx-shutdown -h\" or -r", s)
+		}
+	}
+}
+
+// TestTheBuildGivesQEMUAUUIDOfItsOwn: every build's guest gets a host UUID
+// of its own, there from its first second (docs/decisions/0024).
+func TestTheBuildGivesQEMUAUUIDOfItsOwn(t *testing.T) {
+	templatetest.CheckBuildUUID(t, osName, "mavericks-aquatransport.pkr.hcl")
+}
+
+// TestTheBuildGivesItsNICAnAddressOfItsOwn: the build's guest's NIC
+// address, derived from its UUID by the one rule (docs/decisions/0024).
+func TestTheBuildGivesItsNICAnAddressOfItsOwn(t *testing.T) {
+	templatetest.CheckBuildMAC(t, osName, "mavericks-aquatransport.pkr.hcl")
+}
+
+// TestTheBuildsGuestReachesNothingOffLink: the layer's build is restricted
+// like the base templates' (docs/decisions/0034): nothing it installs is
+// fetched by the guest, and verify.sh's checks read the guest's own state.
+// That the finished box's /usr/bin/curl reaches the network is shown where
+// the box boots unrestricted: bin/gate.sh's reach step and mavericks-vm's
+// self-test.
+func TestTheBuildsGuestReachesNothingOffLink(t *testing.T) {
+	templatetest.CheckGuestNetwork(t, osName, "mavericks-aquatransport.pkr.hcl")
+}
+
+// TestTheBuildsMachineIsTheOneShape: the layer's build boots the base box
+// with the devices every build and box has (templatetest.MachineShapeErrors,
+// docs/decisions/0035).
+func TestTheBuildsMachineIsTheOneShape(t *testing.T) {
+	templatetest.CheckBuildMachine(t, osName, "mavericks-aquatransport.pkr.hcl")
 }

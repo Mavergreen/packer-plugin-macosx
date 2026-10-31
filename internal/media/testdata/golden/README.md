@@ -12,6 +12,7 @@ disk images (`gzip -9`); the tests decompress them at run time.
 | `mark-clean-bare.img.gz` | the "bare" synthetic volume `TestMarkCleanMatchesItsGolden` builds (size 1 MiB, start 0, attributes 0x800/0x800), marked clean | `TestMarkCleanMatchesItsGolden` (`hfs_test.go`) |
 | `mark-clean-at-1mib.img.gz` | the "at 1 MiB" synthetic volume (size 3 MiB, start 1 MiB, attributes 0x80000800/0x00000900), marked clean | the same |
 | `mark-clean-one-header-clean.img.gz` | the "one header clean" synthetic volume (size 1 MiB, start 0, attributes 0x100/0x2800), marked clean | the same |
+| `autoinstall-snowleopard.diff` | what 10.6's unattended-install hooks change from `assets/guest/autoinstall/`, line by line: the lines naming the target volume, `Snow Leopard` in place of `Mavericks` (10.9's hooks are the assets byte for byte, `TestMavericksHooksAreTheAssetsByteForByte`) | `TestSnowLeopardHooksMatchTheirGolden` (`inject_test.go`) |
 
 "Marked clean" is `kHFSVolumeUnmountedBit` set and
 `kHFSVolumeInconsistentBit` cleared in both the volume header and the
@@ -27,6 +28,10 @@ with the reason in the commit message. `hfs-create-gpt.img.gz` records
 sgdisk's and mkfs.hfsplus's layout: `CreateHFSGPT` is compared with it by
 sgdisk's reading of both, so it changes only if that layout does. The
 `mark-clean-*` images change only if what "clean" means does.
+`autoinstall-snowleopard.diff` is rewritten from the code's output by
+`go test ./internal/media -run SnowLeopardHooksMatchTheirGolden -update`;
+review its diff as for any golden: a changed line other than the
+volume's is a regression.
 
 ## The data sources' recipe
 

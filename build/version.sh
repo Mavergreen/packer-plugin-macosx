@@ -23,17 +23,27 @@
 # the date out of the major slot (Go reads a major of 2 or more as a /vN
 # module path). The family version and the tag can never disagree: the
 # tag is "v0." and the version, and N is counted from those tags alone.
+#
+# A DEV BUILD (bin/dev-install.sh) is no release: it takes the N no
+# release ever takes, DEV_N, and stays -dev. Packer matches a -dev plugin
+# by its version without the -dev and runs a release of that version over
+# it, so a dev build at any release's N, past or future, would run that
+# release in its place; at DEV_N it outranks every release on its line,
+# and a template's ~> 0.<line>.1 still takes it.
 set -eu
+
+DEV_N=999999
 
 MAVERICKS_ROOT=${MAVERICKS_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}
 export MAVERICKS_ROOT
 
 mode=${1:-}
 case $mode in
-    auto|local) ;;
-    *) printf 'version.sh: usage: version.sh <auto|local>\n' >&2
+    auto|local|dev) ;;
+    *) printf 'version.sh: usage: version.sh <auto|local|dev>\n' >&2
        printf '  auto   this version line, releasing only if it has no tag yet\n' >&2
        printf '  local  the next N on this line, always releasing (a repackage)\n' >&2
+       printf '  dev    a dev build'"'"'s, N=%s, which no release takes; never releasing\n' "$DEV_N" >&2
        exit 2 ;;
 esac
 
@@ -64,12 +74,20 @@ for t in $(git -C "$MAVERICKS_ROOT" tag --list "v0.$base.*" 2>/dev/null); do
     [ "$n" -gt "$maxn" ] && maxn=$n
 done
 
-if [ "$mode" = local ]; then
+if [ "$mode" = dev ]; then
+    printf 'FULL=%s.%s\nTAG=v0.%s.%s-dev\nRELEASE=no\n' "$base" "$DEV_N" "$base" "$DEV_N"
+    exit 0
+elif [ "$mode" = local ]; then
     n=$((maxn + 1)); release=yes
 elif [ "$maxn" -eq 0 ]; then
     n=1; release=yes
 else
     n=$maxn; release=no
+fi
+
+if [ "$n" -ge "$DEV_N" ]; then
+    printf 'version.sh: N would be %s on line %s, and %s and above are the dev builds'"'"' (docs/decisions/0012)\n' "$n" "$base" "$DEV_N" >&2
+    exit 1
 fi
 
 full="$base.$n"

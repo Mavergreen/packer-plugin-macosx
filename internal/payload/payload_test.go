@@ -205,7 +205,7 @@ func TestConfWithOpenSSHAndUpdatesMatchesThePostinstallGolden(t *testing.T) {
 
 	base := fakePkg(t, dir, "openssh-6.9p1-mavericks.2-base.pkg")
 	replace := fakePkg(t, dir, "openssh-6.9p1-mavericks.2-replace.pkg")
-	upd := fakePkg(t, dir, "mqg-update-01-SecUpd2016-004Mavericks.pkg")
+	upd := fakePkg(t, dir, "guest-macosx-update-01-SecUpd2016-004Mavericks.pkg")
 
 	c := DefaultConfig()
 	c.OpenSSHPkgs = []string{base, replace}
@@ -252,7 +252,7 @@ func TestConfWithPasswordMatchesThePostinstallGolden(t *testing.T) {
 }
 
 // TestConfPlacesThePasswordLineLast checks the conf's line order
-// directly: header; account fields; MQG_FB_ADMIN_GID; OpenSSH block;
+// directly: header; account fields; GUEST_MACOSX_FB_ADMIN_GID; OpenSSH block;
 // updates block; password last. TestConfWithPasswordMatchesThePostinstallGolden
 // above already holds this byte for byte; this test pins the same fact
 // at the Conf level.
@@ -265,15 +265,15 @@ func TestConfPlacesThePasswordLineLast(t *testing.T) {
 	}
 	lines := strings.Split(strings.TrimRight(string(conf), "\n"), "\n")
 	last := lines[len(lines)-1]
-	if !strings.HasPrefix(last, "MQG_FB_PASSWORD=") {
-		t.Fatalf("MQG_FB_PASSWORD is not the last line:\n%s", conf)
+	if !strings.HasPrefix(last, "GUEST_MACOSX_FB_PASSWORD=") {
+		t.Fatalf("GUEST_MACOSX_FB_PASSWORD is not the last line:\n%s", conf)
 	}
 }
 
-// TestConfCarriesSudo: a build that asks for Sudo gets MQG_FB_SUDO=1;
-// DefaultConfig's own build (Sudo unset) gets MQG_FB_SUDO=0 -- unlike
+// TestConfCarriesSudo: a build that asks for Sudo gets GUEST_MACOSX_FB_SUDO=1;
+// DefaultConfig's own build (Sudo unset) gets GUEST_MACOSX_FB_SUDO=0 -- unlike
 // the OpenSSH and updates blocks, Sudo is always written, the same way
-// MQG_FB_AUTOLOGIN always is, so a default conf still says explicitly
+// GUEST_MACOSX_FB_AUTOLOGIN always is, so a default conf still says explicitly
 // that sudo was not asked for.
 func TestConfCarriesSudo(t *testing.T) {
 	c := DefaultConfig()
@@ -282,8 +282,8 @@ func TestConfCarriesSudo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Contains(conf, []byte("MQG_FB_SUDO=1")) {
-		t.Fatalf("conf does not carry MQG_FB_SUDO=1:\n%s", conf)
+	if !bytes.Contains(conf, []byte("GUEST_MACOSX_FB_SUDO=1")) {
+		t.Fatalf("conf does not carry GUEST_MACOSX_FB_SUDO=1:\n%s", conf)
 	}
 }
 
@@ -292,8 +292,8 @@ func TestDefaultConfigConfCarriesNoSudo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Contains(conf, []byte("MQG_FB_SUDO=0")) {
-		t.Fatalf("conf does not carry MQG_FB_SUDO=0:\n%s", conf)
+	if !bytes.Contains(conf, []byte("GUEST_MACOSX_FB_SUDO=0")) {
+		t.Fatalf("conf does not carry GUEST_MACOSX_FB_SUDO=0:\n%s", conf)
 	}
 }
 
@@ -302,7 +302,7 @@ func TestANoneConfSaysNothingAboutUpdates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if bytes.Contains(conf, []byte("MQG_FB_UPDATES")) {
+	if bytes.Contains(conf, []byte("GUEST_MACOSX_FB_UPDATES")) {
 		t.Fatalf("a conf built with updates none mentions updates:\n%s", conf)
 	}
 }
@@ -435,7 +435,7 @@ func TestBuildLogsTheRealKeyType(t *testing.T) {
 
 	var logs []string
 	capture := func(format string, a ...any) { logs = append(logs, fmt.Sprintf(format, a...)) }
-	out := filepath.Join(dir, "mqg-firstboot.pkg")
+	out := filepath.Join(dir, "guest-macosx-firstboot.pkg")
 	if _, err := Build(context.Background(), proc.Exec{}, c, out, capture); err != nil {
 		t.Fatal(err)
 	}
@@ -551,8 +551,8 @@ func TestAMissingTrailingNewlineStillTerminatesTheHeredoc(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Contains(post, append(append([]byte{}, key...), '\n', 'M', 'Q', 'G', '_', 'E', 'O', 'F', '_', 'A', 'U', 'T', 'H', 'O', 'R', 'I', 'Z', 'E', 'D', '_', 'K', 'E', 'Y', 'S', '\n')) {
-		t.Fatalf("MQG_EOF_AUTHORIZED_KEYS is not on its own line after the key:\n%s", post)
+	if !bytes.Contains(post, append(append([]byte{}, key...), "\nGUEST_MACOSX_EOF_AUTHORIZED_KEYS\n"...)) {
+		t.Fatalf("GUEST_MACOSX_EOF_AUTHORIZED_KEYS is not on its own line after the key:\n%s", post)
 	}
 }
 
@@ -568,7 +568,7 @@ func TestBuildWritesThePackageAndSidecarDeterministically(t *testing.T) {
 	r := proc.Exec{}
 	ctx := context.Background()
 
-	out1 := filepath.Join(dir, "mqg-firstboot.pkg")
+	out1 := filepath.Join(dir, "guest-macosx-firstboot.pkg")
 	sha1, err := Build(ctx, r, c, out1, t.Logf)
 	if err != nil {
 		t.Fatal(err)
@@ -581,7 +581,7 @@ func TestBuildWritesThePackageAndSidecarDeterministically(t *testing.T) {
 		t.Fatalf("package does not start with xar!: %q", pkg1[:4])
 	}
 
-	out2 := filepath.Join(dir, "second", "mqg-firstboot.pkg")
+	out2 := filepath.Join(dir, "second", "guest-macosx-firstboot.pkg")
 	sha2, err := Build(ctx, r, c, out2, t.Logf)
 	if err != nil {
 		t.Fatal(err)
@@ -609,7 +609,7 @@ func TestBuildWritesThePackageAndSidecarDeterministically(t *testing.T) {
 	for _, e := range entries {
 		names = append(names, e.Name())
 	}
-	if want := []string{"mqg-firstboot.pkg", "mqg-firstboot.pkg.sha256"}; !slices.Equal(names, want) {
+	if want := []string{"guest-macosx-firstboot.pkg", "guest-macosx-firstboot.pkg.sha256"}; !slices.Equal(names, want) {
 		t.Fatalf("%s holds %v, want exactly %v", filepath.Dir(out2), names, want)
 	}
 	for _, f := range []string{out1, out1 + ".sha256"} {
@@ -631,7 +631,7 @@ func TestBuildNeverWritesThroughAFixedTempName(t *testing.T) {
 	}
 	c := DefaultConfig()
 	c.SSHKey = keyPath
-	out := filepath.Join(dir, "mqg-firstboot.pkg")
+	out := filepath.Join(dir, "guest-macosx-firstboot.pkg")
 	victim := filepath.Join(t.TempDir(), "victim")
 	if err := os.WriteFile(victim, []byte("not yours"), 0o644); err != nil {
 		t.Fatal(err)
@@ -652,44 +652,15 @@ func TestBuildNeverWritesThroughAFixedTempName(t *testing.T) {
 func TestTheBuiltPostinstallInstallsThePayloadOnATargetOffline(t *testing.T) {
 	dir := t.TempDir()
 	key := rsaPubKey(t)
-	keyPath := filepath.Join(dir, "id_rsa.pub")
-	if err := os.WriteFile(keyPath, key, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	c := DefaultConfig()
-	c.SSHKey = keyPath
-
-	out := filepath.Join(dir, "mqg-firstboot.pkg")
-	if _, err := Build(context.Background(), proc.Exec{}, c, out, t.Logf); err != nil {
-		t.Fatal(err)
-	}
-	pkg, err := os.ReadFile(out)
-	if err != nil {
-		t.Fatal(err)
-	}
-	post := extractPostinstall(t, pkg)
-
-	postPath := filepath.Join(dir, "postinstall")
-	if err := os.WriteFile(postPath, post, 0o755); err != nil {
-		t.Fatal(err)
-	}
-
 	target := filepath.Join(dir, "target")
 	if err := os.MkdirAll(target, 0o755); err != nil {
 		t.Fatal(err)
 	}
+	// chown failing (not root) is expected and the script ignores it;
+	// runPostinstallOn fails the test on anything else.
+	runPostinstallOn(t, target, key)
 
-	// $1 package path, $2 install destination, $3 THE TARGET VOLUME, $4
-	// root of the target system -- the OS X Installer's own convention
-	// (see assets/guest/postinstall's header comment).
-	cmd := exec.Command("sh", postPath, "/pkg", "/dest", target, "/")
-	if combined, err := cmd.CombinedOutput(); err != nil {
-		// chown failing here (not root) is expected and the script
-		// ignores it; a real failure is everything else.
-		t.Fatalf("postinstall: %v: %s", err, combined)
-	}
-
-	confDir := filepath.Join(target, "private", "var", "db", ".mqg-firstboot")
+	confDir := filepath.Join(target, "private", "var", "db", ".guest-macosx-firstboot")
 
 	gotSh, err := os.ReadFile(filepath.Join(confDir, "firstboot.sh"))
 	if err != nil {
@@ -715,18 +686,18 @@ func TestTheBuiltPostinstallInstallsThePayloadOnATargetOffline(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Contains(conf, []byte("MQG_FB_USER=mavsuser")) {
-		t.Error("firstboot.conf does not carry MQG_FB_USER=mavsuser")
+	if !bytes.Contains(conf, []byte("GUEST_MACOSX_FB_USER=mavsuser")) {
+		t.Error("firstboot.conf does not carry GUEST_MACOSX_FB_USER=mavsuser")
 	}
-	if bytes.Contains(conf, []byte("MQG_FB_PASSWORD")) {
+	if bytes.Contains(conf, []byte("GUEST_MACOSX_FB_PASSWORD")) {
 		t.Error("firstboot.conf mentions a password that was never asked for")
 	}
 
-	gotPlist, err := os.ReadFile(filepath.Join(target, "Library", "LaunchDaemons", "com.mqg.firstboot.plist"))
+	gotPlist, err := os.ReadFile(filepath.Join(target, "Library", "LaunchDaemons", "guest-macosx.firstboot.plist"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantPlist, err := fs.ReadFile(macosx.Files, "assets/guest/com.mqg.firstboot.plist")
+	wantPlist, err := fs.ReadFile(macosx.Files, "assets/guest/guest-macosx.firstboot.plist")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -751,7 +722,7 @@ func TestTheBuiltPostinstallInstallsThePayloadOnATargetOffline(t *testing.T) {
 	checkMode(filepath.Join(confDir, "firstboot.sh"), 0o755)
 	checkMode(filepath.Join(confDir, "firstboot.conf"), 0o600)
 	checkMode(filepath.Join(confDir, "authorized_keys"), 0o644)
-	checkMode(filepath.Join(target, "Library", "LaunchDaemons", "com.mqg.firstboot.plist"), 0o644)
+	checkMode(filepath.Join(target, "Library", "LaunchDaemons", "guest-macosx.firstboot.plist"), 0o644)
 }
 
 func TestBuildRefusesAnInvalidPostinstall(t *testing.T) {
@@ -763,7 +734,7 @@ func TestBuildRefusesAnInvalidPostinstall(t *testing.T) {
 	c := DefaultConfig()
 	c.SSHKey = keyPath
 
-	out := filepath.Join(dir, "mqg-firstboot.pkg")
+	out := filepath.Join(dir, "guest-macosx-firstboot.pkg")
 	fake := &proc.Fake{Handle: func(cmd proc.Cmd) error {
 		return &proc.ExitError{Cmd: cmd.String(), Code: 1}
 	}}
@@ -801,7 +772,7 @@ func TestBuildIncludesShStderrInTheError(t *testing.T) {
 	c := DefaultConfig()
 	c.SSHKey = keyPath
 
-	out := filepath.Join(dir, "mqg-firstboot.pkg")
+	out := filepath.Join(dir, "guest-macosx-firstboot.pkg")
 	fake := &proc.Fake{Handle: func(cmd proc.Cmd) error {
 		if cmd.Stderr != nil {
 			cmd.Stderr.Write([]byte("sh: line 42: syntax error near unexpected token\n"))
@@ -817,7 +788,7 @@ func TestBuildIncludesShStderrInTheError(t *testing.T) {
 
 // TestTheConfNamesUpdatesAsTheMediaPresentsThem: fetch caches an update
 // under Apple's own name (cache/<sha>/SecUpd2016-004Mavericks.pkg), but
-// the media presents it as mqg-update-01-..., and the guest's carry_pkgs
+// the media presents it as guest-macosx-update-01-..., and the guest's carry_pkgs
 // copies exactly the names firstboot.conf gives it off the media. A conf
 // naming the cache file's base would leave the guest without its
 // security update, silently ("NOT FOUND on the media" in a log nobody
@@ -826,13 +797,13 @@ func TestTheConfNamesUpdatesAsTheMediaPresentsThem(t *testing.T) {
 	dir := t.TempDir()
 	cached := fakePkg(t, dir, "SecUpd2016-004Mavericks.pkg")
 	c := DefaultConfig()
-	c.UpdatePkgs = []MediaFile{{Path: cached, Name: "mqg-update-01-SecUpd2016-004Mavericks.pkg"}}
+	c.UpdatePkgs = []MediaFile{{Path: cached, Name: "guest-macosx-update-01-SecUpd2016-004Mavericks.pkg"}}
 	c.Updates = "security"
 	conf, err := Conf(c)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := "MQG_FB_UPDATE_PKGS=mqg-update-01-SecUpd2016-004Mavericks.pkg\\ \n"; !strings.Contains(string(conf), want) {
+	if want := "GUEST_MACOSX_FB_UPDATE_PKGS=guest-macosx-update-01-SecUpd2016-004Mavericks.pkg\\ \n"; !strings.Contains(string(conf), want) {
 		t.Fatalf("conf = %s, want the line %q", conf, want)
 	}
 	if strings.Contains(string(conf), "=SecUpd2016") {
@@ -842,7 +813,7 @@ func TestTheConfNamesUpdatesAsTheMediaPresentsThem(t *testing.T) {
 
 // --- the guest-side assets themselves ---------------------------------
 //
-// assets/guest/firstboot.sh, postinstall and com.mqg.firstboot.plist run
+// assets/guest/firstboot.sh, postinstall and guest-macosx.firstboot.plist run
 // inside the guest. The tests below are static content checks of those
 // three files -- the ones no execution-based test above already covers --
 // as regexp checks of the embedded bytes. The package builder's rules
@@ -878,6 +849,36 @@ func TestFirstbootShCreatesTheRecordedAccount(t *testing.T) {
 	}
 }
 
+// TestThePostinstallNeverLogsThePassword: a configured password is a
+// secret. The postinstall sources the conf that carries it, and it must
+// reach neither the postinstall's output (the OS X Installer's install.log)
+// nor postinstall.log, which stays in the image. It does reach the conf,
+// root's only, which firstboot.sh reads and then rewrites without it
+// (tests/firstboot_autologin.bats).
+func TestThePostinstallNeverLogsThePassword(t *testing.T) {
+	const pw = "s3cret-Pw.never-logged"
+	target := t.TempDir()
+	out := runPostinstallWith(t, target, rsaPubKey(t), func(c *Config) { c.Password = pw })
+	if bytes.Contains(out, []byte(pw)) {
+		t.Errorf("the postinstall's output shows the password:\n%s", out)
+	}
+	confDir := filepath.Join(target, "private", "var", "db", ".guest-macosx-firstboot")
+	log, err := os.ReadFile(filepath.Join(confDir, "postinstall.log"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(log, []byte(pw)) {
+		t.Errorf("postinstall.log shows the password:\n%s", log)
+	}
+	conf, err := os.ReadFile(filepath.Join(confDir, "firstboot.conf"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(conf, []byte("GUEST_MACOSX_FB_PASSWORD="+pw+"\n")) {
+		t.Errorf("firstboot.conf does not carry the password firstboot.sh needs:\n%s", conf)
+	}
+}
+
 // "firstboot.sh never contains an embedded private key or password"
 func TestFirstbootShNeverEmbedsASecret(t *testing.T) {
 	b := firstbootSh(t)
@@ -894,7 +895,7 @@ var (
 	hardcodedPasswordRe  = regexp.MustCompile(`(?im)^[^#]*password=[^$"]`)
 	publicKeyBlobRe      = regexp.MustCompile(`(?i)(ssh-(rsa|dss|ed25519)|ecdsa-sha2-[a-z0-9-]+) +AAAA`)
 	networkOrInstallerRe = regexp.MustCompile(`^\s*(softwareupdate|installer)\s`)
-	timeoutInvocationRe  = regexp.MustCompile(`run_with_timeout [0-9]+ (softwareupdate|installer)`)
+	timeoutInvocationRe  = regexp.MustCompile(`run_with_timeout (?:--checked )?[0-9]+ (softwareupdate|installer)`)
 )
 
 // "every network-touching or long-running step has a timeout": 10.9 has no
@@ -929,7 +930,7 @@ func TestFirstbootShWrapsNetworkOrLongRunningStepsInATimeout(t *testing.T) {
 // path and what gets removed.
 func TestFirstbootShRemovesItsOwnLaunchDaemon(t *testing.T) {
 	b := firstbootSh(t)
-	if !regexp.MustCompile(`(?m)^DAEMON=.*com\.mqg\.firstboot`).Match(b) {
+	if !regexp.MustCompile(`(?m)^DAEMON=.*guest-macosx\.firstboot`).Match(b) {
 		t.Error("firstboot.sh does not set DAEMON to its own LaunchDaemon's path")
 	}
 	if !regexp.MustCompile(`rm\s+-f\s+"?\$DAEMON"?`).Match(b) {
@@ -938,7 +939,7 @@ func TestFirstbootShRemovesItsOwnLaunchDaemon(t *testing.T) {
 }
 
 var (
-	sudoersGuardRe  = regexp.MustCompile(`^\s*(el)?if \[ "\$MQG_FB_SUDO" = "1" \]; then\s*$`)
+	sudoersGuardRe  = regexp.MustCompile(`^\s*(el)?if \[ "\$GUEST_MACOSX_FB_SUDO" = "1" \]; then\s*$`)
 	sudoersVisudoRe = regexp.MustCompile(`visudo -cf "\$SUDOERS_CANDIDATE"`)
 	sudoersWriteRe  = regexp.MustCompile(`^\s*install -m 0440 -o root -g wheel "\$SUDOERS_CANDIDATE" "\$SUDOERS_FILE"\s*$`)
 
@@ -953,7 +954,7 @@ var (
 // same three-part shape (presence, then order) as the other invariants
 // in this section. A build that never sets Sudo getting no such write is
 // already covered at the Conf level by TestDefaultConfigConfCarriesNoSudo
-// and structurally by MQG_FB_SUDO defaulting to 0 in this very file. The
+// and structurally by GUEST_MACOSX_FB_SUDO defaulting to 0 in this very file. The
 // install line also pins mode and owner: TestFirstbootShInstallsSudoersFilesInOneStep
 // below is the test that a chmod/chown pair never crept back in.
 func TestFirstbootShWritesSudoersOnlyWhenRequested(t *testing.T) {
@@ -963,7 +964,7 @@ func TestFirstbootShWritesSudoersOnlyWhenRequested(t *testing.T) {
 		t.Fatalf("guard at line %d, visudo check at line %d, sudoers write at line %d; want all three", guard+1, visudo+1, write+1)
 	}
 	if !(guard < visudo && visudo < write) {
-		t.Fatalf("want the MQG_FB_SUDO guard (line %d) before visudo -cf (line %d) before the write (line %d)", guard+1, visudo+1, write+1)
+		t.Fatalf("want the GUEST_MACOSX_FB_SUDO guard (line %d) before visudo -cf (line %d) before the write (line %d)", guard+1, visudo+1, write+1)
 	}
 }
 
@@ -1109,15 +1110,15 @@ func TestPostinstallReadsTheTargetVolumeArgument(t *testing.T) {
 
 // "the firstboot LaunchDaemon plist is valid and runs at load"
 func TestTheFirstbootLaunchDaemonPlistRunsAtLoad(t *testing.T) {
-	b, err := fs.ReadFile(macosx.Files, "assets/guest/com.mqg.firstboot.plist")
+	b, err := fs.ReadFile(macosx.Files, "assets/guest/guest-macosx.firstboot.plist")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !bytes.Contains(b, []byte("firstboot.sh")) {
-		t.Error("com.mqg.firstboot.plist's ProgramArguments never names firstboot.sh")
+		t.Error("guest-macosx.firstboot.plist's ProgramArguments never names firstboot.sh")
 	}
 	if !regexp.MustCompile(`(?s)<key>RunAtLoad</key>\s*<true/>`).Match(b) {
-		t.Error("com.mqg.firstboot.plist does not set RunAtLoad true")
+		t.Error("guest-macosx.firstboot.plist does not set RunAtLoad true")
 	}
 }
 
@@ -1148,6 +1149,26 @@ func lineOf(b []byte, re *regexp.Regexp) int {
 		}
 	}
 	return -1
+}
+
+// lineOfLast is the 0-based index of the last line of b matching re, or -1.
+// firstboot.sh's main line writes its marker last; finish_snow_leopard,
+// defined near the top, writes 10.6's.
+func lineOfLast(b []byte, re *regexp.Regexp) int {
+	last := -1
+	for i, line := range strings.Split(string(b), "\n") {
+		if re.MatchString(line) {
+			last = i
+		}
+	}
+	return last
+}
+
+// funcBody is the text of firstboot.sh's function name, from its "name() {"
+// line to the "}" that closes it at the start of a line, or "".
+func funcBody(b []byte, name string) string {
+	m := regexp.MustCompile(`(?ms)^` + regexp.QuoteMeta(name) + `\(\) \{\n.*?^\}`).Find(b)
+	return string(m)
 }
 
 var (
@@ -1249,8 +1270,8 @@ func TestFirstbootShInstallsUpdatesBeforeTheFamilysOpenSSH(t *testing.T) {
 // update package there would be handed to installer as the base OpenSSH.
 func TestPostinstallCarriesUpdatesToTheirOwnDirectory(t *testing.T) {
 	b := postinstallSh(t)
-	if !bytes.Contains(b, []byte(`carry_pkgs "$CONF_DIR/updates" $MQG_FB_UPDATE_PKGS`)) {
-		t.Error(`postinstall does not carry $MQG_FB_UPDATE_PKGS into "$CONF_DIR/updates"`)
+	if !bytes.Contains(b, []byte(`carry_pkgs "$CONF_DIR/updates" "$GUEST_MACOSX_FB_UPDATE_PKGS`)) {
+		t.Error(`postinstall does not carry $GUEST_MACOSX_FB_UPDATE_PKGS into "$CONF_DIR/updates"`)
 	}
 	if n := bytes.Count(b, []byte(`carry_pkgs "$CONF_DIR/pkgs"`)); n != 1 {
 		t.Errorf(`carry_pkgs "$CONF_DIR/pkgs" appears %d time(s); want exactly 1 (the OpenSSH pair only)`, n)
@@ -1320,21 +1341,21 @@ func TestNoGuestScriptAsksSoftwareupdateForAnything(t *testing.T) {
 }
 
 // "the payload records the update packages in install order": firstboot.sh
-// installs them in the order MQG_FB_UPDATE_PKGS names them, and
+// installs them in the order GUEST_MACOSX_FB_UPDATE_PKGS names them, and
 // 2016-004 must go on first.
 func TestTheConfRecordsUpdatePackagesInInstallOrder(t *testing.T) {
 	dir := t.TempDir()
 	c := DefaultConfig()
 	c.UpdatePkgs = []MediaFile{
-		{Path: fakePkg(t, dir, "a.pkg"), Name: "mqg-update-01-a.pkg"},
-		{Path: fakePkg(t, dir, "b.pkg"), Name: "mqg-update-02-b.pkg"},
+		{Path: fakePkg(t, dir, "a.pkg"), Name: "guest-macosx-update-01-a.pkg"},
+		{Path: fakePkg(t, dir, "b.pkg"), Name: "guest-macosx-update-02-b.pkg"},
 	}
 	c.Updates = "all"
 	conf, err := Conf(c)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !regexp.MustCompile(`(?m)^MQG_FB_UPDATE_PKGS=.*mqg-update-01-a\.pkg.*mqg-update-02-b\.pkg`).Match(conf) {
+	if !regexp.MustCompile(`(?m)^GUEST_MACOSX_FB_UPDATE_PKGS=.*guest-macosx-update-01-a\.pkg.*guest-macosx-update-02-b\.pkg`).Match(conf) {
 		t.Fatalf("conf does not name the update packages in install order:\n%s", conf)
 	}
 }
@@ -1489,7 +1510,7 @@ func TestASnowLeopardConfNamesItsRelease(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(conf), "\nMQG_FB_RELEASE=snowleopard\n") {
+	if !strings.Contains(string(conf), "\nGUEST_MACOSX_FB_RELEASE=snowleopard\n") {
 		t.Fatalf("conf does not name its release:\n%s", conf)
 	}
 }
@@ -1504,7 +1525,7 @@ func TestAMavericksConfNamesNoRelease(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if strings.Contains(string(conf), "MQG_FB_RELEASE") {
+		if strings.Contains(string(conf), "GUEST_MACOSX_FB_RELEASE") {
 			t.Fatalf("release %q: conf names a release:\n%s", rel, conf)
 		}
 	}
@@ -1550,18 +1571,18 @@ func TestTheConfCarriesAProductsMembersApart(t *testing.T) {
 	c.UpdatePkgs = []MediaFile{
 		{Path: fakePkg(t, dir, "Part0.pkg"), Name: "Part0.pkg", Member: true},
 		{Path: fakePkg(t, dir, "Part1.pkg"), Name: "Part1.pkg", Member: true},
-		{Path: fakeDist(t, dir, "combo.dist"), Name: "mqg-update-01-combo.dist"},
-		{Path: fakePkg(t, dir, "secupd.pkg"), Name: "mqg-update-02-secupd.pkg"},
+		{Path: fakeDist(t, dir, "combo.dist"), Name: "guest-macosx-update-01-combo.dist"},
+		{Path: fakePkg(t, dir, "secupd.pkg"), Name: "guest-macosx-update-02-secupd.pkg"},
 	}
 	c.Updates = "security"
 	conf, err := Conf(c)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(conf), "\nMQG_FB_UPDATE_PKGS=mqg-update-01-combo.dist\\ mqg-update-02-secupd.pkg\\ \n") {
+	if !strings.Contains(string(conf), "\nGUEST_MACOSX_FB_UPDATE_PKGS=guest-macosx-update-01-combo.dist\\ guest-macosx-update-02-secupd.pkg\\ \n") {
 		t.Fatalf("conf does not name exactly the two installables:\n%s", conf)
 	}
-	if !strings.Contains(string(conf), "\nMQG_FB_UPDATE_MEMBERS=Part0.pkg\\ Part1.pkg\\ \n") {
+	if !strings.Contains(string(conf), "\nGUEST_MACOSX_FB_UPDATE_MEMBERS=Part0.pkg\\ Part1.pkg\\ \n") {
 		t.Fatalf("conf does not name the members to carry:\n%s", conf)
 	}
 }
@@ -1571,13 +1592,13 @@ func TestTheConfCarriesAProductsMembersApart(t *testing.T) {
 func TestAConfWithNoMembersSaysNothingAboutThem(t *testing.T) {
 	dir := t.TempDir()
 	c := DefaultConfig()
-	c.UpdatePkgs = []MediaFile{{Path: fakePkg(t, dir, "a.pkg"), Name: "mqg-update-01-a.pkg"}}
+	c.UpdatePkgs = []MediaFile{{Path: fakePkg(t, dir, "a.pkg"), Name: "guest-macosx-update-01-a.pkg"}}
 	c.Updates = "security"
 	conf, err := Conf(c)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(conf), "MQG_FB_UPDATE_MEMBERS") {
+	if strings.Contains(string(conf), "GUEST_MACOSX_FB_UPDATE_MEMBERS") {
 		t.Fatalf("conf mentions members it has none of:\n%s", conf)
 	}
 }
@@ -1586,7 +1607,7 @@ func TestAConfWithNoMembersSaysNothingAboutThem(t *testing.T) {
 // package and is accepted anyway, when it is an installer distribution.
 func TestADistributionIsAnUpdateTheMediaCarries(t *testing.T) {
 	dir := t.TempDir()
-	files := []MediaFile{{Path: fakeDist(t, dir, "combo.dist"), Name: "mqg-update-01-combo.dist"}}
+	files := []MediaFile{{Path: fakeDist(t, dir, "combo.dist"), Name: "guest-macosx-update-01-combo.dist"}}
 	if err := validateMediaFiles("UpdatePkgs", files); err != nil {
 		t.Fatalf("a distribution was refused: %v", err)
 	}
@@ -1600,7 +1621,7 @@ func TestAFakeDistributionIsRefused(t *testing.T) {
 	if err := os.WriteFile(p, []byte("not a distribution"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	files := []MediaFile{{Path: p, Name: "mqg-update-01-combo.dist"}}
+	files := []MediaFile{{Path: p, Name: "guest-macosx-update-01-combo.dist"}}
 	if err := validateMediaFiles("UpdatePkgs", files); err == nil || !strings.Contains(err.Error(), "distribution") {
 		t.Fatalf("err = %v; want a fake distribution refused", err)
 	}
@@ -1618,17 +1639,17 @@ func TestADistributionIsNeverAMember(t *testing.T) {
 
 func TestPostinstallCarriesAProductsMembersBesideIt(t *testing.T) {
 	b := postinstallSh(t)
-	if !bytes.Contains(b, []byte(`carry_pkgs "$CONF_DIR/updates" $MQG_FB_UPDATE_PKGS ${MQG_FB_UPDATE_MEMBERS:-}`)) {
-		t.Error(`postinstall does not carry $MQG_FB_UPDATE_MEMBERS into "$CONF_DIR/updates" beside the updates`)
+	if !bytes.Contains(b, []byte(`carry_pkgs "$CONF_DIR/updates" "$GUEST_MACOSX_FB_UPDATE_PKGS ${GUEST_MACOSX_FB_UPDATE_MEMBERS:-}"`)) {
+		t.Error(`postinstall does not carry $GUEST_MACOSX_FB_UPDATE_MEMBERS into "$CONF_DIR/updates" beside the updates`)
 	}
 }
 
 func TestFirstbootShNeverInstallsAMemberByItself(t *testing.T) {
 	sh := firstbootSh(t)
-	if strings.Contains(string(sh), "MQG_FB_UPDATE_MEMBERS") {
-		t.Error("firstboot.sh reads MQG_FB_UPDATE_MEMBERS: a member is installed only by its distribution")
+	if strings.Contains(string(sh), "GUEST_MACOSX_FB_UPDATE_MEMBERS") {
+		t.Error("firstboot.sh reads GUEST_MACOSX_FB_UPDATE_MEMBERS: a member is installed only by its distribution")
 	}
-	if strings.Contains(string(sh), "MQG_FB_UPDATE_IF_") {
+	if strings.Contains(string(sh), "GUEST_MACOSX_FB_UPDATE_IF_") {
 		t.Error("firstboot.sh still checks per-update conditions; the distribution makes them")
 	}
 }
@@ -1637,41 +1658,65 @@ func TestFirstbootShNeverInstallsAMemberByItself(t *testing.T) {
 // process can find a new library under an old dyld: MEASURED 2026-10-04,
 // with 10.6.8 and 2013-004 installed and no restart, sshd answered and
 // every session hung. So on 10.6 firstboot.sh does everything else first,
-// installs the updates last, and restarts; sshd first runs after that.
+// installs the updates last, each on a boot of its own where it needs one
+// (docs/decisions/0023), and restarts; sshd first runs after that.
+// tests/firstboot_updates.bats runs those steps; these hold their places.
 
 var (
 	installUpdatesCallRe = regexp.MustCompile(`^\s*install_updates\s*$`)
 	verdictRe            = regexp.MustCompile(`^say "account: `)
 	doneMarkerRe         = regexp.MustCompile(`> "\$DONE_MARKER"`)
 	restartRe            = regexp.MustCompile(`shutdown -r now`)
-	sshdLoadRe           = regexp.MustCompile(`launchctl load -w /System/Library/LaunchDaemons/ssh.plist`)
+	sshdLoadRe           = regexp.MustCompile(`launchctl load -w "\$SSH_PLIST"`)
+)
+
+var (
+	slUpdatesCallRe = regexp.MustCompile(`^\s*snow_leopard_updates\s*$`)
+	accountRe       = regexp.MustCompile(`^set_account_secret$`)
 )
 
 func TestFirstbootShInstallsSnowLeopardsUpdatesLast(t *testing.T) {
 	b := firstbootSh(t)
-	verdict, done := lineOf(b, verdictRe), lineOf(b, doneMarkerRe)
-	var calls []int
+	verdict, done, account := lineOf(b, verdictRe), lineOfLast(b, doneMarkerRe), lineOf(b, accountRe)
+	var calls, slCalls []int
 	for i, line := range strings.Split(string(b), "\n") {
 		if installUpdatesCallRe.MatchString(line) {
 			calls = append(calls, i)
 		}
+		if slUpdatesCallRe.MatchString(line) {
+			slCalls = append(slCalls, i)
+		}
 	}
-	if len(calls) != 2 {
-		t.Fatalf("install_updates is called on %d line(s); want 2, 10.9's place and 10.6's", len(calls))
+	if len(calls) != 1 {
+		t.Fatalf("install_updates is called on %d line(s); want 1, 10.9's place", len(calls))
 	}
-	if calls[1] < verdict || calls[1] > done {
-		t.Fatalf("10.6's install_updates at line %d; want after the verdict (line %d) and before the marker (line %d)", calls[1]+1, verdict+1, done+1)
+	// 10.6's: the resume, before the account (a boot between its updates
+	// does nothing else), and the first boot's, after the verdict and
+	// before the main line's marker.
+	if len(slCalls) != 2 {
+		t.Fatalf("snow_leopard_updates is called on %d line(s); want 2, the resume and the first boot's", len(slCalls))
+	}
+	if slCalls[0] > account {
+		t.Fatalf("the resume's snow_leopard_updates at line %d; want before the account (line %d)", slCalls[0]+1, account+1)
+	}
+	if slCalls[1] < verdict || slCalls[1] > done {
+		t.Fatalf("10.6's snow_leopard_updates at line %d; want after the verdict (line %d) and before the marker (line %d)", slCalls[1]+1, verdict+1, done+1)
 	}
 }
 
 func TestFirstbootShRestartsAfterSnowLeopardsUpdates(t *testing.T) {
 	b := firstbootSh(t)
-	r, done := lineOf(b, restartRe), lineOf(b, doneMarkerRe)
-	if r < 0 || r < done {
-		t.Fatalf("restart at line %d; want one, after the marker (line %d)", r+1, done+1)
+	fin := funcBody(b, "finish_snow_leopard")
+	if fin == "" {
+		t.Fatal("firstboot.sh has no finish_snow_leopard")
 	}
-	if !strings.Contains(string(b), `MQG_FB_RELEASE`) {
-		t.Fatal("firstboot.sh never reads MQG_FB_RELEASE")
+	fb := []byte(fin)
+	r, done := lineOfLast(fb, restartRe), lineOf(fb, doneMarkerRe)
+	if r < 0 || done < 0 || r < done {
+		t.Fatalf("finish_snow_leopard restarts at its line %d; want one, after its marker (its line %d)", r+1, done+1)
+	}
+	if !strings.Contains(string(b), `GUEST_MACOSX_FB_RELEASE`) {
+		t.Fatal("firstboot.sh never reads GUEST_MACOSX_FB_RELEASE")
 	}
 }
 
@@ -1687,11 +1732,14 @@ func TestFirstbootShLeavesSSHDForTheRestart(t *testing.T) {
 	if n := len(sshdLoadRe.FindAllString(b, -1)); n != 1 {
 		t.Fatalf("%d sshd loads; want 1", n)
 	}
+	if !strings.Contains(b, "\nSSH_PLIST=/System/Library/LaunchDaemons/ssh.plist\n") {
+		t.Fatal("firstboot.sh's SSH_PLIST is not /System/Library/LaunchDaemons/ssh.plist")
+	}
 }
 
 // TestTheBuiltPostinstallCarriesUpdatesOnATargetOffline runs postinstall
 // with updates, as each release's media has them: 10.9's, with no
-// members (its conf never mentions MQG_FB_UPDATE_MEMBERS, and the script
+// members (its conf never mentions GUEST_MACOSX_FB_UPDATE_MEMBERS, and the script
 // runs under set -u), and 10.6's, a distribution beside its members.
 // Every update must land in the target's updates/.
 func TestTheBuiltPostinstallCarriesUpdatesOnATargetOffline(t *testing.T) {
@@ -1700,13 +1748,13 @@ func TestTheBuiltPostinstallCarriesUpdatesOnATargetOffline(t *testing.T) {
 		files func(t *testing.T, media string) []MediaFile
 	}{
 		{"10.9, no members", func(t *testing.T, media string) []MediaFile {
-			return []MediaFile{{Path: fakePkg(t, media, "mqg-update-01-SecUpd.pkg"), Name: "mqg-update-01-SecUpd.pkg"}}
+			return []MediaFile{{Path: fakePkg(t, media, "guest-macosx-update-01-SecUpd.pkg"), Name: "guest-macosx-update-01-SecUpd.pkg"}}
 		}},
 		{"10.6, a distribution and its members", func(t *testing.T, media string) []MediaFile {
 			return []MediaFile{
 				{Path: fakePkg(t, media, "Part0.pkg"), Name: "Part0.pkg", Member: true},
-				{Path: fakeDist(t, media, "mqg-update-01-combo.dist"), Name: "mqg-update-01-combo.dist"},
-				{Path: fakePkg(t, media, "mqg-update-02-SecUpd.pkg"), Name: "mqg-update-02-SecUpd.pkg"},
+				{Path: fakeDist(t, media, "guest-macosx-update-01-combo.dist"), Name: "guest-macosx-update-01-combo.dist"},
+				{Path: fakePkg(t, media, "guest-macosx-update-02-SecUpd.pkg"), Name: "guest-macosx-update-02-SecUpd.pkg"},
 			}
 		}},
 	} {
@@ -1727,7 +1775,7 @@ func TestTheBuiltPostinstallCarriesUpdatesOnATargetOffline(t *testing.T) {
 			c.Updates = "security"
 			c.UpdatePkgs = tc.files(t, media)
 
-			out := filepath.Join(media, "mqg-firstboot.pkg")
+			out := filepath.Join(media, "guest-macosx-firstboot.pkg")
 			if _, err := Build(context.Background(), proc.Exec{}, c, out, t.Logf); err != nil {
 				t.Fatal(err)
 			}
@@ -1747,7 +1795,7 @@ func TestTheBuiltPostinstallCarriesUpdatesOnATargetOffline(t *testing.T) {
 			if combined, err := cmd.CombinedOutput(); err != nil {
 				t.Fatalf("postinstall: %v: %s", err, combined)
 			}
-			updates := filepath.Join(target, "private", "var", "db", ".mqg-firstboot", "updates")
+			updates := filepath.Join(target, "private", "var", "db", ".guest-macosx-firstboot", "updates")
 			for _, f := range c.UpdatePkgs {
 				if _, err := os.Stat(filepath.Join(updates, f.Name)); err != nil {
 					t.Errorf("%s not carried to the target: %v", f.Name, err)
@@ -1757,5 +1805,190 @@ func TestTheBuiltPostinstallCarriesUpdatesOnATargetOffline(t *testing.T) {
 				t.Errorf("postinstall did not reach its end: %v", err)
 			}
 		})
+	}
+}
+
+// --- the shutdown helper ---------------------------------------------------
+//
+// A bare `shutdown` over SSH can hold 10.9's userspace shutdown for a
+// launchd job's 20 s exit timeout, and the shutdown monitor then files a
+// .shutdownStall report (docs/decisions/0019). Two causes, both MEASURED
+// 2026-10-13/14: loginwindow's `ManagedClient -s` holds a DiskArbitration
+// session that only loginwindow would close; and UserEventAgent (System),
+// for the seconds after its XPC activity scheduler records an activity in
+// root's com.apple.xpc.activity preferences, cannot exit on a shutdown's
+// SIGTERM, because launchd has already killed cfprefsd and the write never
+// lands. firstboot.sh writes /usr/local/sbin/guest-macosx-shutdown, which stops both
+// (UserEventAgent while cfprefsd still runs), and every shutdown the build,
+// the gate and the box issue goes through it.
+
+var (
+	shutdownHelperCallRe = regexp.MustCompile(`^\s*write_shutdown_helper\s*$`)
+	shutdownHelperBodyRe = regexp.MustCompile(`(?s)cat > /usr/local/sbin/guest-macosx-shutdown <<'GUEST_MACOSX_SHUTDOWN_EOF'\n(.*?)\nGUEST_MACOSX_SHUTDOWN_EOF\n`)
+	shutdownHelperPyRe   = regexp.MustCompile(`(?s)/usr/bin/python - <<'GUEST_MACOSX_PY_EOF'\n(.*?)\nGUEST_MACOSX_PY_EOF\n`)
+)
+
+// shutdownHelper is the helper's text, as firstboot.sh writes it.
+func shutdownHelper(t *testing.T) string {
+	t.Helper()
+	m := shutdownHelperBodyRe.FindSubmatch(firstbootSh(t))
+	if m == nil {
+		t.Fatal("firstboot.sh never writes /usr/local/sbin/guest-macosx-shutdown from a quoted heredoc")
+	}
+	return string(m[1]) + "\n"
+}
+
+func TestFirstbootShWritesTheShutdownHelperBeforeItsMarker(t *testing.T) {
+	b := firstbootSh(t)
+	call, done := lineOf(b, shutdownHelperCallRe), lineOfLast(b, doneMarkerRe)
+	if call < 0 {
+		t.Fatal("firstboot.sh never calls write_shutdown_helper")
+	}
+	if call > done {
+		t.Fatalf("write_shutdown_helper at line %d; want before the marker (line %d)", call+1, done+1)
+	}
+	// 10.9's alone: 10.6 has neither cause (MEASURED 2026-10-14, docs/decisions/0019).
+	if lines := strings.Split(string(b), "\n"); call < 1 || strings.TrimSpace(lines[call-1]) != `if [ -z "$GUEST_MACOSX_FB_RELEASE" ]; then` {
+		t.Errorf("write_shutdown_helper is not 10.9's alone; the line before it is %q", strings.TrimSpace(lines[call-1]))
+	}
+	for _, want := range []string{
+		"mkdir -p /usr/local/sbin",
+		"chown root:wheel /usr/local/sbin/guest-macosx-shutdown",
+		"chmod 755 /usr/local/sbin/guest-macosx-shutdown",
+	} {
+		if !bytes.Contains(b, []byte(want)) {
+			t.Errorf("firstboot.sh never runs %q", want)
+		}
+	}
+}
+
+// TestTheShutdownHelperStopsUserEventAgentThenManagedClientThenShutsDown:
+// the order is the mechanism.
+//   - It runs as root, or it changes nothing.
+//   - It waits until no job launchd started is still starting (ADR 0021),
+//     before it stops anything.
+//   - UserEventAgent (System) is unloaded while cfprefsd still runs: a dirty
+//     one saves its pending preferences on that SIGTERM and exits, which it
+//     cannot do once a shutdown has killed cfprefsd. The helper waits until
+//     it is gone.
+//   - Any other UserEventAgent (the LoginWindow one), and AppleIDAuthAgent,
+//     are waited out until clean.
+//   - ManagedClient goes last, right before the shutdown, so loginwindow has
+//     no time to start another; its DiskArbitration session closes with it.
+//   - The shutdown is the last thing, with the caller's -h or -r.
+func TestTheShutdownHelperStopsUserEventAgentThenManagedClientThenShutsDown(t *testing.T) {
+	h := shutdownHelper(t)
+	if first, _, _ := strings.Cut(h, "\n"); !strings.HasPrefix(first, "#!") || strings.TrimSpace(first[2:]) != "/bin/sh" {
+		t.Errorf("the helper's interpreter is not /bin/sh:\n%s", h)
+	}
+	steps := []string{
+		`case ${1:-} in -h|-r) ;;`,
+		`[ "$(id -u)" = 0 ] ||`,
+		`/usr/bin/python - <<'GUEST_MACOSX_PY_EOF'`,
+		`SYSTEM = '/System/Library/LaunchDaemons/com.apple.UserEventAgent-System.plist'`,
+		`jobs, checked, bad, why = starting()`,
+		`subprocess.call(['/bin/launchctl', 'unload', SYSTEM])`,
+		`while running('UserEventAgent (System)'):`,
+		`now = [a for a in agents() if dirty(a[0])]`,
+		"\nGUEST_MACOSX_PY_EOF\n",
+		"\nkillall ManagedClient 2>/dev/null\nexec /sbin/shutdown \"$1\" now",
+	}
+	at := 0
+	for _, s := range steps {
+		i := strings.Index(h[at:], s)
+		if i < 0 {
+			t.Fatalf("the helper has no %q after the steps before it:\n%s", s, h)
+		}
+		at += i + len(s)
+	}
+	if rest := strings.TrimSpace(h[at:]); rest != "" {
+		t.Errorf("the helper does something after the shutdown: %q", rest)
+	}
+	if n := strings.Count(h, "shutdown \""); n != 1 {
+		t.Errorf("the helper runs shutdown %d times; want once", n)
+	}
+}
+
+// TestTheShutdownHelperNeverUnloadsForGood: no -w in the launchctl call,
+// in whatever form it is written, or the next boot would not load
+// UserEventAgent (System) again.
+func TestTheShutdownHelperNeverUnloadsForGood(t *testing.T) {
+	h := shutdownHelper(t)
+	calls := regexp.MustCompile(`\[[^\]]*'/bin/launchctl'[^\]]*\]`).FindAllString(h, -1)
+	if len(calls) == 0 {
+		t.Fatal("the helper has no launchctl call as a Python list")
+	}
+	for _, c := range calls {
+		if regexp.MustCompile(`['"]-\w*w\w*['"]`).MatchString(c) || strings.Contains(c, "-w") {
+			t.Errorf("the helper unloads UserEventAgent for good (-w): %s", c)
+		}
+	}
+}
+
+// TestTheShutdownHelperWaitsABoundedTime: each wait ends when its condition
+// holds, and in any case after LIMIT seconds, saying so in system.log, so a
+// guest that never settles still shuts down and the stall is seen.
+func TestTheShutdownHelperWaitsABoundedTime(t *testing.T) {
+	h := shutdownHelper(t)
+	for _, want := range []string{
+		"LIMIT = 30.0",
+		"if 0 < x <= 30:",
+		"/usr/bin/logger",
+		"shutting down anyway",
+		"hasattr(libc, 'proc_get_dirty')",
+	} {
+		if !strings.Contains(h, want) {
+			t.Errorf("the helper has no %q", want)
+		}
+	}
+	// UserEventAgent (System) gone, any other UserEventAgent clean (ADR 0019),
+	// and jobs still starting (ADR 0021): each bounded by a clock that does
+	// not step (mach_absolute_time), and by its number of looks should that
+	// clock not move.
+	if n := strings.Count(h, "if clock() - start >= LIMIT:"); n != 0 {
+		t.Errorf("the helper has %d waits bounded by the clock alone; want none", n)
+	}
+	if strings.Contains(h, "time.time() - start") {
+		t.Error("the helper times a wait by the wall clock; want clock()")
+	}
+	for _, want := range []string{
+		"if polls >= int(LIMIT / POLL) or clock() - start >= LIMIT:",
+		"if polls >= int(LIMIT / 0.05) or clock() - start >= LIMIT:",
+		"if polls >= int(LIMIT / 0.1) or clock() - start >= LIMIT:",
+	} {
+		if !strings.Contains(h, want) {
+			t.Errorf("the helper has no %q", want)
+		}
+	}
+}
+
+// TestTheShutdownHelperParses: its sh under this host's /bin/sh -n, and its
+// Python (10.9's is 2.7, written to read the same under 3) under python3's
+// compiler, when there is one. Nothing here runs it: it would shut a host
+// down.
+func TestTheShutdownHelperParses(t *testing.T) {
+	h := shutdownHelper(t)
+	dir := t.TempDir()
+	sh := filepath.Join(dir, "guest-macosx-shutdown")
+	if err := os.WriteFile(sh, []byte(h), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := exec.Command("/bin/sh", "-n", sh).CombinedOutput(); err != nil {
+		t.Fatalf("sh -n: %v\n%s", err, out)
+	}
+	m := shutdownHelperPyRe.FindStringSubmatch(h)
+	if m == nil {
+		t.Fatal("the helper has no Python heredoc")
+	}
+	py, err := exec.LookPath("python3")
+	if err != nil {
+		t.Skip("no python3 to compile the helper's Python with")
+	}
+	src := filepath.Join(dir, "wait.py")
+	if err := os.WriteFile(src, []byte(m[1]+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := exec.Command(py, "-I", "-m", "py_compile", src).CombinedOutput(); err != nil {
+		t.Fatalf("python3 -m py_compile: %v\n%s", err, out)
 	}
 }

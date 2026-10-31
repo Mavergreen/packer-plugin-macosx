@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/zclconf/go-cty/cty"
+
 	macosx "github.com/Mavergreen/packer-plugin-macosx"
 	"github.com/Mavergreen/packer-plugin-macosx/internal/templatetest"
 )
@@ -76,6 +78,14 @@ func TestValidate(t *testing.T) {
 			t.Fatalf("packer validate accepted an openssh variable:\n%s", out)
 		}
 	})
+
+	templatetest.ValidateDisplay(t, run, "-var", disc)
+}
+
+// TestTheBuilderGetsTheDisplay: the qemu builder's display is the display
+// variable, checked against headless.
+func TestTheBuilderGetsTheDisplay(t *testing.T) {
+	templatetest.QemuSourceTakesDisplay(t, osName, osName+".pkr.hcl")
 }
 
 // TestVagrantKeyMatchesEmbedded: the template's copy of Vagrant's insecure
@@ -94,6 +104,26 @@ func TestVagrantKeyMatchesEmbedded(t *testing.T) {
 	}
 }
 
+// TestTheVariablesNameNoMavericksPath: what `packer inspect` shows of
+// this template's variables is about 10.6 and this directory. The
+// default private key is the one beside snowleopard.pkr.hcl
+// (effective_ssh_private_key_file), not templates/mavericks/'s.
+func TestTheVariablesNameNoMavericksPath(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join(templatetest.RepoRoot(t), "templates", osName, "variables.pkr.hcl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, line := range strings.Split(string(b), "\n") {
+		if strings.Contains(strings.ToLower(line), "mavericks") {
+			t.Errorf("variables.pkr.hcl line %d names Mavericks: %s", i+1, strings.TrimSpace(line))
+		}
+	}
+	const key = "templates/snowleopard/vagrant-standard-insecure-first-boot-only.key.rsa"
+	if !bytes.Contains(b, []byte(key)) {
+		t.Errorf("ssh_private_key_file's description never names %s", key)
+	}
+}
+
 // TestBoxVagrantfileReEnablesSSHRSA: `vagrant ssh` runs the host's own
 // OpenSSH client, which refuses 10.6's ssh-rsa host keys and signatures
 // unless told otherwise (MEASURED 2026-10-04).
@@ -109,27 +139,21 @@ func TestBoxVagrantfileReEnablesSSHRSA(t *testing.T) {
 	}
 }
 
-// TestNoUHCIForSnowLeopard: 10.6.0's AppleUSBUHCI hangs polling a halted
-// QEMU UHCI controller with interrupts off, wedging the install at one
-// CPU or two (MEASURED 2026-10-04, docs/decisions/0014). So neither the
-// build nor the box gives 10.6 a UHCI controller, or the USB 1.1 keyboard
-// and mouse that would need one; OpenCore's disk is on XHCI, which OVMF
-// boots from and 10.6 has no driver for.
-func TestNoUHCIForSnowLeopard(t *testing.T) {
-	for _, f := range []string{"snowleopard.pkr.hcl", "box.Vagrantfile.pkrtpl"} {
-		b, err := os.ReadFile(filepath.Join(templatetest.RepoRoot(t), "templates", osName, f))
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, bad := range []string{"uhci", "usb-kbd", "usb-mouse", "ich9-usb-ehci1"} {
-			if bytes.Contains(b, []byte(bad)) {
-				t.Errorf("%s attaches %s", f, bad)
-			}
-		}
-		if !bytes.Contains(b, []byte("qemu-xhci")) {
-			t.Errorf("%s puts OpenCore's disk on no XHCI controller", f)
-		}
-	}
+// TestTheBuildsMachineIsTheOneShape: the build's QEMU has the devices
+// every build and box of both releases has (templatetest.MachineShapeErrors):
+// OpenCore's disk on virtio-blk, and USB for input alone, EHCI with no companion,
+// a usb-kbd and a usb-tablet. No UHCI: 10.6.0's AppleUSBUHCI wedged installs
+// polling a halted QEMU UHCI controller with interrupts off (MEASURED
+// 2026-10-04, docs/decisions/0014). 10.6's AppleUSBEHCI drives the keyboard
+// and tablet, 10.6.0's in the installer included (docs/decisions/0035).
+func TestTheBuildsMachineIsTheOneShape(t *testing.T) {
+	templatetest.CheckBuildMachine(t, osName, osName+".pkr.hcl")
+}
+
+// TestTheBoxsMachineIsTheOneShape: the box boots the same devices as its
+// build, through every argv setting its Vagrantfile makes.
+func TestTheBoxsMachineIsTheOneShape(t *testing.T) {
+	templatetest.CheckBoxMachine(t, osName, boxOverrides)
 }
 
 // TestOneCPUByDefault: with two vCPUs on a busy host, 10.6.0 under KVM
@@ -172,4 +196,139 @@ func TestTheDefaultCPUSaysGenuineIntel(t *testing.T) {
 	if !strings.Contains(block, `default     = "Penryn,vendor=GenuineIntel,+ssse3,+sse4.1,+sse4.2"`) {
 		t.Fatalf("cpu does not default to Penryn with vendor=GenuineIntel:\n%s", block)
 	}
+}
+
+// TestTheLastProvisionerZeroFillsFreeSpace: as templates/mavericks' test
+// of the same name, which has the measurements. Here it also zeroes the
+// blocks a first boot freed, among them the old firstboot.conf's, which
+// held a configured password in plain text until the first boot rewrote
+// it. That 10.6.8's diskutil has `secureErase freespace` is REASONED
+// (Apple's diskutil(8) has had it since 10.5), not measured.
+func TestTheLastProvisionerZeroFillsFreeSpace(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join(templatetest.RepoRoot(t), "templates", osName, osName+".pkr.hcl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(b)
+	last := strings.LastIndex(s, "\n  provisioner \"")
+	if last < 0 {
+		t.Fatal("no provisioner")
+	}
+	block := s[last:]
+	block = block[:strings.Index(block, "\n  }\n")]
+	if !strings.Contains(block, "sudo diskutil secureErase freespace 0 /") {
+		t.Fatalf("the last provisioner does not zero free space:\n%s", block)
+	}
+	if collect := strings.LastIndex(s[:last], "local.box_vagrantfile"); collect < 0 {
+		t.Fatal("the zero-fill does not come after the box's Vagrantfile is collected")
+	}
+}
+
+// TestTheTargetDriveStoresZerosAsHoles: as templates/mavericks' test of the
+// same name. Without it, the zero-fill writes out all of the guest's free
+// space into the qcow2 (51.7 GB measured for 10.9).
+func TestTheTargetDriveStoresZerosAsHoles(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join(templatetest.RepoRoot(t), "templates", osName, osName+".pkr.hcl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, line := range strings.Split(string(b), "\n") {
+		if strings.Contains(line, `"id=target,`) {
+			if !strings.Contains(line, "detect-zeroes=unmap") || !strings.Contains(line, "discard=unmap") {
+				t.Fatalf("the target drive does not store zeros as holes:\n%s", line)
+			}
+			return
+		}
+	}
+	t.Fatal("no target drive")
+}
+
+// boxOverrides is what the box Vagrantfile's rendering needs beyond the
+// defaults: installer has none.
+var boxOverrides = map[string]cty.Value{"installer": cty.StringVal("/path/to/your/Snow Leopard.iso")}
+
+// TestBoxVagrantfileReadsTheGuestEnvironment: GUEST_MACOSX_GUI and
+// GUEST_MACOSX_QEMU_DISPLAY, as every box reads them
+// (templatetest.CheckGuestEnvironment).
+func TestBoxVagrantfileReadsTheGuestEnvironment(t *testing.T) {
+	templatetest.CheckGuestEnvironment(t, osName, boxOverrides)
+}
+
+// TestBoxVagrantfileSaysItIgnoresTheCPUISA: no instruction-set level has
+// been measured on 10.6, so GUEST_MACOSX_CPU_ISA, set, is ignored out
+// loud: a warning naming it and why, the build's own cpu line, and
+// nothing stopped. Unset or empty, there is nothing to say.
+func TestBoxVagrantfileSaysItIgnoresTheCPUISA(t *testing.T) {
+	text := templatetest.RenderBoxVagrantfile(t, osName, boxOverrides)
+	build := templatetest.TemplateVars(t, osName, boxOverrides)["cpu"].AsString()
+	for _, c := range []struct {
+		env   map[string]string
+		warns bool
+	}{
+		{nil, false},
+		{map[string]string{"GUEST_MACOSX_CPU_ISA": ""}, false},
+		{map[string]string{"GUEST_MACOSX_CPU_ISA": "avx"}, true},
+		{map[string]string{"GUEST_MACOSX_CPU_ISA": "none"}, true},
+		{map[string]string{"GUEST_MACOSX_CPU_ISA": "bogus"}, true},
+	} {
+		r := templatetest.RunBoxVagrantfile(t, text, "linux", c.env)
+		if r.Err != nil {
+			t.Errorf("%v: the Vagrantfile raised: %v\n%s", c.env, r.Err, r.Stderr)
+			continue
+		}
+		if got := r.Provider("qemu")["cpu"]; got != build {
+			t.Errorf("%v: cpu = %v, want the build's own %q", c.env, got, build)
+		}
+		warned := strings.Contains(r.Stderr, "GUEST_MACOSX_CPU_ISA="+c.env["GUEST_MACOSX_CPU_ISA"]+" is ignored on 10.6") &&
+			strings.Contains(r.Stderr, "no instruction-set level has been measured")
+		if warned != c.warns {
+			t.Errorf("%v: warned %v, want %v: %q", c.env, warned, c.warns, r.Stderr)
+		}
+	}
+}
+
+// TestTheBuildGivesQEMUAUUIDOfItsOwn: every build's guest gets a host UUID
+// of its own, there from its first second (docs/decisions/0024).
+func TestTheBuildGivesQEMUAUUIDOfItsOwn(t *testing.T) {
+	templatetest.CheckBuildUUID(t, osName, "snowleopard.pkr.hcl")
+}
+
+// TestEachVagrantMachineHasItsOwnHostUUID: distinct machines, distinct host
+// UUIDs and MACs, each kept with its machine (templatetest.CheckMachineIdentity).
+func TestEachVagrantMachineHasItsOwnHostUUID(t *testing.T) {
+	templatetest.CheckMachineIdentity(t, osName, boxOverrides)
+}
+
+// TestTheBuildGivesItsNICAnAddressOfItsOwn: the build's guest's NIC
+// address, derived from its UUID by the one rule (docs/decisions/0024).
+func TestTheBuildGivesItsNICAnAddressOfItsOwn(t *testing.T) {
+	templatetest.CheckBuildMAC(t, osName, "snowleopard.pkr.hcl")
+}
+
+// TestTheInstallLogIsOutsideTheOutputDirectory: the guest's first serial
+// port, where the media's autoinstall hook follows the install's logs, is a
+// file beside the output directory, never in it: Packer deletes the output
+// directory when a build fails, and a failed install is the build whose
+// logs matter (docs/decisions/0027).
+func TestTheInstallLogIsOutsideTheOutputDirectory(t *testing.T) {
+	templatetest.CheckInstallLog(t, osName, osName+".pkr.hcl")
+}
+
+// TestAFailedInstallEndsTheBuild: refused logins end it (docs/decisions/0028).
+func TestAFailedInstallEndsTheBuild(t *testing.T) {
+	templatetest.CheckHandshakeAttempts(t, osName, osName+".pkr.hcl")
+}
+
+// TestTheBuildsGuestReachesNothingOffLink: the build's guest network is
+// restricted, so nothing in the guest -- Apple's own daemons included --
+// fetches anything during the build (docs/decisions/0034).
+func TestTheBuildsGuestReachesNothingOffLink(t *testing.T) {
+	templatetest.CheckGuestNetwork(t, osName, osName+".pkr.hcl")
+}
+
+// TestBoxVagrantfileNamesItsRelease: the box says it is 10.6, on the one line
+// bin/gate-vm.sh reads to accept 10.6's ssh-rsa, shut down with a bare
+// shutdown and boot one CPU, as this box's own Vagrantfile does.
+func TestBoxVagrantfileNamesItsRelease(t *testing.T) {
+	templatetest.CheckBoxRelease(t, osName, boxOverrides, "10.6")
 }

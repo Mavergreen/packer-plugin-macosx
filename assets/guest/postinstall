@@ -3,14 +3,14 @@
 # Put the first-boot payload on the target volume, at install time.
 #
 # THIS FILE IS A TEMPLATE. internal/payload replaces the
-# `#MQG_EMBEDDED_FILES` line below with the heredocs that write
+# `#GUEST_MACOSX_EMBEDDED_FILES` line below with the heredocs that write
 # firstboot.sh, its conf file, the authorized key and the LaunchDaemon. So
 # the copy in the repository is the logic, and the copy in a package is the
 # logic plus its data. Running this one directly writes nothing.
 #
 # WHERE THIS RUNS
 #
-# Inside the OS X Installer, as root, because mqg-firstboot.pkg is listed in
+# Inside the OS X Installer, as root, because guest-macosx-firstboot.pkg is listed in
 # /System/Installation/Packages/OSInstall.collection alongside
 # OSInstall.mpkg. So the payload is installed as part of the install, the
 # way timsutton/osx-vm-templates does it, rather than being injected into a
@@ -51,11 +51,17 @@
 #
 # WHAT IS DONE HERE RATHER THAN AT FIRST BOOT
 #
-# Only .AppleSetupDone, and only because of a race: loginwindow starts Setup
-# Assistant at boot, and a LaunchDaemon with RunAtLoad has no guarantee of
-# beating it. Creating the marker at install time removes the race instead
-# of hoping to win it. Everything else needs a booted system -- dscl,
-# systemsetup, launchctl -- and is firstboot.sh's job.
+# Only what a boot races, and the first boot is a boot:
+#   - .AppleSetupDone: loginwindow starts Setup Assistant at boot, and a
+#     LaunchDaemon with RunAtLoad has no guarantee of beating it;
+#   - setting UserEventAgent's telemetry plugin aside (below): it races
+#     UserEventAgent's own start, which is over before firstboot.sh runs;
+#   - setting systemstats' jobs aside with it (below): launchd loads them
+#     as it boots, and a build that crosses 00:15 could run the daily one
+#     before firstboot.sh could stop it.
+# Doing them at install time removes each race instead of hoping to win
+# it. Everything else needs a booted system -- dscl, systemsetup,
+# launchctl -- and is firstboot.sh's job.
 
 set -u
 
@@ -65,28 +71,46 @@ TARGET=${3:-}
 # onto the running system, which during an OS install it is not; fall back
 # rather than silently writing to the wrong place.
 if [ -z "$TARGET" ] || [ "$TARGET" = "/" ]; then
-    TARGET=${MQG_FIRSTBOOT_TARGET:-/}
+    TARGET=${GUEST_MACOSX_FIRSTBOOT_TARGET:-/}
 fi
 
-CONF_DIR="$TARGET/private/var/db/.mqg-firstboot"
-DAEMON="$TARGET/Library/LaunchDaemons/com.mqg.firstboot.plist"
+CONF_DIR="$TARGET/private/var/db/.guest-macosx-firstboot"
+DAEMON="$TARGET/Library/LaunchDaemons/guest-macosx.firstboot.plist"
 LOG="$CONF_DIR/postinstall.log"
 
 mkdir -p "$CONF_DIR" || exit 1
 mkdir -p "$TARGET/Library/LaunchDaemons" || exit 1
 
 say() {
-    echo "mqg-firstboot-postinstall: $*"
+    echo "guest-macosx-firstboot-postinstall: $*"
     echo "$*" >> "$LOG" 2>/dev/null
+}
+
+# names_in <dir> -- the names in dir, dot-files too, on one line, for the
+# log; "(no such directory)" when it is not one. A glob, not `ls`, whose
+# output is for people and mangles a name it cannot print.
+names_in() {
+    [ -d "$1" ] || { printf '(no such directory)'; return 0; }
+    for _f in "$1"/* "$1"/.[!.]* "$1"/..?*; do
+        [ -e "$_f" ] || [ -L "$_f" ] || continue
+        printf '%s ' "${_f##*/}"
+    done
 }
 
 say "target volume: $TARGET"
 say "package: ${1:-none}  destination: ${2:-none}"
 say "\$0: $0"
 say "cwd: $(pwd 2>&1)"
-say "script directory holds: $(ls -a "$(dirname "$0")" 2>&1 | tr '\n' ' ')"
+# The PATH the installer runs this with: the commands it can find, which
+# internal/payload/testdata/commands/ lists for each release.
+say "PATH: $PATH"
+case $0 in
+    */*) _here=${0%/*} ;;
+    *) _here=. ;;
+esac
+say "script directory holds: $(names_in "${_here:-/}")"
 
-#MQG_EMBEDDED_FILES
+#GUEST_MACOSX_EMBEDDED_FILES
 
 # EXTRA PACKAGES CARRIED ON THE MEDIA, COPIED ONTO THE TARGET VOLUME
 #
@@ -120,14 +144,21 @@ if [ -r "$CONF_DIR/firstboot.conf" ]; then
 fi
 
 # carry_pkgs <destdir> <space-separated names> -- copy each named package
-# off the media into <destdir>, reporting every one that is not there.
+# off the media into <destdir>, reporting every one that is not there. The
+# names arrive as one word and are split here, one per line, by awk, rather
+# than by the shell's word splitting, which would also glob them: a name
+# never holds whitespace (internal/payload refuses one), so a space is
+# always a separator. awk, not tr: 10.6's install DVD has awk and sed but
+# no tr, and no dirname (internal/payload/testdata/commands/ lists what
+# each release's installer has, and environment_test.go holds this script
+# to it).
 carry_pkgs() {
     _dest=$1
-    shift
     mkdir -p "$_dest"
-    for pkgname in $*; do
+    printf '%s\n' "$2" | awk '{ for (i = 1; i <= NF; i++) print $i }' | while IFS= read -r pkgname; do
+        [ -n "$pkgname" ] || continue
         copied=no
-        for dir in "$(dirname "${MQG_PKG_PATH:-/nonexistent}")" \
+        for dir in "${GUEST_MACOSX_PKG_PATH%/*}" \
                    /System/Installation/Packages; do
             if [ -f "$dir/$pkgname" ]; then
                 if cp "$dir/$pkgname" "$_dest/$pkgname"; then
@@ -139,21 +170,21 @@ carry_pkgs() {
         done
         [ "$copied" = yes ] || say "NOT FOUND on the media: $pkgname"
     done
-    say "$_dest now: $(ls "$_dest" 2>&1 | tr '\n' ' ')"
+    say "$_dest now: $(names_in "$_dest")"
 }
 
-# $1 is the full path to THIS package; carry_pkgs shifts its own arguments,
-# so it is captured here rather than read as $1 inside.
-MQG_PKG_PATH=${1:-/nonexistent}
+# $1 is the full path to THIS package; inside carry_pkgs $1 is its own
+# argument, so it is captured here rather than read as $1 there.
+GUEST_MACOSX_PKG_PATH=${1:-/nonexistent}
 
-if [ -n "${MQG_FB_EXTRA_PKGS:-}" ]; then
-    carry_pkgs "$CONF_DIR/pkgs" $MQG_FB_EXTRA_PKGS
+if [ -n "${GUEST_MACOSX_FB_EXTRA_PKGS:-}" ]; then
+    carry_pkgs "$CONF_DIR/pkgs" "$GUEST_MACOSX_FB_EXTRA_PKGS"
 fi
-if [ -n "${MQG_FB_UPDATE_PKGS:-}" ]; then
-    say "updates: ${MQG_FB_UPDATES:-none}"
-    # MQG_FB_UPDATE_MEMBERS: the packages an update's distribution
+if [ -n "${GUEST_MACOSX_FB_UPDATE_PKGS:-}" ]; then
+    say "updates: ${GUEST_MACOSX_FB_UPDATES:-none}"
+    # GUEST_MACOSX_FB_UPDATE_MEMBERS: the packages an update's distribution
     # installs, carried beside it so installer finds them by name.
-    carry_pkgs "$CONF_DIR/updates" $MQG_FB_UPDATE_PKGS ${MQG_FB_UPDATE_MEMBERS:-}
+    carry_pkgs "$CONF_DIR/updates" "$GUEST_MACOSX_FB_UPDATE_PKGS ${GUEST_MACOSX_FB_UPDATE_MEMBERS:-}"
 fi
 
 chmod 755 "$CONF_DIR/firstboot.sh" 2>/dev/null
@@ -163,6 +194,95 @@ chmod 644 "$DAEMON" 2>/dev/null
 chown -R 0:0 "$CONF_DIR" 2>/dev/null
 chown 0:0 "$DAEMON" 2>/dev/null
 
+# THE TELEMETRY PLUGIN (docs/decisions/0020)
+#
+# UserEventAgent (System) crashed in 11 of 335 boots in the runs that saw
+# it, and the crash report fails the boot gate. MEASURED 2026-10-14, with dtrace and the
+# crash reports symbolicated against the guest's own binaries: its
+# com.apple.telemetry plugin, just loaded, opens each USB device through
+# IOUSBLib, a CFPlugIn, on its own thread. Releasing a device's interface
+# leaves no instance, so CoreFoundation schedules IOUSBLib for unloading,
+# from inside IOUSBLib's own Release, before that code has returned.
+# Meanwhile the main thread, before it loads its next plugin
+# (com.apple.time, the last), frees the CFBundle that checked that plugin's
+# signature, which runs CoreFoundation's scheduled unloads: dlclose unmaps
+# IOUSBLib under the telemetry thread, which returns into nothing. That
+# is Apple's bug, in CoreFoundation's deferred plugin unloading; the
+# telemetry plugin is the only code in UserEventAgent that walks into it,
+# and it only feeds systemstatsd's power and usage statistics.
+#
+# Moved, not deleted, so it can go back: mv it into UserEventPlugins and
+# restart. Here, not at first boot, because UserEventAgent starts before
+# firstboot.sh does. Security Update 2016-004 puts it back (REASONED, from
+# its Bom), so firstboot.sh sets it aside again after the updates. Snow
+# Leopard is not known to have such a plugin (REASONED); the -d check makes
+# this a no-op there. verify.sh requires the "set aside:" line below in
+# this log, since firstboot.sh's second move would hide a failure here.
+TELEMETRY="$TARGET/System/Library/UserEventPlugins/com.apple.telemetry.plugin"
+TELEMETRY_ASIDE="$TARGET/System/Library/UserEventPlugins-disabled"
+if [ -d "$TELEMETRY" ]; then
+    if mkdir -p "$TELEMETRY_ASIDE" && rm -rf "$TELEMETRY_ASIDE/com.apple.telemetry.plugin" &&
+        mv "$TELEMETRY" "$TELEMETRY_ASIDE/"; then
+        say "telemetry plugin set aside: $TELEMETRY_ASIDE/com.apple.telemetry.plugin"
+    else
+        say "telemetry plugin: COULD NOT set it aside; UserEventAgent will load it"
+    fi
+elif ! grep -A1 ProductVersion "$TARGET/System/Library/CoreServices/SystemVersion.plist" 2>/dev/null | grep -q '<string>10\.6'; then
+    # Already absent (a medium without it, a re-run): verify.sh wants this
+    # line on 10.9. Snow Leopard's verify.sh does not, so a volume that says
+    # it is 10.6 logs nothing.
+    say "telemetry plugin set aside: not present at install"
+fi
+
+# THE SYSTEMSTATS JOBS (docs/decisions/0022)
+#
+# The telemetry plugin is systemstatsd's only source. systemstatsd answers a
+# request for statistics (systemstats --daily's spindump, at 00:15 every
+# day) by posting com.apple.telemetry.immediate and holding an XPC
+# transaction open until the plugin's next event delivers data. With the
+# plugin set aside that event never comes: systemstatsd stays dirty for the
+# rest of the boot, ignores SIGTERM as a transaction-tracked job does, and
+# every later shutdown waits out its 20 s exit timeout and leaves a
+# .shutdownStall report (MEASURED 2026-10-15, with dtrace and its
+# transaction count). The daily job's report, empty without the plugin,
+# is a DiagnosticReports file the boot gate fails on, and
+# systemstats --xpc waits forever for the plugin's sample of processes
+# (REASONED, from its code). So where the plugin is set aside, its three
+# consumers are set aside with it; where it is still in place, they stay.
+# Moved, not deleted, as the plugin is: to restore them, move them back to
+# LaunchDaemons with the plugin, and restart. Security Update 2016-004
+# carries systemstatsd and systemstats but not their plists (MEASURED, its
+# Bom: no LaunchDaemons entry at all), so the update does not undo this. 10.6 has none of
+# them, and says nothing.
+DAEMONS="$TARGET/System/Library/LaunchDaemons"
+DAEMONS_ASIDE="$TARGET/System/Library/LaunchDaemons-disabled"
+SYSTEMSTATS_PRESENT=
+for job in com.apple.systemstatsd com.apple.systemstats.daily com.apple.systemstats.analysis; do
+    [ -f "$DAEMONS/$job.plist" ] && SYSTEMSTATS_PRESENT="$SYSTEMSTATS_PRESENT $job"
+done
+if [ -z "$SYSTEMSTATS_PRESENT" ]; then
+    # Logs which, as the plugin's block does: none here (a re-run, a medium
+    # without them) must not read like a postinstall that died before this
+    # block. A volume that says it is 10.6 logs nothing.
+    if ! grep -A1 ProductVersion "$TARGET/System/Library/CoreServices/SystemVersion.plist" 2>/dev/null | grep -q '<string>10\.6'; then
+        say "systemstats jobs set aside: none in LaunchDaemons at install"
+    fi
+elif [ -d "$TELEMETRY" ]; then
+    say "systemstats jobs left in place: the telemetry plugin is still in UserEventPlugins"
+else
+    moved=''
+    failed=''
+    for job in $SYSTEMSTATS_PRESENT; do
+        if mkdir -p "$DAEMONS_ASIDE" && mv -f "$DAEMONS/$job.plist" "$DAEMONS_ASIDE/"; then
+            moved="$moved $job"
+        else
+            failed="$failed $job"
+        fi
+    done
+    [ -z "$moved" ] || say "systemstats jobs set aside, with the telemetry plugin:$moved"
+    [ -z "$failed" ] || say "systemstats jobs: COULD NOT set aside:$failed; launchd will load them"
+fi
+
 # The race described above. Do this last, so a failure earlier leaves Setup
 # Assistant in place and the image visibly unfinished rather than an image
 # that boots to a login window with no account on it.
@@ -170,7 +290,7 @@ mkdir -p "$TARGET/private/var/db"
 touch "$TARGET/private/var/db/.AppleSetupDone"
 touch "$TARGET/private/var/db/.AppleDiagnosticsSetupDone"
 
-say "installed: $(ls "$CONF_DIR" 2>&1 | tr '\n' ' ')"
+say "installed: $(names_in "$CONF_DIR")"
 say "LaunchDaemon: $(ls -l "$DAEMON" 2>&1)"
 say "firstboot.sh: $(wc -c < "$CONF_DIR/firstboot.sh" 2>&1) bytes"
 say "authorized_keys: $(wc -l < "$CONF_DIR/authorized_keys" 2>&1) line(s)"

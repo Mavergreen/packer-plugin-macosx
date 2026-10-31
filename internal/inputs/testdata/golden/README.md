@@ -21,7 +21,7 @@ as the change, with the reason in its message:
 - a pin, a guest asset, an autoinstall hook or a firmware patch changes
   the rows of the listings that hash it (`listing-payload.txt` carries
   the digests of `assets/guest/firstboot.sh`, `postinstall` and
-  `com.mqg.firstboot.plist`; `listing-media.txt` those of the autoinstall
+  `guest-macosx.firstboot.plist`; `listing-media.txt` those of the autoinstall
   hooks and of the privops microVM's scripts, `assets/privops/*.sh`;
   `listing-opencore.txt` and `listing-ovmf.txt` those of the firmware
   patches; `listing-efi.txt` that of
