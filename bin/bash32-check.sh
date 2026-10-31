@@ -57,9 +57,9 @@
 # can tell which arrays those are, so that one is on the reader.
 set -euo pipefail
 
-MQG_REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+GUEST_MACOSX_REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 # shellcheck source=../lib/common.sh
-. "$MQG_REPO_ROOT/lib/common.sh"
+. "$GUEST_MACOSX_REPO_ROOT/lib/common.sh"
 
 # "<extended regex>|<what to write instead>". Each pattern is matched
 # against one line at a time with `[[ =~ ]]`, which is bash 3.0 and so
@@ -91,24 +91,41 @@ BASH4_PATTERNS=(
     '(^|[[:space:]])printf[^#]*%\([^)]*\)T|bash 4.2 printf %(fmt)T: use `date`'  # bash32-allow
 )
 
-# Which files to check: every shell file in the tree, found by walking it
-# rather than by a hardcoded list, so a new script directory is covered the
-# day it appears. .git is the one directory skipped, as it is in the
-# lint pass bin/run-tests.sh makes.
+# Which files to check: exactly the shell the lint pass in bin/run-tests.sh
+# reads, through the same bin/list-shell-files.sh, widened to .bats and
+# .bash (both passes also get the extensionless scripts it finds by their
+# shebang, such as assets/guest/postinstall). In a git checkout that is git's tracked files and its untracked,
+# not-ignored ones, so a script not yet `git add`ed is checked and
+# gitignored scratch (.superpowers/, agents' scripts) is not; outside one
+# (a release tarball) it is a walk of the whole tree, so a new script
+# directory is covered the day it appears either way.
 #
 # `while read` into an array, not `mapfile`: this script has to obey its
 # own rule, and a lint that could not lint itself would be the wrong kind
 # of joke.
 #
-# MQG_BASH32_ROOT points the walk somewhere else. That exists so the tests
-# can run this check over a directory holding a deliberate violation: a
-# gate nobody has ever seen fire is a gate nobody knows works.
-SCAN_ROOT=${MQG_BASH32_ROOT:-$MQG_REPO_ROOT}
+# GUEST_MACOSX_BASH32_ROOT points the listing somewhere else. That exists so the
+# tests can run this check over a directory holding a deliberate
+# violation: a gate nobody has ever seen fire is a gate nobody knows works.
+SCAN_ROOT=${GUEST_MACOSX_BASH32_ROOT:-$GUEST_MACOSX_REPO_ROOT}
 
+# A tracked file deleted from the working tree is still in git's listing;
+# there is nothing of it to read, so it is not a file to check.
+#
+# The listing is taken whole first, so that its own refusal -- a script in
+# a shell shellcheck cannot lint -- fails this check rather than vanishing
+# in a process substitution.
+listing=$("$GUEST_MACOSX_REPO_ROOT/bin/list-shell-files.sh" "$SCAN_ROOT" \
+    '*.sh' '*.bats' '*.bash') \
+    || die "bin/list-shell-files.sh refused a script (above)"
 shell_files() {
-    find "$SCAN_ROOT" \
-        -path "$SCAN_ROOT/.git" -prune \
-        -o \( -name '*.sh' -o -name '*.bats' -o -name '*.bash' \) -print
+    local rel
+    while IFS= read -r rel; do
+        [ -n "$rel" ] || continue
+        rel=${rel#./}
+        [ -f "$SCAN_ROOT/$rel" ] || continue
+        printf '%s\n' "$SCAN_ROOT/$rel"
+    done <<< "$listing"
 }
 
 # Every pattern joined into one alternation. Testing a line against the
@@ -126,8 +143,9 @@ for entry in "${BASH4_PATTERNS[@]}"; do
     fi
 done
 
-# check_file <path> -- print one report line per violation. Returns 0
-# whether or not it found any; the caller counts the lines.
+# check_file <path> [<name>] -- print one report line per violation, naming
+# the file <name> (default: its path below SCAN_ROOT). Returns 0 whether or
+# not it found any; the caller counts the lines.
 #
 # No pipe into `grep -q` anywhere in here, deliberately, and no grep at
 # all. `grep -q` exits the moment it matches, SIGPIPEs whoever is still
@@ -138,7 +156,8 @@ done
 # Matching in-process with `[[ =~ ]]` has no pipe, no signal, and no
 # exit-status subtlety to get wrong.
 check_file() {
-    local path=$1 line lineno=0 entry regex advice trimmed
+    local path=$1 name=${2:-} line lineno=0 entry regex advice trimmed
+    [ -n "$name" ] || name=${path#"$SCAN_ROOT/"}
     while IFS= read -r line || [ -n "$line" ]; do
         lineno=$(( lineno + 1 ))
         # Skip comment lines: prose explaining why a file no longer uses
@@ -153,8 +172,7 @@ check_file() {
             regex=${entry%|*}
             advice=${entry##*|}
             if [[ $line =~ $regex ]]; then
-                printf 'BASH4  %s:%s: %s\n' \
-                    "${path#"$SCAN_ROOT/"}" "$lineno" "$advice"
+                printf 'BASH4  %s:%s: %s\n' "$name" "$lineno" "$advice"
             fi
         done
     done < "$path"
@@ -171,6 +189,20 @@ if [ "${#files[@]}" -eq 0 ]; then
     die "no shell files found under $SCAN_ROOT -- nothing was checked"
 fi
 
+# The shell scripts embedded in them as heredocs (bin/heredoc-scripts.sh):
+# the guest's shutdown helper and sshd-keygen wrapper, the suites' stubs.
+# Each is checked as the script it is, its findings named by the host file,
+# the delimiter and the host's own line. A shell heredoc the extractor
+# refuses -- an unquoted delimiter, whose text is not what runs, or no
+# terminator -- fails this check too, so the rule holds without shellcheck.
+heredoc_dir=$(mktemp -d "${TMPDIR:-/tmp}/bash32-heredocs.XXXXXX") \
+    || die "cannot make a directory for the embedded scripts"
+trap 'rm -rf "$heredoc_dir"' EXIT
+if ! manifest=$("$GUEST_MACOSX_REPO_ROOT/bin/heredoc-scripts.sh" "$SCAN_ROOT" "$heredoc_dir"); then
+    die "bin/heredoc-scripts.sh refused a heredoc (above)"
+fi
+embedded=0
+
 # Accumulated rather than printed as they are found, so the summary line
 # and the exit status are decided in one place. `$( )` strips trailing
 # newlines, hence the explicit separator.
@@ -181,11 +213,19 @@ for f in "${files[@]}"; do
     findings="$findings$one
 "
 done
+while IFS="$(printf '\t')" read -r host _line delim _shell f; do
+    [ -n "$host" ] || continue
+    embedded=$(( embedded + 1 ))
+    one=$(check_file "$f" "$host (heredoc $delim)")
+    [ -n "$one" ] || continue
+    findings="$findings$one
+"
+done <<< "$manifest"
 
 if [ -n "$findings" ]; then
     printf '%s' "$findings"
     die "the lines above use bash features newer than 3.2 (see the comment at the top of ${BASH_SOURCE[0]##*/})"
 fi
 
-log "${#files[@]} shell files use nothing newer than bash 3.2"
+log "${#files[@]} shell files use nothing newer than bash 3.2, and nor do the $embedded shell scripts embedded in them"
 exit 0

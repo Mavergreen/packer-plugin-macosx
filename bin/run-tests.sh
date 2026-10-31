@@ -10,11 +10,24 @@ cd "$repo_root"
 
 status=0
 
+# No test may hang: a loop that lost its bound must show up as a red test,
+# by name, not as a run that never ends. bats fails any test that runs
+# longer than BATS_TEST_TIMEOUT seconds, but kills only that test's direct
+# children, and a grandchild that loops on (one under `run`) holds the run
+# open anyway; so bin/bats-watchdog.sh, 10 s sooner, ends such a test and
+# everything it started, and names it. The slowest test took 20 s on the
+# primary host (`bats --timing tests/`, 2026-10-19); six times that leaves
+# room for slower runners and parallel jobs. A caller's own value wins,
+# even an empty one, which is bats' "no timeout" (and the watchdog's "no
+# limit"). CI's test step does the same (tests/test_timeout.bats holds them
+# equal).
+export BATS_TEST_TIMEOUT="${BATS_TEST_TIMEOUT-120}"
+
 echo "== bats =="
-# MQG_SKIP_BATS=1: CI runs the suite through shipyard's run-repo-tests.sh and
+# GUEST_MACOSX_SKIP_BATS=1: CI runs the suite through shipyard's run-repo-tests.sh and
 # wants only the lint half from here.
-if [ "${MQG_SKIP_BATS:-0}" = 1 ]; then
-    echo "skipped (MQG_SKIP_BATS=1)"
+if [ "${GUEST_MACOSX_SKIP_BATS:-0}" = 1 ]; then
+    echo "skipped (GUEST_MACOSX_SKIP_BATS=1)"
 elif ! command -v bats >/dev/null 2>&1; then
     echo "bats not found. Install bats-core (e.g. 'sudo apt install bats'," \
         "or see https://github.com/bats-core/bats-core) and re-run." >&2
@@ -30,7 +43,9 @@ else
     # and reads as a pass unless the skips are reported. The count should
     # stay at zero; this is here so that an opt-in test cannot hide.
     batslog=$(mktemp "${TMPDIR:-/tmp}/run-tests.XXXXXX")
-    if ! bats tests/ | tee "$batslog"; then
+    # Under the watchdog, which fails the run if it cannot watch it, or
+    # ended anything (a test reported ok can have left a job running).
+    if ! "$repo_root/bin/bats-watchdog.sh" --run bats tests/ | tee "$batslog"; then
         status=1
     fi
     skipped=$(grep -c '# skip' "$batslog" || true)
@@ -45,23 +60,39 @@ fi
 echo
 echo "== shellcheck =="
 if command -v shellcheck >/dev/null 2>&1; then
-    # Collect scripts by walking the tree rather than a hardcoded glob list,
-    # so new script directories are picked up automatically and the check
-    # still runs on files that exist but aren't `git add`ed yet.
+    # Collect scripts rather than from a hardcoded glob list, so new script
+    # directories are picked up automatically and the check still runs on
+    # files that exist but aren't `git add`ed yet; gitignored scratch is
+    # skipped, and outside a git checkout the tree is walked; an
+    # extensionless script is found by its shebang (bin/list-shell-files.sh).
     # `while read` rather than `mapfile`, which is bash 4 -- see
     # bin/bash32-check.sh.
     sh_files=()
+    if ! sh_list=$("$repo_root/bin/list-shell-files.sh" "$repo_root"); then
+        status=1 # it said why
+    fi
     while IFS= read -r sh_file; do
         [ -n "$sh_file" ] || continue
         sh_files+=("$sh_file")
-    done < <(
-        find . -path ./.git -prune -o -name '*.sh' -print
-    )
+    done <<< "$sh_list"
     # SC1091: shellcheck cannot follow dynamically-computed source paths.
-    if [ "${#sh_files[@]}" -gt 0 ]; then
+    if [ "${#sh_files[@]}" -eq 0 ]; then
+        echo "no shell files found"
+        status=1
+    else
         if ! shellcheck -e SC1091 "${sh_files[@]}"; then
             status=1
         fi
+    fi
+    # The shell scripts embedded in those files as heredocs (the guest's
+    # shutdown helper and sshd-keygen wrapper, the suites' stubs), each
+    # linted as the script it is, its findings at the host's own lines.
+    if ! "$repo_root/bin/shellcheck-heredocs.sh" "$repo_root"; then
+        status=1
+    fi
+    # And the workflows' run: steps, each with the shell GitHub runs it with.
+    if ! "$repo_root/bin/shellcheck-workflows.sh" "$repo_root"; then
+        status=1
     fi
 else
     echo "shellcheck not installed; skipping."
@@ -79,6 +110,15 @@ echo "== bash32-check =="
 # gets broken on the host that lacks it. It fails the suite rather than
 # warning -- a warning in a green run is a warning nobody reads.
 if ! "$repo_root/bin/bash32-check.sh"; then
+    status=1
+fi
+
+echo
+echo "== bats-bang-check =="
+# No test may have a `! cmd` line before its last: bats runs a test under
+# `set -e`, which ignores a negated pipeline, so such a line checks
+# nothing. Mandatory, like bash32-check, and for the same reasons.
+if ! "$repo_root/bin/bats-bang-check.sh"; then
     status=1
 fi
 

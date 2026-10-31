@@ -82,7 +82,10 @@ sha_of_body() { sha256sum "$STUB_BODY" | cut -d' ' -f1; }
 }
 
 @test "an HTTP error (curl -f exits 22) writes nothing and fails" {
-    printf '#!/bin/sh\nexit 22\n' > "$STUBS/curl"
+    cat > "$STUBS/curl" <<'STUB'
+#!/bin/sh
+exit 22
+STUB
     run "$SCRIPT" "$BATS_TEST_TMPDIR/out.json"
     [ "$status" -ne 0 ]
     [ ! -e "$BATS_TEST_TMPDIR/out.json" ]

@@ -1,0 +1,9 @@
+# Crash reports the gate tolerates in the guest, one row per kind of report:
+#
+#   process<TAB>kind<TAB>reason
+#
+# process is the report's file-name prefix before the timestamp (configd for
+# configd_2026-10-12-101500_host.crash), matched exactly; kind is its extension
+# (crash, hang, spin, diag), matched exactly. A row needs a reason someone can
+# check. A kernel panic (kind panic) can never be allowlisted: health refuses
+# the whole file. Starts with no rows.

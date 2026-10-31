@@ -31,18 +31,18 @@
 # gets deleted.
 set -euo pipefail
 
-MQG_REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-export MQG_REPO_ROOT
+GUEST_MACOSX_REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+export GUEST_MACOSX_REPO_ROOT
 # shellcheck source=../lib/common.sh
-. "$MQG_REPO_ROOT/lib/common.sh"
+. "$GUEST_MACOSX_REPO_ROOT/lib/common.sh"
 # shellcheck source=../lib/vendor.sh
-. "$MQG_REPO_ROOT/lib/vendor.sh"
+. "$GUEST_MACOSX_REPO_ROOT/lib/vendor.sh"
 
 # shellcheck disable=SC2034  # read by log()/warn()/die() at call time
-MQG_LOG_PREFIX=verify-changed-sources
+GUEST_MACOSX_LOG_PREFIX=verify-changed-sources
 
-TSV=$MQG_REPO_ROOT/assets/pins/sources.tsv
-cd "$MQG_REPO_ROOT"
+TSV=$GUEST_MACOSX_REPO_ROOT/assets/pins/sources.tsv
+cd "$GUEST_MACOSX_REPO_ROOT"
 
 base=${1:-}
 if [ -z "$base" ]; then

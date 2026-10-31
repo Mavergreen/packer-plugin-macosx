@@ -26,7 +26,7 @@ _line() { printf '%s\n' "$2" >> "$SCAN/$1"; }
 
 # Run the check over $SCAN rather than over the repository.
 _check() {
-    run env MQG_BASH32_ROOT="$SCAN" "$REPO/bin/bash32-check.sh"
+    run env GUEST_MACOSX_BASH32_ROOT="$SCAN" "$REPO/bin/bash32-check.sh"
 }
 
 @test "bash32-check passes on this repository" {
@@ -145,6 +145,71 @@ _check() {
     [ "$status" -ne 0 ]
     [[ "$output" == *"one.sh"* ]] || false
     [[ "$output" == *"two.sh"* ]] || false
+}
+
+@test "bash32-check skips a gitignored file in a git checkout" {
+    # The check scans what the lint pass scans (bin/list-shell-files.sh):
+    # gitignored scratch -- agents' scripts, a findings directory -- is not
+    # the project's code, and walking it made the check read hundreds of
+    # files a clean clone does not have.
+    git -C "$SCAN" init -q
+    printf 'scratch/\n' > "$SCAN/.gitignore"
+    mkdir -p "$SCAN/scratch"
+    _line ok.sh '#!/usr/bin/env bash'
+    _line scratch/ignored.sh '#!/usr/bin/env bash'
+    _line scratch/ignored.sh 'mapfile -t x < f'                 # bash32-allow
+    _check
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"ignored.sh"* ]] || false
+}
+
+@test "bash32-check reports an untracked, not-ignored file in a git checkout" {
+    # A script not yet `git add`ed is still the project's code.
+    git -C "$SCAN" init -q
+    printf 'scratch/\n' > "$SCAN/.gitignore"
+    _line tracked.sh '#!/usr/bin/env bash'
+    git -C "$SCAN" add tracked.sh
+    _line unadded.bash '#!/usr/bin/env bash'
+    _line unadded.bash 'declare -A m=()'                        # bash32-allow
+    _check
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"unadded.bash:2"* ]] || false
+}
+
+@test "bash32-check works with its scan root inside another repository, which ignores it" {
+    # As when TMPDIR is inside a work tree (a dotfiles $HOME, a
+    # repository's gitignored scratch): the enclosing repository's rules
+    # must not empty the listing, or every check above "checked nothing".
+    E="$BATS_TEST_TMPDIR/enclosing"
+    mkdir -p "$E/ignored/scan"
+    git -C "$E" init -q
+    printf 'ignored/\n' > "$E/.gitignore"
+    sb='#!/usr/bin/env bash' # the matcher's data, not a stub (bin/heredoc-scripts.sh)
+    printf '%s\n' "$sb" > "$E/ignored/scan/ok.sh"
+    run env GUEST_MACOSX_BASH32_ROOT="$E/ignored/scan" "$REPO/bin/bash32-check.sh"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"1 shell files use nothing newer"* ]] || false
+    _line bad.sh '#!/usr/bin/env bash'
+    _line bad.sh 'declare -A m=()'                             # bash32-allow
+    cp "$SCAN/bad.sh" "$E/ignored/scan/"
+    run env GUEST_MACOSX_BASH32_ROOT="$E/ignored/scan" "$REPO/bin/bash32-check.sh"
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"bad.sh:2"* ]] || false
+}
+
+@test "this file's fixture checks pass with TMPDIR inside a work tree that ignores it" {
+    # The scenario itself: run two of the checks above, through bats, with
+    # their BATS_TEST_TMPDIR (and so $SCAN) inside a repository's
+    # gitignored scratch.
+    E="$BATS_TEST_TMPDIR/enclosing"
+    mkdir -p "$E/ignored"
+    git -C "$E" init -q
+    printf 'ignored/\n' > "$E/.gitignore"
+    run env TMPDIR="$E/ignored" bats -f 'fails on mapfile$|reports every violating file' "$BATS_TEST_FILENAME"  # bash32-allow
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"ok 1 "* ]] || false
+    [[ "$output" == *"ok 2 "* ]] || false
+    [[ "$output" != *"not ok"* ]] || false
 }
 
 @test "bash32-check fails rather than passing when it checked nothing" {

@@ -53,7 +53,7 @@
 #
 #   - a name that is a disk image, a VM disk or box, an installer package
 #     or a kext (*.box, *.qcow2, *.img, *.dmg, *.iso, *.vmdk, *.pkg, ...);
-#   - anything larger than MQG_MAX_TRACKED_BYTES (the same limit as the
+#   - anything larger than GUEST_MACOSX_MAX_TRACKED_BYTES (the same limit as the
 #     tree's, 2 MiB by default);
 #   - the magic numbers section 2 below knows.
 #
@@ -69,14 +69,14 @@
 # edition has no after-hook to run it from.
 set -euo pipefail
 
-MQG_REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+GUEST_MACOSX_REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 # shellcheck source=../lib/common.sh
-. "$MQG_REPO_ROOT/lib/common.sh"
+. "$GUEST_MACOSX_REPO_ROOT/lib/common.sh"
 
 # shellcheck disable=SC2034  # read by log()/warn()/die() at call time
-MQG_LOG_PREFIX=no-apple-bytes
+GUEST_MACOSX_LOG_PREFIX=no-apple-bytes
 
-MAX_TRACKED_BYTES=${MQG_MAX_TRACKED_BYTES:-2097152}
+MAX_TRACKED_BYTES=${GUEST_MACOSX_MAX_TRACKED_BYTES:-2097152}
 
 # --- archive mode -----------------------------------------------------------
 
@@ -115,7 +115,7 @@ arch_check_size() {  # $1 = what, $2 = its base name, $3 = its size in bytes
     arch_is_plugin_binary "$2" && return 0
     if [ "$3" -gt "$MAX_TRACKED_BYTES" ]; then
         arch_flag "$1" "$3 bytes -- nothing but the plugin binary is that large" \
-            "in a release; if it is genuinely ours, raise MQG_MAX_TRACKED_BYTES with a reason"
+            "in a release; if it is genuinely ours, raise GUEST_MACOSX_MAX_TRACKED_BYTES with a reason"
     fi
 }
 
@@ -218,7 +218,7 @@ if [ "${1:-}" = "--archives" ]; then
     check_archives "$2"
 fi
 
-cd "$MQG_REPO_ROOT"
+cd "$GUEST_MACOSX_REPO_ROOT"
 
 git rev-parse --git-dir >/dev/null 2>&1 \
     || die "not a git repository -- a release is what git would archive," \
@@ -229,9 +229,9 @@ git rev-parse --git-dir >/dev/null 2>&1 \
 # otherwise move mid-run and every check would not be looking at the same
 # tree throughout.
 ref_arg=${1:-}
-MQG_NAB_REF=""
+GUEST_MACOSX_NAB_REF=""
 if [ -n "$ref_arg" ]; then
-    MQG_NAB_REF=$(git rev-parse --verify --quiet "${ref_arg}^{commit}") \
+    GUEST_MACOSX_NAB_REF=$(git rev-parse --verify --quiet "${ref_arg}^{commit}") \
         || die "no such ref: $ref_arg -- cannot verify a release that" \
                "does not resolve, which is a failure, never a pass"
 fi
@@ -247,24 +247,24 @@ fi
 # given, everything after the second colon is the path. Ref mode's
 # "<sha>:<path>" never had that ambiguity and is unchanged.
 blob_show() {  # $1 = path -- the committed content, never the working tree
-    if [ -n "$MQG_NAB_REF" ]; then
-        git show "$MQG_NAB_REF:$1" 2>/dev/null
+    if [ -n "$GUEST_MACOSX_NAB_REF" ]; then
+        git show "$GUEST_MACOSX_NAB_REF:$1" 2>/dev/null
     else
         git show ":0:$1" 2>/dev/null
     fi
 }
 
 blob_size() {  # $1 = path
-    if [ -n "$MQG_NAB_REF" ]; then
-        git cat-file -s "$MQG_NAB_REF:$1" 2>/dev/null
+    if [ -n "$GUEST_MACOSX_NAB_REF" ]; then
+        git cat-file -s "$GUEST_MACOSX_NAB_REF:$1" 2>/dev/null
     else
         git cat-file -s ":0:$1" 2>/dev/null
     fi
 }
 
 blob_exists() {  # $1 = path -- true only if the blob can actually be read
-    if [ -n "$MQG_NAB_REF" ]; then
-        git cat-file -e "$MQG_NAB_REF:$1" 2>/dev/null
+    if [ -n "$GUEST_MACOSX_NAB_REF" ]; then
+        git cat-file -e "$GUEST_MACOSX_NAB_REF:$1" 2>/dev/null
     else
         git cat-file -e ":0:$1" 2>/dev/null
     fi
@@ -288,15 +288,15 @@ blob_exists() {  # $1 = path -- true only if the blob can actually be read
 #      iterate zero times, and the script would exit 0 having "checked" an
 #      empty list -- cannot-verify reading as clean, same failure mode as
 #      the unresolved-ref case above, one layer down.
-MQG_NAB_TMPDIR=$(mktemp -d "${TMPDIR:-/tmp}/no-apple-bytes.XXXXXX") || die "cannot create a scratch directory"
-trap 'rm -rf "$MQG_NAB_TMPDIR"' EXIT
-MQG_NAB_LIST=$MQG_NAB_TMPDIR/tracked
-if [ -n "$MQG_NAB_REF" ]; then
-    git ls-tree -r -z --name-only "$MQG_NAB_REF" > "$MQG_NAB_LIST" \
-        || die "git ls-tree failed for $MQG_NAB_REF -- cannot verify," \
+GUEST_MACOSX_NAB_TMPDIR=$(mktemp -d "${TMPDIR:-/tmp}/no-apple-bytes.XXXXXX") || die "cannot create a scratch directory"
+trap 'rm -rf "$GUEST_MACOSX_NAB_TMPDIR"' EXIT
+GUEST_MACOSX_NAB_LIST=$GUEST_MACOSX_NAB_TMPDIR/tracked
+if [ -n "$GUEST_MACOSX_NAB_REF" ]; then
+    git ls-tree -r -z --name-only "$GUEST_MACOSX_NAB_REF" > "$GUEST_MACOSX_NAB_LIST" \
+        || die "git ls-tree failed for $GUEST_MACOSX_NAB_REF -- cannot verify," \
                "which is a failure, never a pass"
 else
-    git ls-files -z > "$MQG_NAB_LIST" \
+    git ls-files -z > "$GUEST_MACOSX_NAB_LIST" \
         || die "git ls-files failed -- cannot verify, which is a failure," \
                "never a pass"
 fi
@@ -306,7 +306,7 @@ fi
 # Apple-derived bytes in the tracked tree (0 files)" and exit 0 -- a pass
 # on a check that looked at nothing. Applied in both modes: a ref whose
 # tree is empty is not a release anyone can have meant either.
-nfiles=$(tr -cd '\0' < "$MQG_NAB_LIST" | wc -c | tr -d ' ')
+nfiles=$(tr -cd '\0' < "$GUEST_MACOSX_NAB_LIST" | wc -c | tr -d ' ')
 [ "$nfiles" -gt 0 ] \
     || die "no tracked files to check -- cannot verify, which is a failure," \
            "never a pass"
@@ -330,7 +330,7 @@ while IFS= read -r -d '' f; do
     [ -n "$f" ] || continue
     blob_exists "$f" \
         || flag "$f" "cannot be read -- cannot verify is a failure, never a pass"
-done < "$MQG_NAB_LIST"
+done < "$GUEST_MACOSX_NAB_LIST"
 
 # 1. Shapes. A disk image, an installer package or a kext bundle in the
 #    tracked tree is, in this project, almost certainly Apple's -- and the
@@ -352,7 +352,7 @@ while IFS= read -r -d '' f; do
         *InstallESD*|*BaseSystem*|*OSInstall.mpkg*)
             flag "$f" "named after part of Apple's installer" ;;
     esac
-done < "$MQG_NAB_LIST"
+done < "$GUEST_MACOSX_NAB_LIST"
 
 # 2. Bytes. A renamed blob defeats the list above, so look at the first
 #    few bytes of every tracked file that is not plainly text. These are
@@ -390,7 +390,7 @@ while IFS= read -r -d '' f; do
         cafebabe|cffaedfe|cefaedfe)  # Mach-O, fat or thin
             flag "$f" "is a Mach-O binary -- this repository ships source, not binaries" ;;
     esac
-done < "$MQG_NAB_LIST"
+done < "$GUEST_MACOSX_NAB_LIST"
 
 # 3. Size. Nothing legitimate here is large, and every Apple artifact is.
 #    A 6 GB blob under another name and with a scrubbed header is still a
@@ -401,9 +401,9 @@ while IFS= read -r -d '' f; do
     size=$(blob_size "$f") || continue
     if [ "$size" -gt "$MAX_TRACKED_BYTES" ]; then
         flag "$f" "$size bytes -- nothing this project authors is that large;" \
-             "if it is genuinely ours, raise MQG_MAX_TRACKED_BYTES with a reason"
+             "if it is genuinely ours, raise GUEST_MACOSX_MAX_TRACKED_BYTES with a reason"
     fi
-done < "$MQG_NAB_LIST"
+done < "$GUEST_MACOSX_NAB_LIST"
 
 # 4. The registry's own statement. assets/pins/sources.tsv names Apple's
 #    InstallESD as a URL fetched at runtime. If it ever named a path

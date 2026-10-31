@@ -121,6 +121,55 @@ ver() { ( cd "$DIR" && sh build/version.sh "$1" ); }
     [ "$status" -ne 0 ]
     [[ "$output" == *"auto"* ]] || false
     [[ "$output" == *"local"* ]] || false
+    [[ "$output" == *"dev"* ]] || false
+}
+
+@test "dev is no release's version, past or future: the same whatever this line has tagged" {
+    # Packer matches a -dev plugin by its version without the -dev, and
+    # runs the release over a -dev of the same version. So a dev build at
+    # a release's N runs that release instead; at the next N, the next
+    # release (docs/decisions/0012). 999999 is an N no release takes.
+    run ver dev
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"FULL=20260922.999999"* ]] || false
+    [[ "$output" == *"TAG=v0.20260922.999999-dev"* ]] || false
+    [[ "$output" == *"RELEASE=no"* ]] || false
+    tag v0.20260922.1
+    tag v0.20260922.2
+    tag v0.20260922.10
+    run ver dev
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"FULL=20260922.999999"* ]] || false
+    [[ "$output" == *"RELEASE=no"* ]] || false
+}
+
+@test "dev writes no VERSION: a dev build is not a release" {
+    run ver dev
+    [ "$status" -eq 0 ]
+    [ ! -e "$DIR/VERSION" ]
+}
+
+@test "dev still refuses a malformed UPSTREAM_VERSION" {
+    printf '1.2.3\n' > "$DIR/UPSTREAM_VERSION"
+    run ver dev
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"YYYYMMDD"* ]] || false
+}
+
+@test "no release is ever cut at the N dev builds take" {
+    tag v0.20260922.999998
+    run ver local
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"999999"* ]] || false
+    [[ "$output" == *"dev"* ]] || false
+    [ ! -e "$DIR/VERSION" ]
+}
+
+@test "a line already tagged at the dev N is refused, not reported as a release" {
+    tag v0.20260922.999999
+    run ver auto
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"999999"* ]] || false
 }
 
 @test "VERSION is a build product and is not committed" {
