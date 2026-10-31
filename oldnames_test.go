@@ -48,7 +48,7 @@ var renameNotes = map[string]int{
 	"docs/decisions/0019-every-shutdown-through-guest-macosx-shutdown.md":        1,
 	"docs/decisions/0021-guest-macosx-shutdown-waits-for-jobs-still-starting.md": 1,
 	"docs/decisions/0022-systemstats-set-aside-with-its-telemetry.md":            1,
-	"release-notes/v0.20261005.9.md":                                             1,
+	"release-notes/v0.20261031.1.md":                                             1,
 }
 
 var releaseNoteRe = regexp.MustCompile(`^release-notes/v0\.([0-9]+)\.([0-9]+)\.md$`)
@@ -61,10 +61,10 @@ func releasedBeforeTheRename(path string) bool {
 		return false
 	}
 	base, n := m[1], m[2]
-	if base != "20261005" {
-		return base < "20261005"
+	if base != "20261031" {
+		return base < "20261031"
 	}
-	return len(n) == 1 && n < "9"
+	return len(n) == 1 && n < "1"
 }
 
 // minRun is the shortest run of text oldNameFindings reads inside
