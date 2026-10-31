@@ -77,7 +77,7 @@ ci_test_step_ok() {
          skip && /- name:/ { skip = 0; print; print "        env:"; print "          BATS_TEST_TIMEOUT: \"120\""; print "        run: bin/bats-watchdog.sh --run sh \"$SHIPYARD_SCRIPTS/run-repo-tests.sh\""; next }
          skip { next } { print }' "$REPO/.github/workflows/ci.yml" > "$BATS_TEST_TMPDIR/moved.yml"
     ! grep -q 'run-repo-tests' <<< "$(ci_step "Test suite" "$BATS_TEST_TMPDIR/moved.yml")" || false
-    ! ci_test_step_ok "$BATS_TEST_TMPDIR/moved.yml"
+    ! ci_test_step_ok "$BATS_TEST_TMPDIR/moved.yml" || false
 }
 
 @test "this bats honours BATS_TEST_TIMEOUT: a test that outlives it fails, named, as a timeout" {
@@ -610,7 +610,7 @@ CALLER
 952 1 800 sleep 9"
     regroup " 100 "
     [[ "$groups" != *" 800 "* ]] || { echo "kept a replaced group: $groups"; false; }
-    [[ "$groups" == *" 100 "* ]]
+    [[ "$groups" == *" 100 "* ]] || false
 }
 
 @test "--run of a command with nothing left over costs no second last look" {
@@ -669,7 +669,7 @@ signals_on() {
     job=100 groups=" 100 900 " members=" 100:100 101:100 900:900 905:900 " last_look=95
     regroup " 100 101 "
     [[ "$groups" != *" 900 "* ]] || { echo "took a stranger's group for the run's: $groups"; false; }
-    [[ "$groups" == *" 100 "* ]]
+    [[ "$groups" == *" 100 "* ]] || false
     # So too the job's own group, kept after its leader ended for what the
     # run left in it: once a new leader has its number, it is not the run's.
     job=900 groups=" 900 " members=" 900:900 905:900 " last_look=95

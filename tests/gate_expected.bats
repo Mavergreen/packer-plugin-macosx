@@ -55,7 +55,7 @@ aquatransport 2026.11.01" ]
     mv "$dir/x" "$dir/assets/pins/sources.tsv"
     run --separate-stderr "$REPO/bin/gate-expected.sh" "$dir"
     [ "$status" -eq 1 ]
-    [[ "$stderr" == *lilu-release* ]]
+    [[ "$stderr" == *lilu-release* ]] || false
 }
 
 drop_pin() {
@@ -68,7 +68,7 @@ drop_pin() {
     drop_pin "$dir" opencorepkg-src
     run --separate-stderr "$REPO/bin/gate-expected.sh" "$dir"
     [ "$status" -eq 1 ]
-    [[ "$stderr" == *opencorepkg-src* ]]
+    [[ "$stderr" == *opencorepkg-src* ]] || false
 }
 
 @test "a missing virtualsmc-release pin is named" {
@@ -76,7 +76,7 @@ drop_pin() {
     drop_pin "$dir" virtualsmc-release
     run --separate-stderr "$REPO/bin/gate-expected.sh" "$dir"
     [ "$status" -eq 1 ]
-    [[ "$stderr" == *virtualsmc-release* ]]
+    [[ "$stderr" == *virtualsmc-release* ]] || false
 }
 
 @test "a missing aquatransport.pkr.hcl is named" {
@@ -84,7 +84,7 @@ drop_pin() {
     rm "$dir/templates/mavericks-aquatransport/aquatransport.pkr.hcl"
     run --separate-stderr "$REPO/bin/gate-expected.sh" "$dir"
     [ "$status" -eq 1 ]
-    [[ "$stderr" == *aquatransport_version* ]]
+    [[ "$stderr" == *aquatransport_version* ]] || false
 }
 
 @test "a missing aquatransport_version is named" {
@@ -92,7 +92,7 @@ drop_pin() {
     printf 'locals {\n}\n' > "$dir/templates/mavericks-aquatransport/aquatransport.pkr.hcl"
     run --separate-stderr "$REPO/bin/gate-expected.sh" "$dir"
     [ "$status" -eq 1 ]
-    [[ "$stderr" == *aquatransport_version* ]]
+    [[ "$stderr" == *aquatransport_version* ]] || false
 }
 
 @test "a URL with no parseable version is named" {
@@ -101,11 +101,11 @@ drop_pin() {
     mv "$dir/x" "$dir/assets/pins/sources.tsv"
     run --separate-stderr "$REPO/bin/gate-expected.sh" "$dir"
     [ "$status" -eq 1 ]
-    [[ "$stderr" == *"opencorepkg-src: no version"* ]]
+    [[ "$stderr" == *"opencorepkg-src: no version"* ]] || false
 }
 
 @test "more than one argument is a usage error" {
     run --separate-stderr "$REPO/bin/gate-expected.sh" a b
     [ "$status" -eq 2 ]
-    [[ "$stderr" == *usage:* ]]
+    [[ "$stderr" == *usage:* ]] || false
 }

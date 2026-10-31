@@ -303,7 +303,7 @@ verify_netbiosd() {
     [ "$status" -eq 0 ]
     verify_netbiosd
     [ "$status" -eq 0 ]
-    [[ "$output" == *'netbiosd-hup=inspected'* ]]
+    [[ "$output" == *'netbiosd-hup=inspected'* ]] || false
 }
 @test "verifier rejects a missing or changed helper despite a successful action log" {
     apply
@@ -367,5 +367,5 @@ verify_netbiosd() {
     echo 'guest-macosx-firstboot: netbiosd HUP: executable not the measured version; left as it is' > "$G/log"
     verify_netbiosd
     [ "$status" -eq 0 ]
-    [[ "$output" == *'netbiosd-hup=inert'* ]]
+    [[ "$output" == *'netbiosd-hup=inert'* ]] || false
 }

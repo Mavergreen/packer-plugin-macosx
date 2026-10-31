@@ -164,7 +164,7 @@ jobs:
       # them are digest-pinned, so there is no convention to break.
       # Renovate's default github-actions manager tracks a tag pin exactly
       # as well as a digest one.
-      - name: Set up Packer 1.16.1
+      - name: Set up Packer 1.16.2
         uses: hashicorp/setup-packer@v3.4.0
         with:
           version: "1.16.2"
@@ -194,15 +194,15 @@ jobs:
       - name: packer validate templates/snowleopard/
         run: packer validate -var installer=/your/own/disc.iso templates/snowleopard/
 
-      # base_box is a directory holding the five files its validation
-      # names, the Vagrantfile saying, as a base box's does, that
-      # mavericks.pkr.hcl rendered it; validate executes no data source
-      # and boots nothing, so empty ones will do for the rest.
+      # base_box's validation needs five files and the base's current
+      # Vagrantfile shape. Use the base template itself for this fixture:
+      # validate checks its marker/device row, not Ruby or interpolation,
+      # executes no data source and boots nothing. The disk files are empty.
       - name: packer validate templates/mavericks-aquatransport/
         run: |
           box=$(mktemp -d)
           touch "$box/box_0.img" "$box/OVMF_CODE.fd" "$box/OVMF_VARS.fd" "$box/opencore.img"
-          echo "# RENDERED FROM THE BUILD'S OWN SETTINGS. mavericks.pkr.hcl renders this" > "$box/Vagrantfile"
+          cp templates/mavericks/box.Vagrantfile.pkrtpl "$box/Vagrantfile"
           packer validate -var "base_box=$box" templates/mavericks-aquatransport/
 
       - name: go test ./templates/... (TestValidate, not skipped)

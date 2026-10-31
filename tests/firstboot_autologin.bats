@@ -400,7 +400,7 @@ STUB
     cp "$G/conf/firstboot.conf" "$G/before"
     firstboot 1 ""
     cmp "$G/before" "$G/conf/firstboot.conf"
-    ! grep -qF "account secret removed" "$G/guest-macosx-firstboot.log"
+    ! grep -qF "account secret removed" "$G/guest-macosx-firstboot.log" || false
 }
 
 # --- where the password may appear in firstboot.sh ---------------------------

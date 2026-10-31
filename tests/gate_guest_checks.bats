@@ -120,9 +120,9 @@ bounded() {
         [ "$(command -v $c)" = "$STUBS/$c" ] || { echo "$c resolves to $(command -v $c)"; false; }
         run "$c" now
         [ "$status" -ne 0 ]
-        [[ "$output" == "stub: $c refused" ]]
+        [[ "$output" == "stub: $c refused" ]] || false
     done
-    [[ "$PATH" != *sbin* ]]
+    [[ "$PATH" != *sbin* ]] || false
 }
 
 @test "versions passes on matching versions" {
@@ -142,34 +142,34 @@ ok aquatransport" ]
 @test "versions names a mismatched Lilu" {
     STUB_LILU=1.7.1 versions
     [ "$status" -eq 1 ]
-    [[ "$output" == *"FAIL lilu: the guest runs 1.7.1, the checkout pins 1.7.2"* ]]
-    [[ "$output" == *"ok virtualsmc"* ]]
+    [[ "$output" == *"FAIL lilu: the guest runs 1.7.1, the checkout pins 1.7.2"* ]] || false
+    [[ "$output" == *"ok virtualsmc"* ]] || false
 }
 
 @test "versions names a kext that is not loaded" {
     STUB_VSMC='' versions
     [ "$status" -eq 1 ]
-    [[ "$output" == *"FAIL virtualsmc: as.vit9696.VirtualSMC is not loaded"* ]]
+    [[ "$output" == *"FAIL virtualsmc: as.vit9696.VirtualSMC is not loaded"* ]] || false
 }
 
 @test "versions names a missing opencore-version" {
     STUB_NVRAM='' versions
     [ "$status" -eq 1 ]
-    [[ "$output" == *"FAIL opencore: no opencore-version in NVRAM"* ]]
+    [[ "$output" == *"FAIL opencore: no opencore-version in NVRAM"* ]] || false
 }
 
 @test "versions names an opencore mismatch" {
     STUB_NVRAM=REL-106-2026-09-01 versions
     [ "$status" -eq 1 ]
-    [[ "$output" == *"FAIL opencore: "*"REL-106"* ]]
+    [[ "$output" == *"FAIL opencore: "*"REL-106"* ]] || false
 }
 
 @test "versions names an aquatransport mismatch and a missing package" {
     STUB_AQUA=2026.10.01 versions
     [ "$status" -eq 1 ]
-    [[ "$output" == *"FAIL aquatransport: the guest runs 2026.10.01, the checkout pins 2026.10.09"* ]]
+    [[ "$output" == *"FAIL aquatransport: the guest runs 2026.10.01, the checkout pins 2026.10.09"* ]] || false
     STUB_AQUA='' versions
-    [[ "$output" == *"FAIL aquatransport: Wowfunhappy.AquaTransport is not installed"* ]]
+    [[ "$output" == *"FAIL aquatransport: Wowfunhappy.AquaTransport is not installed"* ]] || false
 }
 
 @test "versions with the wrong argument count is a usage error" {
@@ -189,15 +189,15 @@ n/a aquatransport: no pin given (10.6 has no Aqua Transport layer yet)" ]
     # the boot stack is held as tightly as on 10.9
     STUB_LILU=1.7.1 run sh "$SCRIPT" versions 1.0.7 1.7.2 1.3.7
     [ "$status" -eq 1 ]
-    [[ "$output" == *"FAIL lilu: the guest runs 1.7.1, the checkout pins 1.7.2"* ]]
+    [[ "$output" == *"FAIL lilu: the guest runs 1.7.1, the checkout pins 1.7.2"* ]] || false
 }
 
 @test "health passes on a clean guest" {
     mkdir -p "$GUEST_MACOSX_GATE_ROOT/Users/vagrant/Library/Logs/DiagnosticReports"
     run sh "$SCRIPT" health "$ALLOW" $WANT $KINDS
     [ "$status" -eq 0 ]
-    [[ "$output" == *"ok os"* ]]
-    [[ "$output" == *"ok reports"* ]]
+    [[ "$output" == *"ok os"* ]] || false
+    [[ "$output" == *"ok reports"* ]] || false
 }
 
 GIVEUP='localhost cfprefsd[24]: _CFXPreferencesGetByHostIdentifierString: unable to determine UUID for host... Giving up and returning 00000000-0000-0000-0000-000000000000.'
@@ -205,7 +205,7 @@ GIVEUP='localhost cfprefsd[24]: _CFXPreferencesGetByHostIdentifierString: unable
 @test "host-uuid passes a boot that had the hypervisor's UUID from the start, and says so" {
     run sh "$SCRIPT" host-uuid
     [ "$status" -eq 0 ]
-    [[ "$output" == *"ok host-uuid: F7B2200F-5289-5585-B893-5A6896A8FBA7, from the firmware's system-id"* ]]
+    [[ "$output" == *"ok host-uuid: F7B2200F-5289-5585-B893-5A6896A8FBA7, from the firmware's system-id"* ]] || false
 }
 
 @test "host-uuid fails a boot whose firmware named no host UUID, though nothing gave up yet" {
@@ -213,14 +213,14 @@ GIVEUP='localhost cfprefsd[24]: _CFXPreferencesGetByHostIdentifierString: unable
     # made its own from the MAC, late (docs/decisions/0024).
     STUB_SYSTEM_ID= STUB_PLATFORM_UUID=00000000-0000-1000-8000-525400123456 run sh "$SCRIPT" host-uuid
     [ "$status" -eq 1 ]
-    [[ "$output" == *"FAIL host-uuid: no system-id: the firmware named no host UUID (did QEMU get a -uuid, and is OpenCore's SystemUUID OEM?); the guest made 00000000-0000-1000-8000-525400123456 itself"* ]]
+    [[ "$output" == *"FAIL host-uuid: no system-id: the firmware named no host UUID (did QEMU get a -uuid, and is OpenCore's SystemUUID OEM?); the guest made 00000000-0000-1000-8000-525400123456 itself"* ]] || false
 }
 
 @test "host-uuid fails a boot whose daemons found no host UUID, naming the line" {
     echo "Oct 17 09:11:42 $GIVEUP" >> "$SYSLOG"
     run sh "$SCRIPT" host-uuid
     [ "$status" -eq 1 ]
-    [[ "$output" == *"FAIL host-uuid: the kernel had no host UUID when this boot's daemons asked: Oct 17 09:11:42 $GIVEUP"* ]]
+    [[ "$output" == *"FAIL host-uuid: the kernel had no host UUID when this boot's daemons asked: Oct 17 09:11:42 $GIVEUP"* ]] || false
 }
 
 @test "a line from an earlier boot does not fail this one" {
@@ -230,7 +230,7 @@ GIVEUP='localhost cfprefsd[24]: _CFXPreferencesGetByHostIdentifierString: unable
     mv "$SYSLOG.new" "$SYSLOG"
     run sh "$SCRIPT" host-uuid
     [ "$status" -eq 0 ]
-    [[ "$output" == *"ok host-uuid: "* ]]
+    [[ "$output" == *"ok host-uuid: "* ]] || false
 }
 
 @test "this boot's lines in yesterday's rotated log are read too" {
@@ -238,7 +238,7 @@ GIVEUP='localhost cfprefsd[24]: _CFXPreferencesGetByHostIdentifierString: unable
     echo 'Oct 18 00:00:00 localhost newsyslog[400]: logfile turned over' > "$SYSLOG"
     run sh "$SCRIPT" host-uuid
     [ "$status" -eq 1 ]
-    [[ "$output" == *"FAIL host-uuid: the kernel had no host UUID when this boot's daemons asked: "* ]]
+    [[ "$output" == *"FAIL host-uuid: the kernel had no host UUID when this boot's daemons asked: "* ]] || false
 }
 
 @test "a clock step since boot moves kern.boottime; within 10 s it is still this boot (as gate-vm.sh)" {
@@ -251,7 +251,7 @@ GIVEUP='localhost cfprefsd[24]: _CFXPreferencesGetByHostIdentifierString: unable
     echo "Oct 17 09:11:42 $GIVEUP" >> "$SYSLOG"
     STUB_BOOTTIME="{ sec = 1792253469, usec = 0 }" run sh "$SCRIPT" host-uuid
     [ "$status" -eq 1 ]
-    [[ "$output" == *"FAIL host-uuid: the kernel had no host UUID when this boot's daemons asked: "* ]]
+    [[ "$output" == *"FAIL host-uuid: the kernel had no host UUID when this boot's daemons asked: "* ]] || false
 }
 
 @test "of several boots within 10 s, the newest is this one" {
@@ -266,16 +266,16 @@ GIVEUP='localhost cfprefsd[24]: _CFXPreferencesGetByHostIdentifierString: unable
 @test "host-uuid fails when it cannot find this boot in system.log, or the kernel names no host UUID" {
     STUB_BOOTTIME='{ sec = 1792253479, usec = 0 }' run sh "$SCRIPT" host-uuid
     [ "$status" -eq 1 ]
-    [[ "$output" == *"FAIL host-uuid: no BOOT_TIME within 10 s of 1792253479 in /var/log/system.log or system.log.0.bz2"* ]]
+    [[ "$output" == *"FAIL host-uuid: no BOOT_TIME within 10 s of 1792253479 in /var/log/system.log or system.log.0.bz2"* ]] || false
     STUB_BOOTTIME='{ sec = 1792240000, usec = 0 } Sat Oct 17 05:26:40 2026' run sh "$SCRIPT" host-uuid
     [ "$status" -eq 1 ]
-    [[ "$output" == *"FAIL host-uuid: no BOOT_TIME within 10 s of 1792240000 in /var/log/system.log or system.log.0.bz2"* ]]
+    [[ "$output" == *"FAIL host-uuid: no BOOT_TIME within 10 s of 1792240000 in /var/log/system.log or system.log.0.bz2"* ]] || false
     STUB_BOOTTIME=garbage run sh "$SCRIPT" host-uuid
     [ "$status" -eq 1 ]
-    [[ "$output" == *"FAIL host-uuid: cannot parse kern.boottime"* ]]
+    [[ "$output" == *"FAIL host-uuid: cannot parse kern.boottime"* ]] || false
     STUB_PLATFORM_UUID= run sh "$SCRIPT" host-uuid
     [ "$status" -eq 1 ]
-    [[ "$output" == *"FAIL host-uuid: IOPlatformExpertDevice has no IOPlatformUUID"* ]]
+    [[ "$output" == *"FAIL host-uuid: IOPlatformExpertDevice has no IOPlatformUUID"* ]] || false
 }
 
 @test "host-uuid waits until the boot is 45 s old, so a boot still waiting cannot pass" {
@@ -292,7 +292,7 @@ GIVEUP='localhost cfprefsd[24]: _CFXPreferencesGetByHostIdentifierString: unable
     now=$(date +%s)
     STUB_BOOTTIME="{ sec = $((now + 3600)), usec = 0 }" GUEST_MACOSX_GATE_SETTLE=2 run bounded 10 sh "$SCRIPT" host-uuid
     [ $(($(date +%s) - now)) -le 4 ]
-    [[ "$output" == *"FAIL host-uuid: no BOOT_TIME within 10 s of $((now + 3600))"* ]]
+    [[ "$output" == *"FAIL host-uuid: no BOOT_TIME within 10 s of $((now + 3600))"* ]] || false
 }
 
 @test "host-uuid takes no arguments" {
@@ -305,37 +305,37 @@ GIVEUP='localhost cfprefsd[24]: _CFXPreferencesGetByHostIdentifierString: unable
     : > "$GUEST_MACOSX_GATE_ROOT/Users/vagrant/Library/Logs/DiagnosticReports/configd_2026-10-12-101500_host.crash"
     run sh "$SCRIPT" health "$ALLOW" $WANT $KINDS
     [ "$status" -eq 1 ]
-    [[ "$output" == *"FAIL reports: configd_2026-10-12-101500_host.crash"* ]]
+    [[ "$output" == *"FAIL reports: configd_2026-10-12-101500_host.crash"* ]] || false
 
     printf 'configd\tcrash\treason\n' >> "$ALLOW"
     run sh "$SCRIPT" health "$ALLOW" $WANT $KINDS
     [ "$status" -eq 0 ]
-    [[ "$output" == *"ok reports"* ]]
+    [[ "$output" == *"ok reports"* ]] || false
 
     report configd_2026-10-12-101500_host.hang
     run sh "$SCRIPT" health "$ALLOW" $WANT $KINDS
     [ "$status" -eq 1 ]
-    [[ "$output" == *"FAIL reports: configd_2026-10-12-101500_host.hang"* ]]
+    [[ "$output" == *"FAIL reports: configd_2026-10-12-101500_host.hang"* ]] || false
     rm "$GUEST_MACOSX_GATE_ROOT/Library/Logs/DiagnosticReports/configd_2026-10-12-101500_host.hang"
 
     report configdx_2026-10-12-101500_host.crash
     run sh "$SCRIPT" health "$ALLOW" $WANT $KINDS
     [ "$status" -eq 1 ]
-    [[ "$output" == *"FAIL reports: configdx_2026-10-12-101500_host.crash"* ]]
+    [[ "$output" == *"FAIL reports: configdx_2026-10-12-101500_host.crash"* ]] || false
 }
 
 @test "a shutdown stall is a report like any other: it fails health, named" {
     report 'diskarbitrationd,ManagedClient_2026-10-13-101842_mavericks.shutdownStall'
     run sh "$SCRIPT" health "$ALLOW" $WANT $KINDS
     [ "$status" -eq 1 ]
-    [[ "$output" == *"FAIL reports: diskarbitrationd,ManagedClient_2026-10-13-101842_mavericks.shutdownStall"* ]]
+    [[ "$output" == *"FAIL reports: diskarbitrationd,ManagedClient_2026-10-13-101842_mavericks.shutdownStall"* ]] || false
 }
 
 @test "a file of a kind the gate does not know fails health, said so: it is not kept as evidence" {
     report 'something_2026-10-13-101842_mavericks.newkind'
     run sh "$SCRIPT" health "$ALLOW" $WANT $KINDS
     [ "$status" -eq 1 ]
-    [[ "$output" == *"FAIL reports: something_2026-10-13-101842_mavericks.newkind (not a kind of report the gate knows: crash hang panic spin diag shutdownStall)"* ]]
+    [[ "$output" == *"FAIL reports: something_2026-10-13-101842_mavericks.newkind (not a kind of report the gate knows: crash hang panic spin diag shutdownStall)"* ]] || false
     # allowlisting it changes nothing: the gate cannot keep what it does not know
     printf 'something\tnewkind\treason\n' >> "$ALLOW"
     run sh "$SCRIPT" health "$ALLOW" $WANT $KINDS
@@ -347,26 +347,26 @@ GIVEUP='localhost cfprefsd[24]: _CFXPreferencesGetByHostIdentifierString: unable
     printf 'Kernel\tpanic\tx\n' >> "$ALLOW"
     run sh "$SCRIPT" health "$ALLOW" $WANT $KINDS
     [ "$status" -eq 1 ]
-    [[ "$output" == *"FAIL allowlist: a kernel panic cannot be allowlisted"* ]]
-    [[ "$output" == *"FAIL reports: Kernel_2026-10-12-101500_host.panic"* ]]
+    [[ "$output" == *"FAIL allowlist: a kernel panic cannot be allowlisted"* ]] || false
+    [[ "$output" == *"FAIL reports: Kernel_2026-10-12-101500_host.panic"* ]] || false
 }
 
 @test "health names a wrong OS" {
     STUB_BUILD=13F34 run sh "$SCRIPT" health "$ALLOW" $WANT $KINDS
     [ "$status" -eq 1 ]
-    [[ "$output" == *"FAIL os: the guest is 10.9.5 (13F34), want 10.9.5 (13F1911)"* ]]
+    [[ "$output" == *"FAIL os: the guest is 10.9.5 (13F34), want 10.9.5 (13F1911)"* ]] || false
 }
 
 @test "health holds a 10.6 guest to the release it is asked for, as a 10.9 one" {
     STUB_OS=10.6.8 STUB_BUILD=10K549 run sh "$SCRIPT" health "$ALLOW" 10.6.8 10K549 $KINDS
     [ "$status" -eq 0 ]
-    [[ "$output" == *"ok os"* ]]
+    [[ "$output" == *"ok os"* ]] || false
     STUB_OS=10.6.8 STUB_BUILD=10K549 run sh "$SCRIPT" health "$ALLOW" $WANT $KINDS
     [ "$status" -eq 1 ]
-    [[ "$output" == *"FAIL os: the guest is 10.6.8 (10K549), want 10.9.5 (13F1911)"* ]]
+    [[ "$output" == *"FAIL os: the guest is 10.6.8 (10K549), want 10.9.5 (13F1911)"* ]] || false
     run sh "$SCRIPT" health "$ALLOW" 10.6.8 10K549 $KINDS
     [ "$status" -eq 1 ]
-    [[ "$output" == *"FAIL os: the guest is 10.9.5 (13F1911), want 10.6.8 (10K549)"* ]]
+    [[ "$output" == *"FAIL os: the guest is 10.9.5 (13F1911), want 10.6.8 (10K549)"* ]] || false
 }
 
 @test "health needs an allowlist file, the release and build, and the kinds of report" {
@@ -378,7 +378,7 @@ GIVEUP='localhost cfprefsd[24]: _CFXPreferencesGetByHostIdentifierString: unable
     [ "$status" -eq 2 ]
     run sh "$SCRIPT" health "$BATS_TEST_TMPDIR/nope.tsv" $WANT $KINDS
     [ "$status" -eq 1 ]
-    [[ "$output" == *"FAIL allowlist: "* ]]
+    [[ "$output" == *"FAIL allowlist: "* ]] || false
 }
 
 @test "the shipped allowlist has a comment header and no rows" {
@@ -400,7 +400,7 @@ GIVEUP='localhost cfprefsd[24]: _CFXPreferencesGetByHostIdentifierString: unable
 @test "reach names the host that failed" {
     STUB_CURL_FAIL=release-assets run sh "$SCRIPT" reach
     [ "$status" -eq 1 ]
-    [[ "$output" == *"FAIL reach: https://release-assets.githubusercontent.com/"* ]]
+    [[ "$output" == *"FAIL reach: https://release-assets.githubusercontent.com/"* ]] || false
 }
 
 @test "boottime parses sysctl" {
@@ -426,9 +426,9 @@ echo "   77    0 0xffffff7f80000000 0x1000 0x1000 as.vit9696XLilu (1.7.2) <5 4 3
 STUB
     versions
     [ "$status" -eq 1 ]
-    [[ "$output" == *"FAIL lilu: as.vit9696.Lilu is not loaded"* ]]
+    [[ "$output" == *"FAIL lilu: as.vit9696.Lilu is not loaded"* ]] || false
     STUB_NVRAM=REL-1507-2026-09-01 run sh "$SCRIPT" versions 1.0.7 1.7.2 1.3.7 2026.10.09
-    [[ "$output" == *"FAIL opencore: "* ]]
+    [[ "$output" == *"FAIL opencore: "* ]] || false
 }
 
 @test "a panic report fails on its own, with a clean allowlist" {
@@ -436,8 +436,8 @@ STUB
     printf 'Kernel\tcrash\treason\n' >> "$ALLOW"
     run sh "$SCRIPT" health "$ALLOW" $WANT $KINDS
     [ "$status" -eq 1 ]
-    [[ "$output" == *"FAIL reports: Kernel_2026-10-12-101500_host.panic"* ]]
-    [[ "$output" != *"FAIL allowlist"* ]]
+    [[ "$output" == *"FAIL reports: Kernel_2026-10-12-101500_host.panic"* ]] || false
+    [[ "$output" != *"FAIL allowlist"* ]] || false
 }
 
 @test "a process name with a backslash is matched literally" {
@@ -452,8 +452,8 @@ STUB
     printf 'configd\tcrash\n' >> "$ALLOW"
     run sh "$SCRIPT" health "$ALLOW" $WANT $KINDS
     [ "$status" -eq 1 ]
-    [[ "$output" == *"FAIL allowlist: configd crash has no reason"* ]]
-    [[ "$output" == *"FAIL reports: configd_2026-10-12-101500_host.crash"* ]]
+    [[ "$output" == *"FAIL allowlist: configd crash has no reason"* ]] || false
+    [[ "$output" == *"FAIL reports: configd_2026-10-12-101500_host.crash"* ]] || false
 }
 
 @test "guest-checks.sh is executable" {
@@ -479,14 +479,14 @@ ERROR35='configd[13]: _CFGetHostUUIDString: unable to determine UUID for host. E
     SL_ERROR35=$ERROR35 sl_boot 1792253468 09:11:08 > "$SYSLOG"
     run sh "$SCRIPT" host-uuid
     [ "$status" -eq 1 ]
-    [[ "$output" == *"FAIL host-uuid: the kernel had no host UUID when this boot's daemons asked: Oct 17 09:11:08 localhost $ERROR35"* ]]
+    [[ "$output" == *"FAIL host-uuid: the kernel had no host UUID when this boot's daemons asked: Oct 17 09:11:08 localhost $ERROR35"* ]] || false
 }
 
 @test "host-uuid on 10.6: a clean boot passes, and an earlier boot's Error: 35 does not fail it" {
     sl_boot 1792253468 09:11:08 > "$SYSLOG"
     run sh "$SCRIPT" host-uuid
     [ "$status" -eq 0 ]
-    [[ "$output" == *"ok host-uuid: F7B2200F-5289-5585-B893-5A6896A8FBA7, from the firmware's system-id"* ]]
+    [[ "$output" == *"ok host-uuid: F7B2200F-5289-5585-B893-5A6896A8FBA7, from the firmware's system-id"* ]] || false
     { SL_ERROR35=$ERROR35 sl_boot 1792249200 08:00:00; sl_boot 1792253468 09:11:08; } > "$SYSLOG"
     run sh "$SCRIPT" host-uuid
     [ "$status" -eq 0 ]
@@ -497,14 +497,14 @@ ERROR35='configd[13]: _CFGetHostUUIDString: unable to determine UUID for host. E
     echo 'Oct 18 00:00:00 snowleopard newsyslog[400]: logfile turned over' > "$SYSLOG"
     run sh "$SCRIPT" host-uuid
     [ "$status" -eq 1 ]
-    [[ "$output" == *"FAIL host-uuid: the kernel had no host UUID when this boot's daemons asked: "* ]]
+    [[ "$output" == *"FAIL host-uuid: the kernel had no host UUID when this boot's daemons asked: "* ]] || false
 }
 
 @test "host-uuid on 10.6: a BOOT_TIME with no launchd start line before it cannot say where the boot began" {
     sl_boot 1792253468 09:11:08 | grep -v 'has started up' > "$SYSLOG"
     run sh "$SCRIPT" host-uuid
     [ "$status" -eq 1 ]
-    [[ "$output" == *"FAIL host-uuid: 10.6's BOOT_TIME for 1792253468 has no launchd start line before it in /var/log/system.log or system.log.0.bz2: cannot tell where the boot began"* ]]
+    [[ "$output" == *"FAIL host-uuid: 10.6's BOOT_TIME for 1792253468 has no launchd start line before it in /var/log/system.log or system.log.0.bz2: cannot tell where the boot began"* ]] || false
 }
 
 @test "health fails on launchd's own crash sample, /var/log/launchd-pid1.crash, on both releases, never allowlisted" {
@@ -515,10 +515,10 @@ ERROR35='configd[13]: _CFGetHostUUIDString: unable to determine UUID for host. E
     printf 'launchd-pid1\tcrash\tno\n' >> "$ALLOW"
     run sh "$SCRIPT" health "$ALLOW" $WANT $KINDS
     [ "$status" -eq 1 ]
-    [[ "$output" == *"FAIL reports: /var/log/launchd-pid1.crash (launchd itself crashed, and rebooted the guest: never allowlisted)"* ]]
+    [[ "$output" == *"FAIL reports: /var/log/launchd-pid1.crash (launchd itself crashed, and rebooted the guest: never allowlisted)"* ]] || false
     STUB_OS=10.6.8 STUB_BUILD=10K549 run sh "$SCRIPT" health "$ALLOW" 10.6.8 10K549 $KINDS
     [ "$status" -eq 1 ]
-    [[ "$output" == *"FAIL reports: /var/log/launchd-pid1.crash (launchd itself crashed"* ]]
+    [[ "$output" == *"FAIL reports: /var/log/launchd-pid1.crash (launchd itself crashed"* ]] || false
     rm "$GUEST_MACOSX_GATE_ROOT/var/log/launchd-pid1.crash"
     run sh "$SCRIPT" health "$ALLOW" $WANT $KINDS
     [ "$status" -eq 0 ]
@@ -529,7 +529,7 @@ ERROR35='configd[13]: _CFGetHostUUIDString: unable to determine UUID for host. E
     { SL_ERROR35=$ERROR35 sl_boot 1792249200 08:00:00; sl_boot 1792253468 09:11:08 | grep -v 'has started up'; } > "$SYSLOG"
     run sh "$SCRIPT" host-uuid
     [ "$status" -eq 1 ]
-    [[ "$output" == *"FAIL host-uuid: 10.6's BOOT_TIME for 1792253468 has no launchd start line before it"* ]]
+    [[ "$output" == *"FAIL host-uuid: 10.6's BOOT_TIME for 1792253468 has no launchd start line before it"* ]] || false
     # 10.9's form starts at its own line, whatever came before
     printf '%s\n' "Oct 17 08:00:00 localhost com.apple.launchd[1]: *** launchd[1] has started up. ***" \
         "Oct 17 08:00:01 localhost $ERROR35" 'Oct 17 09:11:08 localhost bootlog[0]: BOOT_TIME 1792253468 0' > "$SYSLOG"

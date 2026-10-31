@@ -31,6 +31,10 @@
 setup() {
     REPO="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
     FB="$REPO/assets/guest/firstboot.sh"
+    # Host-only timer interpreter; guest() must keep its restricted PATH.
+    HOST_PYTHON3=$(command -v python3)
+    [ -x "$HOST_PYTHON3" ]
+    HOST_PYTHON3="$(cd "$(dirname "$HOST_PYTHON3")" && pwd)/$(basename "$HOST_PYTHON3")"
     FNS="$BATS_TEST_TMPDIR/fns.sh"
     : > "$FNS"
     for f in say run_with_timeout update_wants_restart kext_caches_current \
@@ -229,18 +233,24 @@ STUB
     # never shrinks) fails its test instead of hanging the suite.
     BOUNDED="$BATS_TEST_TMPDIR/bounded"
     cat > "$BOUNDED" <<'EOF'
-#!/bin/sh
-"$@" &
-pid=$!
-(
-    sleep 20
-    kill -9 "$pid" 2>/dev/null && echo "killed after 20 s: a loop?" > "$G/timedout"
-) >/dev/null 2>&1 &
-dog=$!
-wait "$pid"
-rc=$?
-kill "$dog" 2>/dev/null
-exit "$rc"
+#!/usr/bin/env python3
+import os
+import subprocess
+import sys
+
+# A shell timer left its sleep orphaned when its parent was killed.
+# Keep the deadline in this parent, and reap the command before returning.
+with subprocess.Popen(sys.argv[1:]) as child:
+    try:
+        rc = child.wait(timeout=20)
+    except subprocess.TimeoutExpired:
+        # This single parent owns the unreaped child; kill checks for exit
+        # before signalling, and no other thread or handler can reap it.
+        child.kill()
+        rc = child.wait()
+        with open(os.path.join(os.environ["G"], "timedout"), "w") as note:
+            note.write("killed after 20 s: a loop?\n")
+sys.exit(rc if rc >= 0 else 128 - rc)
 EOF
     chmod +x "$BOUNDED"
     : > "$G/daemon.plist"
@@ -332,7 +342,7 @@ guest() {
         STUB_LSBOM_FAIL="${STUB_LSBOM_FAIL:-}" STUB_KC_SKIP="${STUB_KC_SKIP:-}" \
         STUB_INSTALLER_STATUS="${STUB_INSTALLER_STATUS:-}" STUB_INSTALLER_HANG="${STUB_INSTALLER_HANG:-}" \
         PKGS="${PKGS:-}" BODY="$1" \
-        "$BOUNDED" /bin/sh -c '
+        "$HOST_PYTHON3" "$BOUNDED" /bin/sh -c '
             . "$FNS"
             CONF_DIR=$G/conf
             LOG=$G/guest-macosx-firstboot.log
@@ -361,6 +371,44 @@ guest() {
         '
 }
 
+@test "guest keeps its restricted PATH and uses the host Python resolved outside it" {
+    printf '%s\n' "$(command -v python3)" > "$G/host-python"
+    mkdir -p "$G/prefix"
+    HOST_PYTHON3="$G/prefix/python3"
+    cat > "$HOST_PYTHON3" <<'PYSHIM'
+#!/bin/sh
+printf '%s\n' "$PATH" > "$G/bounded-path"
+real=$(cat "$G/host-python")
+exec "$real" "$@"
+PYSHIM
+    chmod +x "$HOST_PYTHON3"
+    guest 'printf "%s\n" bounded-prefix-ok'
+    [ "$status" -eq 0 ]
+    [ "$output" = bounded-prefix-ok ]
+    [ -f "$G/bounded-path" ]
+    [ "$(cat "$G/bounded-path")" = "$STUB:/usr/bin:/bin" ]
+}
+
+@test "bounded fixture preserves command output and status before its deadline" {
+    run env G="$G" "$HOST_PYTHON3" "$BOUNDED" sh -c 'echo completed; exit 37'
+    [ "$status" -eq 37 ]
+    [ "$output" = completed ]
+    [ ! -e "$G/timedout" ]
+}
+
+@test "bounded fixture ends and reaps its command at the unchanged 20 second deadline" {
+    SECONDS=0
+    # shellcheck disable=SC2016 # expanded by the child, whose PID is recorded
+    run env G="$G" "$HOST_PYTHON3" "$BOUNDED" sh -c 'echo $$ > "$G/child.pid"; exec sleep 30'
+    took=$SECONDS
+    [ "$status" -eq 137 ]
+    [ "$took" -ge 20 ]
+    [ "$took" -lt 30 ]
+    grep -qxF 'killed after 20 s: a loop?' "$G/timedout"
+    run ps -o pid= -p "$(cat "$G/child.pid")"
+    [ "$status" -ne 0 ]
+}
+
 @test "updates: a failed installer stops the chain and records a verification failure" {
     update 01.pkg none
     update 02.pkg none
@@ -368,14 +416,14 @@ guest() {
     STUB_INSTALLER_STATUS=37
     guest 'snow_leopard_updates'
     [ "$status" -eq 0 ]
-    [[ "$output" == *"updates: STOPPED: 01.pkg installer failed (rc=37)"* ]]
+    [[ "$output" == *"updates: STOPPED: 01.pkg installer failed (rc=37)"* ]] || false
     [ "$(grep -c '^installer ' "$CALLS")" -eq 1 ]
     [ "$(cat "$G/conf/updates.current")" = 01.pkg ]
     grep -q '^02.pkg$' "$G/conf/updates.left"
     # A subsequent invocation must not retry it or install its successor.
     guest 'snow_leopard_updates'
     [ "$status" -eq 0 ]
-    [[ "$output" == *"updates: STOPPED:"* ]]
+    [[ "$output" == *"updates: STOPPED:"* ]] || false
     [ "$(grep -c '^installer ' "$CALLS")" -eq 1 ]
 }
 
@@ -389,7 +437,7 @@ guest() {
     mv "$FNS.new" "$FNS"
     guest 'snow_leopard_updates'
     [ "$status" -eq 0 ]
-    [[ "$output" == *"updates: STOPPED: 01.pkg installer failed (rc="* ]]
+    [[ "$output" == *"updates: STOPPED: 01.pkg installer failed (rc="* ]] || false
     grep -q 'TIMED OUT after 1s' "$G/guest-macosx-firstboot.log"
     [ "$(grep -c '^installer ' "$CALLS")" -eq 1 ]
     [ "$(cat "$G/conf/updates.current")" = 01.pkg ]
@@ -399,8 +447,8 @@ guest() {
     guest 'run_with_timeout 1 sh -c "exit 37"; echo BEST_EFFORT=$?;
         run_with_timeout --checked 1 sh -c "exit 37"; echo CHECKED=$?'
     [ "$status" -eq 0 ]
-    [[ "$output" == *"BEST_EFFORT=0"* ]]
-    [[ "$output" == *"CHECKED=37"* ]]
+    [[ "$output" == *"BEST_EFFORT=0"* ]] || false
+    [[ "$output" == *"CHECKED=37"* ]] || false
 }
 
 # boot <updates...>: one run of firstboot's Snow Leopard update steps, as
@@ -428,8 +476,8 @@ restart() {
         update_wants_restart "$G/conf/updates/a.dist" && echo a=yes || echo a=no
         update_wants_restart "$G/conf/updates/b.dist" && echo b=yes || echo b=no'
     [ "$status" -eq 0 ]
-    [[ "$output" == *"a=yes"* ]]
-    [[ "$output" == *"b=no"* ]]
+    [[ "$output" == *"a=yes"* ]] || false
+    [[ "$output" == *"b=no"* ]] || false
 }
 
 @test "a .pkg whose PackageInfo asks for a restart wants one, and one that does not, not" {
@@ -440,8 +488,8 @@ restart() {
         update_wants_restart "$G/conf/updates/a.pkg" && echo a=yes || echo a=no
         update_wants_restart "$G/conf/updates/b.pkg" && echo b=yes || echo b=no'
     [ "$status" -eq 0 ]
-    [[ "$output" == *"a=yes"* ]]
-    [[ "$output" == *"b=no"* ]]
+    [[ "$output" == *"a=yes"* ]] || false
+    [[ "$output" == *"b=no"* ]] || false
     # It leaves no PackageInfo behind, and xar ran bounded, as every step.
     [ ! -e "$G/conf/.pkginfo" ]
     grep -q "run ([0-9]*s limit): xar -xf $G/conf/updates/a.pkg PackageInfo" "$G/log"
@@ -452,7 +500,7 @@ restart() {
     run env -i PATH="$STUB:/usr/bin:/bin" G="$G" FNS="$FNS" /bin/sh -c '
         . "$FNS"; CONF_DIR=$G/conf; LOG=$G/log
         update_wants_restart "$G/conf/updates/unreadable.pkg" && echo yes || echo no'
-    [[ "$output" == *"yes"* ]]
+    [[ "$output" == *"yes"* ]] || false
     grep -q "unreadable.pkg.*restart" "$G/log"
 }
 
@@ -692,7 +740,7 @@ resume() {
     echo 02-SecUpd.pkg > "$G/conf/updates.left"
     resume 01-combo.dist 02-SecUpd.pkg
     [ "$status" -eq 0 ]
-    [[ "$output" != *"the main line ran"* ]]
+    [[ "$output" != *"the main line ran"* ]] || false
     [ "$(grep '^installer' "$CALLS")" = "installer 02-SecUpd.pkg" ]
     grep -q "resuming the updates after a restart; left: 02-SecUpd.pkg" "$G/guest-macosx-firstboot.log"
     [ -e "$G/conf/.done" ]
@@ -702,7 +750,7 @@ resume() {
     : > "$G/conf/updates.left"
     resume 01-combo.dist 02-SecUpd.pkg
     [ "$status" -eq 0 ]
-    [[ "$output" != *"the main line ran"* ]]
+    [[ "$output" != *"the main line ran"* ]] || false
     [ ! -s "$CALLS" ] || ! grep -q '^installer' "$CALLS" || false
     [ -e "$G/conf/.done" ]
 }
@@ -710,7 +758,7 @@ resume() {
 @test "the resume block, run as firstboot.sh has it: no list, a first boot, it falls through to the main line" {
     resume 01-combo.dist 02-SecUpd.pkg
     [ "$status" -eq 0 ]
-    [[ "$output" == *"the main line ran"* ]]
+    [[ "$output" == *"the main line ran"* ]] || false
     run grep -c . "$CALLS"
     [ "$output" = 0 ]
 }
@@ -766,7 +814,7 @@ resume() {
     ln -s "$G/no-such-dir/updates.current" "$G/conf/updates.current"
     PKGS="01-a.pkg 02-b.pkg" guest 'snow_leopard_updates; echo returned'
     [ "$status" -eq 0 ]
-    [[ "$output" == *returned* ]]
+    [[ "$output" == *returned* ]] || false
     run grep -c '^installer' "$CALLS"
     [ "$output" = 0 ]
     [ "$(sed -n 1p "$G/conf/updates.left")" = 01-a.pkg ]
@@ -838,8 +886,8 @@ one_stale() {
     [ "$status" -eq 0 ]
     grep -q "kext caches: STILL not current by kextd's test.*: $KC_PROPS (mtime [0-9]*); restarting anyway" "$G/guest-macosx-firstboot.log"
     run grep "STILL" "$G/guest-macosx-firstboot.log"
-    [[ "$output" != *"$KC_IDS"* ]]
-    [[ "$output" != *"$KC_PERS"* ]]
+    [[ "$output" != *"$KC_IDS"* ]] || false
+    [[ "$output" != *"$KC_PERS"* ]] || false
 }
 
 @test "10.6.8's BootCacheControl is set aside as soon as the combo puts it there, before the combo's restart (docs/decisions/0025)" {

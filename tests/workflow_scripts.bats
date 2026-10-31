@@ -138,6 +138,35 @@ _wf() {
     [[ "$output" == *$'\t'"10"$'\t'"job a, step 2"$'\t'* ]] || false
 }
 
+@test "CI's layer validation fixture uses the base template's current Vagrantfile shape" {
+    "$REPO/bin/workflow-scripts.sh" "$REPO" "$OUT" > "$BATS_TEST_TMPDIR/steps"
+    script=$(awk -F '\t' '$1 == ".github/workflows/ci.yml" && index($3, "(packer validate templates/mavericks-aquatransport/)") { print $5 }' "$BATS_TEST_TMPDIR/steps")
+    [ -f "$script" ]
+    mkdir -p "$BATS_TEST_TMPDIR/bin"
+    cat > "$BATS_TEST_TMPDIR/bin/packer" <<'STUB'
+#!/bin/sh
+set -eu
+[ "$#" -eq 4 ]
+[ "$1" = validate ]
+[ "$2" = -var ]
+[ "$4" = templates/mavericks-aquatransport/ ]
+box=${3#base_box=}
+[ "$box" != "$3" ]
+for f in box_0.img OVMF_CODE.fd OVMF_VARS.fd opencore.img Vagrantfile; do
+    [ -f "$box/$f" ]
+done
+cmp "$box/Vagrantfile" "$BOX_TEMPLATE"
+printf '%s\n' validated >> "$PACKER_CALLS"
+STUB
+    chmod +x "$BATS_TEST_TMPDIR/bin/packer"
+    cd "$REPO"
+    run env PATH="$BATS_TEST_TMPDIR/bin:$PATH" TMPDIR="$BATS_TEST_TMPDIR" \
+        BOX_TEMPLATE="$REPO/templates/mavericks/box.Vagrantfile.pkrtpl" \
+        PACKER_CALLS="$BATS_TEST_TMPDIR/packer.calls" bash -e "$script"
+    [ "$status" -eq 0 ]
+    [ "$(cat "$BATS_TEST_TMPDIR/packer.calls")" = validated ]
+}
+
 @test "the repository's workflow steps all pass shellcheck" {
     command -v shellcheck >/dev/null || skip "shellcheck not installed"
     run "$REPO/bin/shellcheck-workflows.sh" "$REPO"

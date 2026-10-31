@@ -122,7 +122,7 @@ allpass() { full "$1"; }
     c=$(full cand "boot:fail:no ssh")
     run "$S" "$c" "$BATS_TEST_TMPDIR/nope"
     [ "$status" -eq 1 ]
-    [[ "${lines[0]}" == "No clear regression: the control could not run -- "* ]]
+    [[ "${lines[0]}" == "No clear regression: the control could not run -- "* ]] || false
 }
 
 @test "candidate failed and no control asked for (a local run): Failed, saying there was no control" {
@@ -137,10 +137,10 @@ allpass() { full "$1"; }
     mkdir -p "$BATS_TEST_TMPDIR/empty"
     run "$S" "$c" "$BATS_TEST_TMPDIR/empty"
     [ "$status" -eq 1 ]
-    [[ "${lines[0]}" == "No clear regression: the control could not run -- control -- no steps.tsv in $BATS_TEST_TMPDIR/empty" ]]
+    [[ "${lines[0]}" == "No clear regression: the control could not run -- control -- no steps.tsv in $BATS_TEST_TMPDIR/empty" ]] || false
     run "$S" "$c" ""
     [ "$status" -eq 1 ]
-    [[ "${lines[0]}" == "No clear regression: the control could not run -- "* ]]
+    [[ "${lines[0]}" == "No clear regression: the control could not run -- "* ]] || false
 }
 
 @test "one directory alone, candidate infra: still CI itself, never Failed" {
@@ -161,7 +161,7 @@ allpass() { full "$1"; }
     printf 'preflight\tpass\t1\t\nplugin\tpass\t2\n' > "$d/steps.tsv"
     run --separate-stderr "$S" "$d"
     [ "$status" -eq 2 ]
-    [[ "$stderr" == *"steps.tsv"*"line 2"* ]]
+    [[ "$stderr" == *"steps.tsv"*"line 2"* ]] || false
 }
 
 @test "unknown result word: exit 2 naming the line" {
@@ -169,14 +169,14 @@ allpass() { full "$1"; }
     printf 'preflight\tmaybe\t1\tx\n' > "$d/steps.tsv"
     run --separate-stderr "$S" "$d"
     [ "$status" -eq 2 ]
-    [[ "$stderr" == *"line 1"* ]]
+    [[ "$stderr" == *"line 1"* ]] || false
 }
 
 @test "candidate whose first non-pass is skip: exit 2 naming it" {
     c=$(mkrun cand preflight:pass: plugin:skip: build-base:skip:)
     run --separate-stderr "$S" "$c"
     [ "$status" -eq 2 ]
-    [[ "$stderr" == *"plugin"* ]]
+    [[ "$stderr" == *"plugin"* ]] || false
 }
 
 @test "missing candidate steps.tsv: exit 2" {
@@ -214,14 +214,14 @@ allpass() { full "$1"; }
     d="$BATS_TEST_TMPDIR/e"; mkdir -p "$d"; : > "$d/steps.tsv"
     run --separate-stderr "$S" "$d"
     [ "$status" -eq 2 ]
-    [[ "$stderr" == *empty* ]]
+    [[ "$stderr" == *empty* ]] || false
 }
 
 @test "only preflight pass: exit 2 naming the missing step" {
     c=$(mkrun cand preflight:pass:)
     run --separate-stderr "$S" "$c"
     [ "$status" -eq 2 ]
-    [[ "$stderr" == *plugin* ]]
+    [[ "$stderr" == *plugin* ]] || false
 }
 
 @test "shutdown missing: exit 2 naming shutdown" {
@@ -229,7 +229,7 @@ allpass() { full "$1"; }
         boot:pass: versions:pass: health:pass: reach:pass: host-uuid:pass: restart-1:pass:)
     run --separate-stderr "$S" "$c"
     [ "$status" -eq 2 ]
-    [[ "$stderr" == *shutdown* ]]
+    [[ "$stderr" == *shutdown* ]] || false
 }
 
 @test "restart-2 missing: exit 2 naming restart-2" {
@@ -237,14 +237,14 @@ allpass() { full "$1"; }
         boot:pass: versions:pass: health:pass: reach:pass: host-uuid:pass: restart-1:pass: restart-3:pass: shutdown:pass:)
     run --separate-stderr "$S" "$c"
     [ "$status" -eq 2 ]
-    [[ "$stderr" == *restart-2* ]]
+    [[ "$stderr" == *restart-2* ]] || false
 }
 
 @test "empty step field: exit 2 naming line 1" {
     c=$(mkrun cand :pass:)
     run --separate-stderr "$S" "$c"
     [ "$status" -eq 2 ]
-    [[ "$stderr" == *"line 1"* ]]
+    [[ "$stderr" == *"line 1"* ]] || false
 }
 
 @test "out of order and duplicate rows: exit 2" {
@@ -259,7 +259,7 @@ allpass() { full "$1"; }
         versions:skip: health:skip: reach:skip: host-uuid:skip: restart-1:skip: shutdown:skip:)
     run --separate-stderr "$S" "$c"
     [ "$status" -eq 2 ]
-    [[ "$stderr" == *build-base* ]]
+    [[ "$stderr" == *build-base* ]] || false
 }
 
 @test "truncated all-pass control is not a Regression" {
@@ -267,7 +267,7 @@ allpass() { full "$1"; }
     k=$(mkrun ctl preflight:pass: plugin:pass: build-base:pass: build-layer:pass: boot:pass: versions:pass:)
     run "$S" "$c" "$k"
     [ "$status" -eq 1 ]
-    [[ "${lines[0]}" == "No clear regression: the control could not run -- health -- "* ]]
+    [[ "${lines[0]}" == "No clear regression: the control could not run -- health -- "* ]] || false
 }
 
 @test "control passes restart-2 but fails restart-3, candidate fails restart-2: main fails it too" {
@@ -284,7 +284,7 @@ allpass() { full "$1"; }
         boot:pass: versions:pass: health:pass: reach:pass: host-uuid:pass: restart-1:pass: restart-3:pass: shutdown:pass:)
     run "$S" "$c" "$k"
     [ "$status" -eq 1 ]
-    [[ "${lines[0]}" == "No clear regression: the control could not run -- restart-2 -- "* ]]
+    [[ "${lines[0]}" == "No clear regression: the control could not run -- restart-2 -- "* ]] || false
 }
 
 @test "control with a pass after its first non-pass: the control could not run, exit 1" {
@@ -293,7 +293,7 @@ allpass() { full "$1"; }
         versions:skip: health:skip: reach:skip: host-uuid:skip: restart-1:skip: shutdown:skip:)
     run "$S" "$c" "$k"
     [ "$status" -eq 1 ]
-    [[ "${lines[0]}" == "No clear regression: the control could not run -- build-base -- "* ]]
+    [[ "${lines[0]}" == "No clear regression: the control could not run -- build-base -- "* ]] || false
 }
 
 @test "malformed control columns: the control could not run, not exit 2" {
@@ -301,7 +301,7 @@ allpass() { full "$1"; }
     k="$BATS_TEST_TMPDIR/badctl"; mkdir -p "$k"; printf 'preflight\tpass\n' > "$k/steps.tsv"
     run "$S" "$c" "$k"
     [ "$status" -eq 1 ]
-    [[ "${lines[0]}" == "No clear regression: the control could not run -- "* ]]
+    [[ "${lines[0]}" == "No clear regression: the control could not run -- "* ]] || false
 }
 
 # the notes bin/gate.sh writes for 10.6's two n/a steps, read from it so they never drift
@@ -323,8 +323,8 @@ sl() {
     run "$S" "$c"
     [ "$status" -eq 0 ]
     [ "${lines[0]}" = "Passed: every step that applies, 3 restarts; not applicable: build-layer, reach" ]
-    [[ "$output" == *"| build-layer | n/a | 3 | $(sl_note build-layer) |"* ]]
-    [[ "$output" == *"| reach | n/a | 3 | $(sl_note reach) |"* ]]
+    [[ "$output" == *"| build-layer | n/a | 3 | $(sl_note build-layer) |"* ]] || false
+    [[ "$output" == *"| reach | n/a | 3 | $(sl_note reach) |"* ]] || false
 }
 
 @test "a step not applicable is never the first non-pass: a later fail is the verdict" {
@@ -343,7 +343,7 @@ sl() {
     echo 10.6 > "$c/release.txt"
     run --separate-stderr "$S" "$c"
     [ "$status" -eq 2 ]
-    [[ "$stderr" == *"n/a after an earlier non-pass; must be skip"* ]]
+    [[ "$stderr" == *"n/a after an earlier non-pass; must be skip"* ]] || false
 }
 
 @test "only build-layer and reach can be not applicable: no other check is ever set aside" {
@@ -352,14 +352,14 @@ sl() {
         echo 10.6 > "$c/release.txt"
         run --separate-stderr "$S" "$c"
         [ "$status" -eq 2 ] || { echo "$st: $status ${lines[0]}"; false; }
-        [[ "$stderr" == *"$st"*"n/a, which only build-layer and reach can be"* ]]
+        [[ "$stderr" == *"$st"*"n/a, which only build-layer and reach can be"* ]] || false
     done
     # and one that is says why
     c=$(full cand-noreason "build-layer:n/a:")
     echo 10.6 > "$c/release.txt"
     run --separate-stderr "$S" "$c"
     [ "$status" -eq 2 ]
-    [[ "$stderr" == *"n/a with no reason (step build-layer)"* ]]
+    [[ "$stderr" == *"n/a with no reason (step build-layer)"* ]] || false
 }
 
 @test "runs of different releases are never compared: exit 2 naming both" {
@@ -369,12 +369,12 @@ sl() {
     echo 10.9 > "$k/release.txt"
     run --separate-stderr "$S" "$c" "$k"
     [ "$status" -eq 2 ]
-    [[ "$stderr" == *"the candidate is a 10.6 run and the control a 10.9 run: compare runs of one release"* ]]
+    [[ "$stderr" == *"the candidate is a 10.6 run and the control a 10.9 run: compare runs of one release"* ]] || false
     # a run with no release.txt is from before the gate knew releases, when it booted 10.9 alone
     rm "$k/release.txt"
     run --separate-stderr "$S" "$c" "$k"
     [ "$status" -eq 2 ]
-    [[ "$stderr" == *"the candidate is a 10.6 run and the control a 10.9 run"* ]]
+    [[ "$stderr" == *"the candidate is a 10.6 run and the control a 10.9 run"* ]] || false
     echo 10.9 > "$c/release.txt"
     run "$S" "$c" "$k"
     [ "$status" -eq 1 ]
@@ -385,10 +385,10 @@ sl() {
     c=$(allpass cand)
     echo 10.6 > "$c/release.txt"
     run "$S" "$c"
-    [[ "$output" == *"### Candidate (10.6)"* ]]
+    [[ "$output" == *"### Candidate (10.6)"* ]] || false
     rm "$c/release.txt"
     run "$S" "$c"
-    [[ "$output" == *"### Candidate (10.9)"* ]]
+    [[ "$output" == *"### Candidate (10.9)"* ]] || false
 }
 
 @test "a release.txt naming no release the gate knows is malformed: exit 2" {
@@ -396,7 +396,7 @@ sl() {
     echo 10.4 > "$c/release.txt"
     run --separate-stderr "$S" "$c"
     [ "$status" -eq 2 ]
-    [[ "$stderr" == *"release.txt names '10.4'"* ]]
+    [[ "$stderr" == *"release.txt names '10.4'"* ]] || false
 }
 
 @test "n/a only on a 10.6 run: a 10.9 run, or one with no release.txt (10.9, from before), is malformed" {
@@ -404,17 +404,17 @@ sl() {
     echo 10.9 > "$c/release.txt"
     run --separate-stderr "$S" "$c"
     [ "$status" -eq 2 ]
-    [[ "$stderr" == *"line 4: build-layer is n/a on a 10.9 run, where every step applies (step build-layer)"* ]]
+    [[ "$stderr" == *"line 4: build-layer is n/a on a 10.9 run, where every step applies (step build-layer)"* ]] || false
     rm "$c/release.txt"
     run --separate-stderr "$S" "$c"
     [ "$status" -eq 2 ]
-    [[ "$stderr" == *"build-layer is n/a on a 10.9 run, where every step applies"* ]]
+    [[ "$stderr" == *"build-layer is n/a on a 10.9 run, where every step applies"* ]] || false
     # and a 10.9 control that does so is no control either
     k=$(full ctl "reach:n/a:x")
     c=$(full cand2 "versions:fail:FAIL x")
     run "$S" "$c" "$k"
     [ "$status" -eq 1 ]
-    [[ "${lines[0]}" == "No clear regression: the control could not run -- reach -- the control's steps.tsv is incomplete or malformed: "*"n/a on a 10.9 run"* ]]
+    [[ "${lines[0]}" == "No clear regression: the control could not run -- reach -- the control's steps.tsv is incomplete or malformed: "*"n/a on a 10.9 run"* ]] || false
 }
 
 @test "a control whose release.txt names no release the gate knows is a usage error, as the header says" {
@@ -423,6 +423,6 @@ sl() {
     echo 10.4 > "$k/release.txt"
     run --separate-stderr "$S" "$c" "$k"
     [ "$status" -eq 2 ]
-    [[ "$stderr" == *"ctl/release.txt names '10.4'"* ]]
+    [[ "$stderr" == *"ctl/release.txt names '10.4'"* ]] || false
     head -n 30 "$S" | grep -qF "release.txt names no release it knows"
 }

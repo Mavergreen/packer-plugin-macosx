@@ -183,14 +183,14 @@ argv_of() { awk -v n="$1" '$0 == "--" { k++; next } k == n - 1' "$STUB_QEMU_ARGV
         [ "$(command -v "$c")" = "$STUBS/$c" ]
     done
     [ "$(command -v qemu-system-x86_64)" = "$STUBS/qemu-system-x86_64" ]
-    [[ "$PATH" != *sbin* ]]
+    [[ "$PATH" != *sbin* ]] || false
 }
 
 @test "trace: a reclaim of a few thousand bytes passes, and says which method it used" {
     run "$SCRIPT" "$BOX" "$STATE"
     [ "$status" -eq 0 ] || { echo "status $status: $output"; false; }
-    [[ "$output" == *"method: trace"* ]]
-    [[ "$output" == *"pass: 8355 flash bytes programmed before \"BdsDxe:\""*"(limit 100000)"* ]]
+    [[ "$output" == *"method: trace"* ]] || false
+    [[ "$output" == *"pass: 8355 flash bytes programmed before \"BdsDxe:\""*"(limit 100000)"* ]] || false
     # one boot, on the filled copy, never the box's own store
     [ "$(grep -c '^--$' "$STUB_QEMU_ARGV")" -eq 1 ]
     argv_of 1 | grep -qxF "if=pflash,format=raw,unit=1,file=$STATE/vars-full.fd"
@@ -213,34 +213,34 @@ argv_of() { awk -v n="$1" '$0 == "--" { k++; next } k == n - 1' "$STUB_QEMU_ARGV
 @test "trace: more than the limit programmed is a fail naming the count" {
     STUB_BYTES_FULL=799963 run "$SCRIPT" "$BOX" "$STATE"
     [ "$status" -eq 1 ] || { echo "status $status: $output"; false; }
-    [[ "$output" == *"warning: FAIL: 799963 flash bytes programmed before \"BdsDxe:\" on a nearly full variable store, more than 100000"* ]]
+    [[ "$output" == *"warning: FAIL: 799963 flash bytes programmed before \"BdsDxe:\" on a nearly full variable store, more than 100000"* ]] || false
 }
 
 @test "trace: the limit is GATE_VARSTORE_LIMIT" {
     GATE_VARSTORE_LIMIT=8000 run "$SCRIPT" "$BOX" "$STATE"
     [ "$status" -eq 1 ] || { echo "status $status: $output"; false; }
-    [[ "$output" == *"8355 flash bytes"*"more than 8000"* ]]
+    [[ "$output" == *"8355 flash bytes"*"more than 8000"* ]] || false
 }
 
 @test "trace: help output after the matching event cannot select timing instead" {
     STUB_LONG_HELP=1 STUB_BYTES_FULL=799963 run "$SCRIPT" "$BOX" "$STATE"
     [ "$status" -eq 1 ] || { echo "status $status: $output"; false; }
-    [[ "$output" == *"method: trace"* ]]
-    [[ "$output" == *"FAIL: 799963 flash bytes"*"more than 100000"* ]]
+    [[ "$output" == *"method: trace"* ]] || false
+    [[ "$output" == *"FAIL: 799963 flash bytes"*"more than 100000"* ]] || false
     [ "$(grep -c '^--$' "$STUB_QEMU_ARGV")" -eq 1 ]
 }
 
 @test "trace: no BdsDxe line in time is a fail, with the count so far" {
     STUB_BDS_FULL=never GATE_VARSTORE_TIMEOUT=2 run "$SCRIPT" "$BOX" "$STATE"
     [ "$status" -eq 1 ] || { echo "status $status: $output"; false; }
-    [[ "$output" == *"FAIL: no \"BdsDxe:\" line within 2s on a nearly full variable store (8355 flash bytes programmed by then (limit 100000))"* ]]
+    [[ "$output" == *"FAIL: no \"BdsDxe:\" line within 2s on a nearly full variable store (8355 flash bytes programmed by then (limit 100000))"* ]] || false
     grep -qxF "kill -TERM $OWNED" "$STUB_LOG"
 }
 
 @test "timing: a QEMU without the trace event boots the pristine store and a full one, each twice, alternately" {
     STUB_NO_EVENT=1 run "$SCRIPT" "$BOX" "$STATE"
     [ "$status" -eq 0 ] || { echo "status $status: $output"; false; }
-    [[ "$output" == *"method: timing"* ]]
+    [[ "$output" == *"method: timing"* ]] || false
     re='pass: "BdsDxe:" after [0-9]+s at best on a nearly full variable store, [0-9]+s at best on the box.s own \(at most 10s slower\)'
     [[ "$output" =~ $re ]] || { echo "$output"; false; }
     [ "$(grep -c '^--$' "$STUB_QEMU_ARGV")" -eq 4 ]
@@ -266,8 +266,8 @@ argv_of() { awk -v n="$1" '$0 == "--" { k++; next } k == n - 1' "$STUB_QEMU_ARGV
 @test "timing: a trace event that records nothing falls back to timing, and says so" {
     STUB_SILENT=1 run "$SCRIPT" "$BOX" "$STATE"
     [ "$status" -eq 0 ] || { echo "status $status: $output"; false; }
-    [[ "$output" == *"names the pflash_data_write trace event but recorded none"*"timing instead"* ]]
-    [[ "$output" == *"method: timing"* ]]
+    [[ "$output" == *"names the pflash_data_write trace event but recorded none"*"timing instead"* ]] || false
+    [[ "$output" == *"method: timing"* ]] || false
     [ "$(grep -c '^--$' "$STUB_QEMU_ARGV")" -eq 5 ]
 }
 
@@ -276,8 +276,8 @@ argv_of() { awk -v n="$1" '$0 == "--" { k++; next } k == n - 1' "$STUB_QEMU_ARGV
     # first copy, so a timing pass on that copy would boot a compacted store and pass main
     STUB_SILENT=1 STUB_BDS_FULL=8 GATE_VARSTORE_SLOWER=2 run "$SCRIPT" "$BOX" "$STATE"
     [ "$status" -eq 1 ] || { echo "status $status: $output"; false; }
-    [[ "$output" == *"timing instead"* ]]
-    [[ "$output" == *"FAIL: \"BdsDxe:\""*"more than 2s slower"* ]]
+    [[ "$output" == *"timing instead"* ]] || false
+    [[ "$output" == *"FAIL: \"BdsDxe:\""*"more than 2s slower"* ]] || false
     # every boot meant as a full one booted a full store
     [ "$(grep -c '^stub qemu: full store' "$STUB_LOG")" -eq "$(grep -c "unit=1,file=$STATE/vars-full.fd\$" "$STUB_QEMU_ARGV")" ]
 }
@@ -293,7 +293,7 @@ argv_of() { awk -v n="$1" '$0 == "--" { k++; next } k == n - 1' "$STUB_QEMU_ARGV
 @test "timing: no BdsDxe line on the box's own store is a fail: the firmware does not boot" {
     STUB_NO_EVENT=1 STUB_BDS_PRISTINE=never GATE_VARSTORE_TIMEOUT=2 run "$SCRIPT" "$BOX" "$STATE"
     [ "$status" -eq 1 ] || { echo "status $status: $output"; false; }
-    [[ "$output" == *"on the box's own store: the firmware does not boot"* ]]
+    [[ "$output" == *"on the box's own store: the firmware does not boot"* ]] || false
 }
 
 @test "every boot's QEMU is stopped before the next starts: TERM, then KILL when it stays" {
@@ -323,8 +323,8 @@ argv_of() { awk -v n="$1" '$0 == "--" { k++; next } k == n - 1' "$STUB_QEMU_ARGV
 @test "trace: a silent trace on a firmware that never reaches BDS says the trace recorded none" {
     STUB_SILENT=1 STUB_BDS_FULL=never GATE_VARSTORE_TIMEOUT=2 run "$SCRIPT" "$BOX" "$STATE"
     [ "$status" -eq 1 ] || { echo "status $status: $output"; false; }
-    [[ "$output" == *"FAIL: no \"BdsDxe:\" line within 2s on a nearly full variable store (the trace recorded none)"* ]]
-    [[ "$output" != *"0 flash bytes"* ]]
+    [[ "$output" == *"FAIL: no \"BdsDxe:\" line within 2s on a nearly full variable store (the trace recorded none)"* ]] || false
+    [[ "$output" != *"0 flash bytes"* ]] || false
 }
 
 # Exercise the registered handlers directly without delivering host signals.
@@ -351,7 +351,7 @@ run_cleanup_handler() {
 @test "TERM: registered handler says so, stops its QEMU and exits 3 (no signal delivery)" {
     run_cleanup_handler TERM
     [ "$status" -eq 3 ]
-    [[ "$output" == *"interrupted: stopping this run's QEMU"* ]]
+    [[ "$output" == *"interrupted: stopping this run's QEMU"* ]] || false
     grep -qxF "kill -TERM $OWNED" "$STUB_LOG"
     [ ! -e "$STATE/qemu.pid" ]
 }
@@ -366,13 +366,13 @@ run_cleanup_handler() {
 @test "QEMU gone before the BdsDxe line is could not run, not a fail" {
     STUB_DIES=1 run "$SCRIPT" "$BOX" "$STATE"
     [ "$status" -eq 3 ] || { echo "status $status: $output"; false; }
-    [[ "$output" == *"QEMU exited before OVMF's \"BdsDxe:\" line"* ]]
+    [[ "$output" == *"QEMU exited before OVMF's \"BdsDxe:\" line"* ]] || false
 }
 
 @test "the fill: the live variables kept, all but GATE_VARSTORE_FREE bytes taken by deleted records" {
     STUB_NO_RECLAIM=1 run "$SCRIPT" "$BOX" "$STATE"
     [ "$status" -eq 0 ] || { echo "status $status: $output"; false; }
-    [[ "$output" == *"the store: 2000 of 65508 bytes free"* ]]
+    [[ "$output" == *"the store: 2000 of 65508 bytes free"* ]] || false
     python3 -I - "$STATE/vars-full.fd" <<'PY'
 import struct, sys
 d = open(sys.argv[1], "rb").read()
@@ -389,21 +389,21 @@ assert end - p == 2000, end - p
 assert all(b == 0xFF for b in d[p:end])
 PY
     # the box's own store is never written
-    ! cmp -s "$BOX/OVMF_VARS.fd" "$STATE/vars-full.fd"
+    ! cmp -s "$BOX/OVMF_VARS.fd" "$STATE/vars-full.fd" || false
 }
 
 @test "a store that is not an authenticated variable store cannot be filled: could not run" {
     head -c 70000 /dev/zero > "$BOX/OVMF_VARS.fd"
     run "$SCRIPT" "$BOX" "$STATE"
     [ "$status" -eq 3 ] || { echo "status $status: $output"; false; }
-    [[ "$output" == *"not an authenticated variable store"* ]]
+    [[ "$output" == *"not an authenticated variable store"* ]] || false
     [ ! -s "$STUB_QEMU_ARGV" ]
 }
 
 @test "QEMU failing to start is could not run" {
     STUB_FAIL=1 run "$SCRIPT" "$BOX" "$STATE"
     [ "$status" -eq 3 ] || { echo "status $status: $output"; false; }
-    [[ "$output" == *"QEMU did not start"*"could not initialize kvm"* ]]
+    [[ "$output" == *"QEMU did not start"*"could not initialize kvm"* ]] || false
 }
 
 @test "usage: two arguments; a non-empty state dir, a bad accelerator or limit are refused" {
@@ -412,7 +412,7 @@ PY
     mkdir -p "$STATE"; : > "$STATE/x"
     run "$SCRIPT" "$BOX" "$STATE"
     [ "$status" -eq 2 ] || { echo "status $status: $output"; false; }
-    [[ "$output" == *"is not empty"* ]]
+    [[ "$output" == *"is not empty"* ]] || false
     GATE_ACCEL=tcg run "$SCRIPT" "$BOX" "$BATS_TEST_TMPDIR/s2"
     [ "$status" -eq 2 ] || { echo "status $status: $output"; false; }
     GATE_VARSTORE_LIMIT=lots run "$SCRIPT" "$BOX" "$BATS_TEST_TMPDIR/s3"
@@ -423,7 +423,7 @@ PY
     rm "$BOX/OVMF_CODE.fd"
     run "$SCRIPT" "$BOX" "$STATE"
     [ "$status" -eq 3 ] || { echo "status $status: $output"; false; }
-    [[ "$output" == *"the box has no OVMF_CODE.fd"* ]]
+    [[ "$output" == *"the box has no OVMF_CODE.fd"* ]] || false
 }
 
 @test "GATE_ACCEL reaches QEMU" {
@@ -434,7 +434,7 @@ PY
 
 @test "portable: no /proc, and none of the GNU-only flags this project avoids" {
     ! grep -n '/proc/' "$SCRIPT" || false
-    ! grep -nE 'sed -i|grep -P|readlink -f|date \+%N|stat -c|sleep 0\.' "$SCRIPT"
+    ! grep -nE 'sed -i|grep -P|readlink -f|date \+%N|stat -c|sleep 0\.' "$SCRIPT" || false
 }
 
 @test "F33: unrelated QEMU, truncated and unknown identity never receive signals" {
@@ -442,7 +442,7 @@ PY
         STUB_IDENTITY=$identity run "$SCRIPT" "$BOX" "$STATE"
         [ "$(grep -c '^kill ' "$STUB_LOG")" -eq 0 ]
         [ "$status" -ne 0 ]
-        [[ "$output" == *ownership* ]]
+        [[ "$output" == *ownership* ]] || false
         rm -rf "$STATE"
         mkdir -p "$STATE"
     done

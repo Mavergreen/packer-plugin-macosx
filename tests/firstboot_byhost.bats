@@ -119,8 +119,8 @@ bounded() {
     f="$BH/com.apple.screensaver.F7B2200F-5289-5585-B893-5A6896A8FBA7.plist"
     grep -qxF "idleTime${TAB}string${TAB}0" "$f"
     grep -qxF "chown -h vagrant:staff $f" "$CALLS"
-    [[ "$output" == *"host UUID F7B2200F-5289-5585-B893-5A6896A8FBA7, from the firmware's system-id"* ]]
-    [[ "$output" == *"vagrant's com.apple.screensaver idleTime: set to 0 for host F7B2200F-5289-5585-B893-5A6896A8FBA7"* ]]
+    [[ "$output" == *"host UUID F7B2200F-5289-5585-B893-5A6896A8FBA7, from the firmware's system-id"* ]] || false
+    [[ "$output" == *"vagrant's com.apple.screensaver idleTime: set to 0 for host F7B2200F-5289-5585-B893-5A6896A8FBA7"* ]] || false
     grep -q '^logger -t guest-macosx-byhost' "$CALLS"
 }
 
@@ -132,7 +132,7 @@ bounded() {
     [ "$(cat "$f")" = "idleTime${TAB}integer${TAB}300" ]
     ! grep -q '^PlistBuddy -c Add' "$CALLS" || false
     ! grep -q '^chown' "$CALLS" || false
-    [[ "$output" == *"vagrant's com.apple.screensaver idleTime: already set for host F7B2200F-5289-5585-B893-5A6896A8FBA7"* ]]
+    [[ "$output" == *"vagrant's com.apple.screensaver idleTime: already set for host F7B2200F-5289-5585-B893-5A6896A8FBA7"* ]] || false
 }
 
 @test "this host's file without the setting gets it added, its other keys kept" {
@@ -148,13 +148,13 @@ bounded() {
     STUB_SYSTEM_ID= STUB_PLATFORM_UUID=00000000-0000-1000-8000-525400597FA2 STUB_UUID_AFTER=3 run sh "$HELPER"
     [ "$status" -eq 0 ]
     grep -qxF "idleTime${TAB}string${TAB}0" "$BH/com.apple.screensaver.525400597fa2.plist"
-    [[ "$output" == *"host UUID 00000000-0000-1000-8000-525400597FA2, made by the guest from its NIC's MAC after 3 s: the firmware named none"* ]]
+    [[ "$output" == *"host UUID 00000000-0000-1000-8000-525400597FA2, made by the guest from its NIC's MAC after 3 s: the firmware named none"* ]] || false
 }
 
 @test "no host UUID within the wait: nothing is written, and the log says why" {
     STUB_PLATFORM_UUID= GUEST_MACOSX_BYHOST_WAIT=2 run bounded 10 sh "$HELPER"
     [ "$status" -eq 1 ]
-    [[ "$output" == *"no host UUID after 2 s: the build's ByHost settings were not checked"* ]]
+    [[ "$output" == *"no host UUID after 2 s: the build's ByHost settings were not checked"* ]] || false
     ! grep -q '^PlistBuddy -c Add' "$CALLS" || false
     [ "$(cat "$CALLS.ioreg")" -eq 3 ]
 }
@@ -163,8 +163,8 @@ bounded() {
     rm "$ROOT/Library/Preferences/guest-macosx/byhost.tsv"
     run sh "$HELPER"
     [ "$status" -eq 0 ]
-    [[ "$output" == *"the build recorded no ByHost settings"* ]]
-    ! grep -q '^PlistBuddy' "$CALLS"
+    [[ "$output" == *"the build recorded no ByHost settings"* ]] || false
+    ! grep -q '^PlistBuddy' "$CALLS" || false
 }
 
 @test "byhost_setting makes the setting now, for the build's host, and records it for every later one" {
@@ -200,7 +200,7 @@ byhost_setting vagrant com.apple.screensaver idleTime string 0"
 @test "the LaunchDaemon sends the helper's own stdout nowhere: its lines reach system.log once, by logger" {
     # 10.6's launchd logs a job's stdout to system.log too (MEASURED 2026-10-17: every line twice).
     plist=$(awk "/<<'GUEST_MACOSX_BYHOST_PLIST_EOF'\$/ { on = 1; next } /^GUEST_MACOSX_BYHOST_PLIST_EOF\$/ { on = 0 } on" "$FB")
-    [[ "$plist" == *"<key>StandardOutPath</key>"*"<string>/dev/null</string>"* ]]
+    [[ "$plist" == *"<key>StandardOutPath</key>"*"<string>/dev/null</string>"* ]] || false
 }
 
 @test "a user whose session started first is said so: the setting applies from its next read" {
@@ -213,11 +213,11 @@ EOF
     STUB_SESSION=1 run sh "$HELPER"
     [ "$status" -eq 0 ]
     grep -qxF "idleTime${TAB}string${TAB}0" "$BH/com.apple.screensaver.F7B2200F-5289-5585-B893-5A6896A8FBA7.plist"
-    [[ "$output" == *"vagrant's session started before this job: it sees the setting from its next read of the domain"* ]]
+    [[ "$output" == *"vagrant's session started before this job: it sees the setting from its next read of the domain"* ]] || false
     rm "$BH/com.apple.screensaver.F7B2200F-5289-5585-B893-5A6896A8FBA7.plist"
     run sh "$HELPER"
     [ "$status" -eq 0 ]
-    [[ "$output" != *"session started before"* ]]
+    [[ "$output" != *"session started before"* ]] || false
 }
 
 @test "a missing ByHost folder is made the user's, not root's" {
@@ -236,6 +236,6 @@ EOF
     run sh "$HELPER"
     [ "$status" -eq 0 ]
     [ ! -s "$BATS_TEST_TMPDIR/elsewhere" ]
-    ! grep -q '^chown' "$CALLS"
-    [[ "$output" == *"vagrant's com.apple.screensaver idleTime: $f is a symlink; left alone"* ]]
+    ! grep -q '^chown' "$CALLS" || false
+    [[ "$output" == *"vagrant's com.apple.screensaver idleTime: $f is a symlink; left alone"* ]] || false
 }

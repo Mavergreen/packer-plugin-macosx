@@ -16,7 +16,9 @@ package payload
 //     them calls the command it stands in for;
 //   - libSystem is a .so built here, whose proc_get_dirty reads a pid's
 //     flags from a file, and whose mach_absolute_time is this host's
-//     monotonic clock (or a frozen one).
+//     monotonic clock (or a frozen one). Its exports have private names;
+//     only this library's lookups use the test loader below, so omitted
+//     symbols cannot resolve to the host's libSystem through dependencies.
 // ps answers two questions: `pid=,command=` (the agents, from ps.txt) and
 // `pid=,ppid=,pgid=,uid=,etime=,stat=,command=` (the jobs and their ages,
 // from jobs.txt, each age counted from the helper's first look, so it grows
@@ -60,7 +62,7 @@ static void fake_tb(uint32_t *n, uint32_t *d) {
 	if (s != NULL && sscanf(s, "%u/%u", n, d) != 2) { *n = 1; *d = 1; }
 }
 #ifndef FAKE_NO_TIMEBASE
-int mach_timebase_info(struct fake_timebase *t) {
+int shutdown_rig_mach_timebase_info(struct fake_timebase *t) {
 	const char *rc = getenv("FAKE_TIMEBASE_RC");
 	fake_tb(&t->numer, &t->denom);
 	return rc != NULL ? atoi(rc) : 0;
@@ -81,7 +83,7 @@ static void fake_clock_read(uint64_t t, uint32_t n, uint32_t d) {
 	fprintf(f, "clock %.9f\n", (double)t * n / d / 1e9);
 	fclose(f);
 }
-uint64_t mach_absolute_time(void) {
+uint64_t shutdown_rig_mach_absolute_time(void) {
 	struct timespec ts;
 	uint32_t n, d;
 	uint64_t t = 1000000000ULL;
@@ -103,7 +105,7 @@ static double fake_now(void) {
    reads as tracked and clean (1). No file: 1. So a pid is dirty for the
    first <seconds> of the helper's own looks at it, however long the helper
    took to get there. */
-int proc_get_dirty(int pid, uint32_t *flags) {
+int shutdown_rig_proc_get_dirty(int pid, uint32_t *flags) {
 	char p[1024], q[1100];
 	const char *d = getenv("FAKE_DIRTY_DIR");
 	unsigned v = 1;
@@ -132,6 +134,19 @@ int proc_get_dirty(int pid, uint32_t *flags) {
 	*flags = v;
 	return 0;
 }
+`
+
+// ctypes uses dlsym, which can find symbols in a library's dependencies:
+// on macOS, even an empty fake links libSystem and exposes its real symbols.
+// Translate every lookup on the fake to its private namespace, then let
+// ctypes perform the real lookup (including raising AttributeError when
+// absent). This changes neither ctypes.CDLL globally nor helper decisions,
+// function signatures, return values, or missing-symbol exceptions.
+const fakeSystemLoaderPython = `import ctypes
+
+class CDLL(ctypes.CDLL):
+    def __getitem__(self, name):
+        return super().__getitem__('shutdown_rig_' + name)
 `
 
 const (
@@ -344,11 +359,12 @@ sys.exit(1)
 		}
 	}
 
-	// The helper, every command path pointed at the fakes.
+	// The helper, every command path pointed at the fakes, and only its
+	// libSystem load using the private-symbol loader.
 	h := shutdownHelper(t)
 	for _, rw := range [][2]string{
 		{"/usr/bin/python ", py + " "},
-		{"'/usr/lib/libSystem.B.dylib'", "'" + lib + "'"},
+		{"ctypes.CDLL('/usr/lib/libSystem.B.dylib')", "__import__('shutdown_rig').CDLL('" + lib + "')"},
 		{"'/bin/ps'", "'" + filepath.Join(r.fake, "ps") + "'"},
 		{"'/bin/launchctl'", "'" + filepath.Join(r.fake, "launchctl") + "'"},
 		{"'/usr/bin/logger'", "'" + filepath.Join(r.fake, "logger") + "'"},
@@ -389,6 +405,9 @@ sys.exit(1)
 	//   - $FAKE_PY_CLOCK, if set, replaces its time.time (see pyClock).
 	site := filepath.Join(r.dir, "site")
 	if err := os.Mkdir(site, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(site, "shutdown_rig.py"), []byte(fakeSystemLoaderPython), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(site, "sitecustomize.py"), []byte(`import itertools, os, time
@@ -441,6 +460,109 @@ func (r *helperRig) relink(defines ...string) {
 	}
 	if out, err := exec.Command(r.cc, append(args, r.src)...).CombinedOutput(); err != nil {
 		r.t.Fatalf("cc: %v\n%s", err, out)
+	}
+}
+
+// A shared library's symbol lookup also searches its dependencies. Supply
+// the public names from a dependency even on Linux, where libc would not
+// otherwise supply Darwin's names. An omitted fake must still be missing.
+func TestShutdownHelperRigDoesNotResolveSymbolsFromDependencies(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		withProc bool
+		defines  []string
+		missing  []string
+	}{
+		{"all-present", true, nil, nil},
+		{"no-proc-or-clock", false, nil, []string{"proc_get_dirty", "mach_absolute_time"}},
+		{"no-timebase", true, []string{"FAKE_NO_TIMEBASE"}, []string{"mach_timebase_info"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newHelperRig(t, tc.withProc)
+			depSrc := filepath.Join(r.dir, "dependency.c")
+			depLib := filepath.Join(r.dir, "dependency.so")
+			const dependency = `#include <stdint.h>
+int dependency_anchor(void) { return 1; }
+int proc_get_dirty(int pid, uint32_t *flags) { *flags = 1; return 0; }
+uint64_t mach_absolute_time(void) { return 1; }
+struct dependency_timebase { uint32_t numer, denom; };
+int mach_timebase_info(struct dependency_timebase *t) {
+    t->numer = 125; t->denom = 3; return 0;
+}
+`
+			if err := os.WriteFile(depSrc, []byte(dependency), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if out, err := exec.Command(r.cc, "-shared", "-fPIC", "-o", depLib, depSrc).CombinedOutput(); err != nil {
+				t.Fatalf("cc dependency: %v\n%s", err, out)
+			}
+			body, err := os.ReadFile(r.src)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// Keep a real dependency edge even with linkers that discard
+			// unused libraries. No preload or host loader configuration.
+			body = append(body, []byte("\nint dependency_anchor(void);\nint require_dependency(void) { return dependency_anchor(); }\n")...)
+			if err := os.WriteFile(r.src, body, 0o644); err != nil {
+				t.Fatal(err)
+			}
+			args := []string{"-shared", "-fPIC", "-o", r.lib, r.src, depLib}
+			for _, d := range tc.defines {
+				args = append(args, "-D"+d)
+			}
+			if out, err := exec.Command(r.cc, args...).CombinedOutput(); err != nil {
+				t.Fatalf("cc with dependency: %v\n%s", err, out)
+			}
+			// Prove the collision is present via the real native loader;
+			// never call a public symbol, which might be the host's on macOS.
+			probe := exec.Command(r.python, "-I", "-c", `import ctypes, sys
+lib = ctypes.CDLL(sys.argv[1])
+assert lib.require_dependency() == 1
+for name in ('proc_get_dirty', 'mach_absolute_time', 'mach_timebase_info'):
+    assert hasattr(lib, name), 'dependency did not expose ' + name
+`, r.lib)
+			if out, err := probe.CombinedOutput(); err != nil {
+				t.Fatalf("native loader collision probe: %v\n%s", err, out)
+			}
+			present := []string{}
+			if tc.withProc {
+				present = append(present, "proc_get_dirty", "mach_absolute_time")
+				if len(tc.defines) == 0 {
+					present = append(present, "mach_timebase_info")
+				}
+			}
+			probe = exec.Command(r.python, "-I", "-c", `import ctypes, sys
+sys.path.insert(0, sys.argv[2])
+import shutdown_rig
+raw = ctypes.CDLL(sys.argv[1])
+isolated = shutdown_rig.CDLL(sys.argv[1])
+present = sys.argv[3].split(',')
+for name in ('proc_get_dirty', 'mach_absolute_time', 'mach_timebase_info'):
+    expected = name in present
+    assert hasattr(raw, name), 'ordinary CDLL lost dependency symbol ' + name
+    assert hasattr(raw, 'shutdown_rig_' + name) == expected, 'wrong native export: ' + name
+    assert hasattr(isolated, name) == expected, 'wrong attribute lookup: ' + name
+    try:
+        isolated[name]
+    except AttributeError:
+        assert not expected, 'missing exported fake: ' + name
+    else:
+        assert expected, 'index lookup escaped to dependency: ' + name
+`, r.lib, filepath.Join(r.dir, "site"), strings.Join(present, ","))
+			if out, err := probe.CombinedOutput(); err != nil {
+				t.Fatalf("private symbol lookup probe: %v\n%s", err, out)
+			}
+			r.agents("   11 "+systemAgent, "  130 "+lwAgent)
+			r.dirtyFor(130, 700*time.Millisecond)
+			h := r.run(nil, "-r")
+			wantOrder(t, h, unloadSystem, killMC, "shutdown -r now")
+			for _, name := range tc.missing {
+				wantOneLog(t, h, `^no `+name+` in libSystem:`)
+			}
+			if tc.withProc {
+				wantWaited(t, h, logged+"UserEventAgent (System) stopped", `^waited (-?[0-9.]+)s for UserEventAgent \(LoginWindow\) to settle$`)
+			}
+		})
 	}
 }
 

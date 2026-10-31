@@ -358,7 +358,7 @@ note_of() { awk -F'\t' -v s="$1" '$1 == s { print $4 }' "$EV/steps.tsv"; }
     run "$STUBS/scp" -o "ProxyCommand=touch $marker" "$BATS_TEST_TMPDIR/src" "$BATS_TEST_TMPDIR/dst"
     [ ! -e "$marker" ]
     [ ! -e "$BATS_TEST_TMPDIR/dst" ]
-    [[ "$PATH" != *sbin* ]]
+    [[ "$PATH" != *sbin* ]] || false
     # the gate's own tools resolve to stand-ins, never to the host's
     for c in packer go qemu-system-x86_64 qemu-img curl; do
         [ "$(command -v "$c")" = "$STUBS/$c" ]
@@ -375,7 +375,7 @@ note_of() { awk -F'\t' -v s="$1" '$1 == s { print $4 }' "$EV/steps.tsv"; }
     # a pass collects no failure evidence
     [ ! -e "$EV/screen.png" ]
     [ ! -e "$EV/serial.log" ]
-    [[ "$output" == *"Passed: every step, 2 restarts"* ]]
+    [[ "$output" == *"Passed: every step, 2 restarts"* ]] || false
 }
 
 @test "the builds: the exact packer commands, from their own directories, with a fresh plugin path and cache" {
@@ -517,7 +517,7 @@ note_of() { awk -F'\t' -v s="$1" '$1 == s { print $4 }' "$EV/steps.tsv"; }
     for cache_dir in "$WORK" "$BATS_TEST_TMPDIR" /; do
         gate --evidence-dir "$BATS_TEST_TMPDIR/../f32-evidence-$BATS_TEST_NUMBER" --packer-cache "$cache_dir"
         [ "$status" -eq 2 ] || { echo "$cache_dir: status $status: $output"; false; }
-        [[ "$output" == *"overlap"* ]]
+        [[ "$output" == *"overlap"* ]] || false
     done
     [ ! -s "$STUB_LOG" ]
 }
@@ -592,9 +592,9 @@ note_of() { awk -F'\t' -v s="$1" '$1 == s { print $4 }' "$EV/steps.tsv"; }
     GATE_REQUIRED_COMMANDS="packer guest-macosx-no-such-command" gate
     [ "$status" -eq 3 ]
     expect_rows preflight infra
-    [[ "$(note_of preflight)" == *"guest-macosx-no-such-command"* ]]
+    [[ "$(note_of preflight)" == *"guest-macosx-no-such-command"* ]] || false
     [ "$(grep -c '^packer\|^vm \|^dev-install' "$STUB_LOG")" -eq 0 ]
-    [[ "$(head -n 1 "$EV/summary.md")" == "No clear regression: CI itself failed at preflight -- "*"guest-macosx-no-such-command"* ]]
+    [[ "$(head -n 1 "$EV/summary.md")" == "No clear regression: CI itself failed at preflight -- "*"guest-macosx-no-such-command"* ]] || false
 }
 
 @test "preflight: no usable KVM is infra" {
@@ -602,14 +602,14 @@ note_of() { awk -F'\t' -v s="$1" '$1 == s { print $4 }' "$EV/steps.tsv"; }
     gate
     [ "$status" -eq 3 ]
     expect_rows preflight infra
-    [[ "$(note_of preflight)" == *"$GATE_KVM"* ]]
+    [[ "$(note_of preflight)" == *"$GATE_KVM"* ]] || false
 }
 
 @test "preflight: less than 60 GiB free in the work dir is infra" {
     GATE_SPACE_AVAILABLE_KIB=$((60 * 1024 * 1024 - 1)) gate
     [ "$status" -eq 3 ]
     expect_rows preflight infra
-    [[ "$(note_of preflight)" == *"$WORK has 59 GiB free"*"60 GiB"* ]]
+    [[ "$(note_of preflight)" == *"$WORK has 59 GiB free"*"60 GiB"* ]] || false
     GATE_SPACE_AVAILABLE_KIB=$((60 * 1024 * 1024)) gate
     [ "$status" -eq 0 ]
 }
@@ -628,7 +628,7 @@ time.sleep(120)' "$BATS_TEST_TMPDIR/port" 3>&- &
     gate
     [ "$status" -eq 3 ]
     expect_rows preflight infra
-    [[ "$(note_of preflight)" == *"127.0.0.1:$PORT"* ]]
+    [[ "$(note_of preflight)" == *"127.0.0.1:$PORT"* ]] || false
     [ "$(grep -c '^vm \|^packer build' "$STUB_LOG")" -eq 0 ]
 }
 
@@ -636,7 +636,7 @@ time.sleep(120)' "$BATS_TEST_TMPDIR/port" 3>&- &
     STUB_VERIFY_RC=1 gate
     [ "$status" -eq 3 ]
     expect_rows preflight infra
-    [[ "$(note_of preflight)" == *"pins not filled"* ]]
+    [[ "$(note_of preflight)" == *"pins not filled"* ]] || false
 }
 
 @test "preflight: a QEMU an earlier run left on the work dir is infra naming its pid, and its files stay" {
@@ -658,7 +658,7 @@ STUB
     gate
     [ "$status" -eq 3 ]
     expect_rows preflight infra
-    [[ "$(note_of preflight)" == *"pid $BG"* ]]
+    [[ "$(note_of preflight)" == *"pid $BG"* ]] || false
     [ -f "$WORK/box-layer/box_0.img" ]
     [ -f "$WORK/vm/qemu.pid" ]
     [ "$(grep -c '^vm ' "$STUB_LOG")" -eq 0 ]
@@ -687,21 +687,21 @@ STUB
     STUB_PACKER_INSTALL_FAIL=github.com/hashicorp/qemu gate
     [ "$status" -eq 3 ]
     expect_rows plugin infra
-    [[ "$(note_of plugin)" == *"github.com/hashicorp/qemu"* ]]
+    [[ "$(note_of plugin)" == *"github.com/hashicorp/qemu"* ]] || false
 }
 
 @test "plugin: a second macosx plugin on the path is infra, not the checkout's" {
     STUB_EXTRA_INSTALLED="$HOME/.config/packer/plugins/github.com/mavergreen/macosx/packer-plugin-macosx_v0.20261005.7_x5.0_linux_amd64" gate
     [ "$status" -eq 3 ]
     expect_rows plugin infra
-    [[ "$(note_of plugin)" == *"the plugin under test is not the checkout's"* ]]
+    [[ "$(note_of plugin)" == *"the plugin under test is not the checkout's"* ]] || false
 }
 
 @test "plugin: an installed binary that is not the one just built is infra" {
     STUB_PLUGIN_TAMPER=1 gate
     [ "$status" -eq 3 ]
     expect_rows plugin infra
-    [[ "$(note_of plugin)" == *"the plugin under test is not the checkout's"* ]]
+    [[ "$(note_of plugin)" == *"the plugin under test is not the checkout's"* ]] || false
 }
 
 # --- builds: classify_build_failure ---
@@ -716,8 +716,8 @@ STUB
     STUB_BUILD_FAIL=base:started gate
     [ "$status" -eq 1 ]
     expect_rows build-base fail
-    [[ "$(note_of build-base)" == *"Timeout waiting for SSH"* ]]
-    [[ "$(head -n 1 "$EV/summary.md")" == "Failed: build-base -- packer failed after QEMU started: "*"(no control run; run bin/gate.sh on main to compare)" ]]
+    [[ "$(note_of build-base)" == *"Timeout waiting for SSH"* ]] || false
+    [[ "$(head -n 1 "$EV/summary.md")" == "Failed: build-base -- packer failed after QEMU started: "*"(no control run; run bin/gate.sh on main to compare)" ]] || false
 }
 
 @test "build-layer: a failure after QEMU started is a fail" {
@@ -730,7 +730,7 @@ STUB
     STUB_BUILD_FAIL=base:noqemu gate
     [ "$status" -eq 3 ]
     expect_rows build-base infra
-    [[ "$(note_of build-base)" == *"503 Service Unavailable"* ]]
+    [[ "$(note_of build-base)" == *"503 Service Unavailable"* ]] || false
     STUB_BUILD_FAIL=layer:noqemu gate
     [ "$status" -eq 3 ]
     expect_rows build-layer infra
@@ -740,14 +740,14 @@ STUB
     STUB_BUILD_FAIL=layer:launch gate
     [ "$status" -eq 1 ]
     expect_rows build-layer fail
-    [[ "$(note_of build-layer)" == *"Error launching VM: Qemu failed to start."* ]]
+    [[ "$(note_of build-layer)" == *"Error launching VM: Qemu failed to start."* ]] || false
 }
 
 @test "Review Focus 4: the disk filling after QEMU started is infra, 'no space left on device'" {
     STUB_BUILD_FAIL=base:nospace gate
     [ "$status" -eq 3 ]
     expect_rows build-base infra
-    [[ "$(note_of build-base)" == *"no space left on device"* ]]
+    [[ "$(note_of build-base)" == *"no space left on device"* ]] || false
     STUB_BUILD_FAIL=layer:nospace gate
     [ "$status" -eq 3 ]
     expect_rows build-layer infra
@@ -759,7 +759,7 @@ STUB
     STUB_VM_BOOT_RC=1 gate
     [ "$status" -eq 1 ]
     expect_rows boot fail
-    [[ "$(note_of boot)" == *"SSH did not answer within 600s"* ]]
+    [[ "$(note_of boot)" == *"SSH did not answer within 600s"* ]] || false
     # the QEMU this run booted is killed, and its evidence kept
     grep -qxF "vm kill $WORK/vm" "$STUB_LOG"
     grep -qxF "vm screenshot $WORK/vm $EV/screen.png" "$STUB_LOG"
@@ -770,7 +770,7 @@ STUB
     STUB_VM_BOOT_RC=3 gate
     [ "$status" -eq 3 ]
     expect_rows boot infra
-    [[ "$(note_of boot)" == *"QEMU is already running"* ]]
+    [[ "$(note_of boot)" == *"QEMU is already running"* ]] || false
     [ "$(grep -c '^vm kill\|^vm screenshot\|^vm ssh' "$STUB_LOG")" -eq 0 ]
 }
 
@@ -778,7 +778,7 @@ STUB
     STUB_VM_PUT_RC=255 gate
     [ "$status" -eq 1 ]
     expect_rows boot fail
-    [[ "$(note_of boot)" == *"guest-checks.sh"* ]]
+    [[ "$(note_of boot)" == *"guest-checks.sh"* ]] || false
 }
 
 @test "varstore: the layer box's firmware, in its own state dir, before the guest's first boot; the state goes after" {
@@ -845,11 +845,11 @@ STUB
     STUB_VM_FAIL=health:1 STUB_VM_FAIL_RC=255 STUB_VM_FAIL_LINE="nothing" gate
     [ "$status" -eq 1 ]
     expect_rows health fail
-    [[ "$(note_of health)" == *"SSH"* ]]
+    [[ "$(note_of health)" == *"SSH"* ]] || false
     STUB_VM_FAIL=reach:1 STUB_VM_FAIL_RC=124 STUB_VM_FAIL_LINE="nothing" gate
     [ "$status" -eq 1 ]
     expect_rows reach fail
-    [[ "$(note_of reach)" == *"did not finish"* ]]
+    [[ "$(note_of reach)" == *"did not finish"* ]] || false
 }
 
 @test "a check's usage error (2) is infra: the gate itself is broken" {
@@ -878,7 +878,7 @@ STUB
     STUB_VM_SHUTDOWN_RC=1 gate
     [ "$status" -eq 1 ]
     expect_rows shutdown fail
-    [[ "$(note_of shutdown)" == *"QEMU still running after 180s"* ]]
+    [[ "$(note_of shutdown)" == *"QEMU still running after 180s"* ]] || false
 }
 
 # --- evidence ---
@@ -988,11 +988,11 @@ stop_gate() { # signal
 @test "--accel hvf and nvmm warn that they are untested; the run still writes every row" {
     for a in hvf nvmm; do
         gate --accel "$a"
-        [[ "$output" == *"warning: --accel $a is untested; only kvm is"* ]]
+        [[ "$output" == *"warning: --accel $a is untested; only kvm is"* ]] || false
         [ "$(wc -l < "$EV/steps.tsv")" -eq 13 ]
     done
     gate --accel kvm
-    [[ "$output" != *"untested"* ]]
+    [[ "$output" != *"untested"* ]] || false
 }
 
 @test "usage errors exit 2 and write nothing" {
@@ -1006,7 +1006,7 @@ stop_gate() { # signal
     [ ! -s "$STUB_LOG" ]
     run "$SCRIPT" --help
     [ "$status" -eq 0 ]
-    [[ "$output" == *"usage: gate.sh"* ]]
+    [[ "$output" == *"usage: gate.sh"* ]] || false
 }
 
 # --- fix round 1 ---
@@ -1015,40 +1015,40 @@ stop_gate() { # signal
     STUB_BUILD_FAIL=base:guestfull gate
     [ "$status" -eq 1 ]
     expect_rows build-base fail
-    [[ "$(note_of build-base)" == "the guest's disk filled: "*"No space left on device"* ]]
+    [[ "$(note_of build-base)" == "the guest's disk filled: "*"No space left on device"* ]] || false
 }
 
 @test "Review Focus 4: the host below 2 GiB free at the failure is infra, whatever the log says" {
     GATE_BUILD_SPACE_AVAILABLE_KIB=$((1024 * 1024)) STUB_BUILD_FAIL=base:guestfull gate
     [ "$status" -eq 3 ]
     expect_rows build-base infra
-    [[ "$(note_of build-base)" == *"no space left on device"*"1 GiB free"* ]]
+    [[ "$(note_of build-base)" == *"no space left on device"*"1 GiB free"* ]] || false
     GATE_BUILD_SPACE_AVAILABLE_KIB=$((1024 * 1024)) STUB_BUILD_FAIL=layer:started gate
     [ "$status" -eq 3 ]
     expect_rows build-layer infra
-    [[ "$(note_of build-layer)" == *"the host's disk"*"1 GiB free"* ]]
+    [[ "$(note_of build-layer)" == *"the host's disk"*"1 GiB free"* ]] || false
 }
 
 @test "builds: a build that outlives GATE_BUILD_TIMEOUT before QEMU started is infra, after it a fail" {
     GATE_BUILD_TIMEOUT=2 STUB_BUILD_HANG=base gate
     [ "$status" -eq 3 ]
     expect_rows build-base infra
-    [[ "$(note_of build-base)" == *"did not finish within 2s"* ]]
+    [[ "$(note_of build-base)" == *"did not finish within 2s"* ]] || false
     GATE_BUILD_TIMEOUT=2 STUB_BUILD_HANG=layer:started gate
     [ "$status" -eq 1 ]
     expect_rows build-layer fail
-    [[ "$(note_of build-layer)" == *"did not finish within 2s"* ]]
+    [[ "$(note_of build-layer)" == *"did not finish within 2s"* ]] || false
 }
 
 @test "fetches: dev-install, or verify-changed-sources, outliving GATE_FETCH_TIMEOUT is infra" {
     GATE_FETCH_TIMEOUT=2 STUB_DEV_INSTALL_HANG=1 gate
     [ "$status" -eq 3 ]
     expect_rows plugin infra
-    [[ "$(note_of plugin)" == *"did not finish within 2s"* ]]
+    [[ "$(note_of plugin)" == *"did not finish within 2s"* ]] || false
     GATE_FETCH_TIMEOUT=2 STUB_VERIFY_HANG=1 gate
     [ "$status" -eq 3 ]
     expect_rows preflight infra
-    [[ "$(note_of preflight)" == *"did not finish within 2s"* ]]
+    [[ "$(note_of preflight)" == *"did not finish within 2s"* ]] || false
 }
 
 @test "the evidence dir may not be the work dir, above it, or inside what the gate deletes" {
@@ -1057,17 +1057,17 @@ stop_gate() { # signal
     run "$SCRIPT" --release 10.9 --work-dir "$BATS_TEST_TMPDIR/same" --evidence-dir "$BATS_TEST_TMPDIR/same" \
         --packer-cache "$BATS_TEST_TMPDIR/cache" --restarts 2 --ssh-port "$PORT"
     [ "$status" -eq 2 ]
-    [[ "$output" == *"holds the work dir"* ]]
+    [[ "$output" == *"holds the work dir"* ]] || false
     mkdir -p "$BATS_TEST_TMPDIR/above"
     run "$SCRIPT" --release 10.9 --work-dir "$BATS_TEST_TMPDIR/above/w" --evidence-dir "$BATS_TEST_TMPDIR/above" \
         --packer-cache "$BATS_TEST_TMPDIR/cache" --restarts 2 --ssh-port "$PORT"
     [ "$status" -eq 2 ]
-    [[ "$output" == *"holds the work dir"* ]]
+    [[ "$output" == *"holds the work dir"* ]] || false
     for m in vm box-layer packer-cache plugins; do
         run "$SCRIPT" --release 10.9 --work-dir "$WORK" --evidence-dir "$WORK/$m/ev" \
             --packer-cache "$BATS_TEST_TMPDIR/cache" --restarts 2 --ssh-port "$PORT"
         [ "$status" -eq 2 ] || { echo "$m: $status"; echo "$output"; false; }
-        [[ "$output" == *"is inside $WORK/$m"* ]]
+        [[ "$output" == *"is inside $WORK/$m"* ]] || false
         [ ! -e "$WORK/$m/ev/steps.tsv" ]
     done
     [ ! -s "$STUB_LOG" ]
@@ -1098,7 +1098,7 @@ stop_gate() { # signal
     : > "$BATS_TEST_TMPDIR/mine/vm/precious"
     run "$SCRIPT" --release 10.9 --work-dir "$BATS_TEST_TMPDIR/mine" --restarts 2 --ssh-port "$PORT"
     [ "$status" -eq 2 ]
-    [[ "$output" == *".guest-macosx-gate-work"* ]]
+    [[ "$output" == *".guest-macosx-gate-work"* ]] || false
     [ -f "$BATS_TEST_TMPDIR/mine/vm/precious" ]
     [ ! -e "$BATS_TEST_TMPDIR/mine/evidence" ]
     mkdir -p "$BATS_TEST_TMPDIR/new"
@@ -1213,15 +1213,15 @@ STUB
     STUB_BUILD_FAIL=base:killed gate
     [ "$status" -eq 3 ]
     expect_rows build-base infra
-    [[ "$(note_of build-base)" == *"was killed (status 137: out of memory, or another process)"* ]]
-    [[ "$(note_of build-base)" != *"did not finish"* ]]
+    [[ "$(note_of build-base)" == *"was killed (status 137: out of memory, or another process)"* ]] || false
+    [[ "$(note_of build-base)" != *"did not finish"* ]] || false
 }
 
 @test "a build that needed timeout's KILL (137 at its limit) is a timeout" {
     GATE_BUILD_TIMEOUT=2 GATE_KILL_AFTER=1 STUB_HANG_IGNORE_TERM=1 STUB_BUILD_HANG=base:started gate
     [ "$status" -eq 1 ]
     expect_rows build-base fail
-    [[ "$(note_of build-base)" == *"did not finish within 2s"* ]]
+    [[ "$(note_of build-base)" == *"did not finish within 2s"* ]] || false
 }
 
 # --- 10.6 (--release 10.6) ---
@@ -1273,7 +1273,7 @@ sl_gate() {
     STUB_VM_FAIL=health:2 sl_gate
     [ "$status" -eq 1 ]
     NA=$SL_NA expect_rows restart-1 fail
-    [[ "$(note_of restart-1)" == "restart 1 of 2: health failed -- "* ]]
+    [[ "$(note_of restart-1)" == "restart 1 of 2: health failed -- "* ]] || false
     STUB_BUILD_FAIL=base:started sl_gate
     [ "$status" -eq 1 ]
     NA=$SL_NA expect_rows build-base fail
@@ -1307,13 +1307,13 @@ sl_gate() {
         [ "$status" -eq 2 ] || { echo "$args: $status"; false; }
     done
     run "$SCRIPT" --release 10.4
-    [[ "$output" == *"--release wants both, 10.9 or 10.6 (got 10.4)"* ]]
+    [[ "$output" == *"--release wants both, 10.9 or 10.6 (got 10.4)"* ]] || false
     run "$SCRIPT" --release 10.6
-    [[ "$output" == *"--release 10.6 needs --installer, your own retail 10.6 install disc image"* ]]
+    [[ "$output" == *"--release 10.6 needs --installer, your own retail 10.6 install disc image"* ]] || false
     run "$SCRIPT" --release 10.9 --installer "$BATS_TEST_TMPDIR/disc.iso"
-    [[ "$output" == *"--installer is for 10.6: not for --release 10.9"* ]]
+    [[ "$output" == *"--installer is for 10.6: not for --release 10.9"* ]] || false
     run "$SCRIPT" --release 10.6 --installer "$BATS_TEST_TMPDIR/no-such-disc.iso"
-    [[ "$output" == *"--installer $BATS_TEST_TMPDIR/no-such-disc.iso is not a readable file"* ]]
+    [[ "$output" == *"--installer $BATS_TEST_TMPDIR/no-such-disc.iso is not a readable file"* ]] || false
     [ ! -e "$EV/steps.tsv" ]
     [ "$(grep -c '^packer\|^vm ' "$STUB_LOG")" -eq 0 ]
 }
@@ -1339,7 +1339,7 @@ both() {
 @test "both: a plain bin/gate.sh with no disc refuses, naming both ways on, and nothing runs" {
     both
     [ "$status" -eq 2 ]
-    [[ "$output" == *"a plain gate.sh gates both releases, 10.9 then 10.6, and 10.6 needs your own retail 10.6 install disc: pass --installer <disc image>, or gate one release on purpose with --release 10.9 or --release 10.6 --installer <disc image>"* ]]
+    [[ "$output" == *"a plain gate.sh gates both releases, 10.9 then 10.6, and 10.6 needs your own retail 10.6 install disc: pass --installer <disc image>, or gate one release on purpose with --release 10.9 or --release 10.6 --installer <disc image>"* ]] || false
     [ ! -e "$EV" ]
     [ ! -s "$STUB_LOG" ]
 }
@@ -1359,7 +1359,7 @@ both() {
     [ ! -e "$WORK/evidence/steps.tsv" ]
     # in that order: 10.9's base and layer, then 10.6's base
     [ "$(grep '^packer build' "$STUB_LOG" | sed 's/.*templates\/\([a-z-]*\) .*/\1/' | tr '\n' ' ')" = "mavericks mavericks-aquatransport snowleopard " ]
-    [[ "$output" == *"Passed: both releases"* ]]
+    [[ "$output" == *"Passed: both releases"* ]] || false
     # --release both says the same thing
     rm -f "$STUB_DIR"/count.*
     both --release both --installer "$BATS_TEST_TMPDIR/disc.iso"
@@ -1372,21 +1372,21 @@ both() {
     [ "$status" -eq 1 ]
     EV=$WORK/evidence/10.9 expect_rows versions fail
     EV=$WORK/evidence/10.6 NA=$SL_NA expect_rows
-    [[ "$(head -n 1 "$WORK/evidence/summary.md")" == "Not passed: 10.9: Failed: versions -- "*"; 10.6: Passed: every step that applies, 2 restarts; not applicable: build-layer, reach" ]]
+    [[ "$(head -n 1 "$WORK/evidence/summary.md")" == "Not passed: 10.9: Failed: versions -- "*"; 10.6: Passed: every step that applies, 2 restarts; not applicable: build-layer, reach" ]] || false
     rm -f "$STUB_DIR"/count.*
     # host-uuid runs once a release: its second call is 10.6's
     STUB_VM_FAIL=host-uuid:2 both --installer "$BATS_TEST_TMPDIR/disc.iso"
     [ "$status" -eq 1 ]
     EV=$WORK/evidence/10.9 expect_rows
     EV=$WORK/evidence/10.6 NA=$SL_NA expect_rows host-uuid fail
-    [[ "$(head -n 1 "$WORK/evidence/summary.md")" == "Not passed: 10.9: Passed: every step, 2 restarts; 10.6: Failed: host-uuid -- "* ]]
+    [[ "$(head -n 1 "$WORK/evidence/summary.md")" == "Not passed: 10.9: Passed: every step, 2 restarts; 10.6: Failed: host-uuid -- "* ]] || false
     grep -qxF "## 10.6 (exit 1)" "$WORK/evidence/summary.md"
 }
 
 @test "both: a release that could not run is no pass either: status 3 when nothing failed" {
     STUB_VM_BOOT_RC=3 both --installer "$BATS_TEST_TMPDIR/disc.iso"
     [ "$status" -eq 3 ]
-    [[ "$(head -n 1 "$WORK/evidence/summary.md")" == "Not passed: 10.9: No clear regression: CI itself failed at boot -- "*"; 10.6: No clear regression: CI itself failed at boot -- "* ]]
+    [[ "$(head -n 1 "$WORK/evidence/summary.md")" == "Not passed: 10.9: No clear regression: CI itself failed at boot -- "*"; 10.6: No clear regression: CI itself failed at boot -- "* ]] || false
 }
 
 @test "both: --evidence-dir holds each release's evidence beside the combined summary" {
@@ -1394,7 +1394,7 @@ both() {
     [ "$status" -eq 0 ]
     [ -f "$BATS_TEST_TMPDIR/ev/10.9/steps.tsv" ]
     [ -f "$BATS_TEST_TMPDIR/ev/10.6/steps.tsv" ]
-    [[ "$(head -n 1 "$BATS_TEST_TMPDIR/ev/summary.md")" == "Passed: both releases -- "* ]]
+    [[ "$(head -n 1 "$BATS_TEST_TMPDIR/ev/summary.md")" == "Passed: both releases -- "* ]] || false
 }
 
 @test "both: interrupted during 10.9, its run stops as ever, 10.6 never starts, and the verdict says so" {
@@ -1436,7 +1436,7 @@ os.execv(sys.argv[1], sys.argv[1:])' "$SCRIPT" --installer "$BATS_TEST_TMPDIR/di
         for r in 10.6 both; do
             run "$SCRIPT" --work-dir "$WORK" --release "$r" --installer "$WORK/$d/disc.iso" --ssh-port "$PORT"
             [ "$status" -eq 2 ] || { echo "$d $r: $status $output"; false; }
-            [[ "$output" == *"--installer $WORK/$d/disc.iso is inside the work dir $WORK, which the gate removes things in; keep your disc elsewhere"* ]]
+            [[ "$output" == *"--installer $WORK/$d/disc.iso is inside the work dir $WORK, which the gate removes things in; keep your disc elsewhere"* ]] || false
             [ "$(cat "$WORK/$d/disc.iso")" = disc ]
         done
     done
@@ -1451,7 +1451,7 @@ os.execv(sys.argv[1], sys.argv[1:])' "$SCRIPT" --installer "$BATS_TEST_TMPDIR/di
     for l in disc.iso rel.iso; do
         run "$SCRIPT" --work-dir "$WORK" --release 10.6 --installer "$BATS_TEST_TMPDIR/elsewhere/$l" --ssh-port "$PORT"
         [ "$status" -eq 2 ] || { echo "$l: $status $output"; false; }
-        [[ "$output" == *"--installer $WORK/base/disc.iso is inside the work dir"* ]]
+        [[ "$output" == *"--installer $WORK/base/disc.iso is inside the work dir"* ]] || false
     done
     [ "$(cat "$WORK/base/disc.iso")" = disc ]
     # a link to a disc outside it is fine, and packer is given the disc itself
@@ -1468,7 +1468,7 @@ os.execv(sys.argv[1], sys.argv[1:])' "$SCRIPT" --installer "$BATS_TEST_TMPDIR/di
     [ "$status" -eq 3 ]
     [ ! -e "$WORK/evidence/10.6/steps.tsv" ]
     # the 10.9 run was stopped, never left to hang to its end: no row of it is a pass after the signal
-    [[ "$(head -n 1 "$WORK/evidence/summary.md")" == "Not passed: 10.9: "*"; 10.6: did not run (interrupted)" ]]
+    [[ "$(head -n 1 "$WORK/evidence/summary.md")" == "Not passed: 10.9: "*"; 10.6: did not run (interrupted)" ]] || false
     [ ! -e "$STUB_DIR/hanging" ] || { run kill -0 "$(cat "$STUB_DIR/hang.pid")"; [ "$status" -ne 0 ]; }
     [ "$(grep -c '^vm restart' "$STUB_LOG")" -eq 0 ]
 }
@@ -1482,7 +1482,7 @@ os.execv(sys.argv[1], sys.argv[1:])' "$SCRIPT" --installer "$BATS_TEST_TMPDIR/di
     for r in 10.6 both; do
         run "$SCRIPT" --work-dir "$WORK" --release "$r" --installer "$BATS_TEST_TMPDIR/out/sym/y" --ssh-port "$PORT"
         [ "$status" -eq 2 ] || { echo "$r: $status $output"; false; }
-        [[ "$output" == *"--installer $WORK/base/disc.iso is inside the work dir"* ]]
+        [[ "$output" == *"--installer $WORK/base/disc.iso is inside the work dir"* ]] || false
     done
     [ "$(cat "$WORK/base/disc.iso")" = disc ]
     [ ! -s "$STUB_LOG" ]

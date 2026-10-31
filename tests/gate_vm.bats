@@ -163,7 +163,7 @@ teardown() {
     marker="$BATS_TEST_TMPDIR/ran"
     STUB_SSH_UP=1 run "$STUBS/ssh" host "touch $marker"
     [ ! -e "$marker" ]
-    [[ "$PATH" != *sbin* ]]
+    [[ "$PATH" != *sbin* ]] || false
     # scp: nothing is copied or executed locally
     echo data > "$BATS_TEST_TMPDIR/src"
     STUB_SSH_UP=1 run "$STUBS/scp" "$BATS_TEST_TMPDIR/src" "$BATS_TEST_TMPDIR/dst"
@@ -187,11 +187,11 @@ teardown() {
     run "$SCRIPT" boot "$STATE" "$BOX"
     [ "$status" -eq 0 ]
     argv=$(cat "$STUB_QEMU_ARGV")
-    [[ "$argv" == *$'\n-accel\nkvm\n'* ]]
-    [[ "$argv" == *"q35,vmport=off"* ]]
-    [[ "$argv" == *$'\n-cpu\nPenryn,vendor=GenuineIntel,+ssse3,+sse4.1,+sse4.2\n'* ]]
-    [[ "$argv" == *$'\n-m\n4096M\n'* ]]
-    [[ "$argv" == *$'\n-smp\n2\n'* ]]
+    [[ "$argv" == *$'\n-accel\nkvm\n'* ]] || false
+    [[ "$argv" == *"q35,vmport=off"* ]] || false
+    [[ "$argv" == *$'\n-cpu\nPenryn,vendor=GenuineIntel,+ssse3,+sse4.1,+sse4.2\n'* ]] || false
+    [[ "$argv" == *$'\n-m\n4096M\n'* ]] || false
+    [[ "$argv" == *$'\n-smp\n2\n'* ]] || false
     grep -qxF "if=pflash,format=raw,unit=0,readonly=on,file=$BOX/OVMF_CODE.fd" "$STUB_QEMU_ARGV"
     grep -qxF "if=pflash,format=raw,unit=1,snapshot=on,file=$BOX/OVMF_VARS.fd" "$STUB_QEMU_ARGV"
     grep -qxF "id=opencore,if=none,format=raw,snapshot=on,file=$BOX/opencore.img" "$STUB_QEMU_ARGV"
@@ -210,7 +210,7 @@ teardown() {
     grep -qxF -- "-daemonize" "$STUB_QEMU_ARGV"
     grep -qxF -- "-display" "$STUB_QEMU_ARGV"
     grep -q "^qemu-img create -f qcow2 -F qcow2 -b $BOX/box_0.img $STATE/overlay.qcow2" "$STUB_LOG"
-    [[ "$(ls -l "$STATE/ssh-key")" == -rw-------* ]]
+    [[ "$(ls -l "$STATE/ssh-key")" == -rw-------* ]] || false
     cmp "$STATE/ssh-key" "$REPO/templates/mavericks/vagrant-standard-insecure-first-boot-only.key.rsa"
 }
 
@@ -219,16 +219,16 @@ teardown() {
     run "$SCRIPT" boot "$STATE" "$BOX"
     [ "$status" -eq 0 ]
     first=$(cat "$STATE/uuid")
-    [[ "$first" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]
-    [[ "$(cat "$STUB_QEMU_ARGV")" == *$'\n-uuid\n'"$first"$'\n'* ]]
+    [[ "$first" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] || false
+    [[ "$(cat "$STUB_QEMU_ARGV")" == *$'\n-uuid\n'"$first"$'\n'* ]] || false
     [ "$(grep -cxF -- -uuid "$STUB_QEMU_ARGV")" -eq 1 ]
-    [[ "$output" == *"QEMU's -uuid: $first"* ]]
+    [[ "$output" == *"QEMU's -uuid: $first"* ]] || false
     # a second boot is a fresh guest on a fresh overlay: a machine of its own
     rm -f "$STATE/qemu.pid"
     run "$SCRIPT" boot "$STATE" "$BOX"
     [ "$status" -eq 0 ]
     [ "$(cat "$STATE/uuid")" != "$first" ]
-    [[ "$(cat "$STUB_QEMU_ARGV")" == *$'\n-uuid\n'"$(cat "$STATE/uuid")"$'\n'* ]]
+    [[ "$(cat "$STUB_QEMU_ARGV")" == *$'\n-uuid\n'"$(cat "$STATE/uuid")"$'\n'* ]] || false
 }
 
 @test "boot: the box's devices, the one shape (docs/decisions/0035): OpenCore on virtio-blk, USB for input alone" {
@@ -257,8 +257,8 @@ usb-tablet,bus=ehci.0"
     run "$SCRIPT" boot "$STATE" "$BOX"
     [ "$status" -eq 0 ]
     argv=$(cat "$STUB_QEMU_ARGV")
-    [[ "$argv" == *$'\n-accel\nhvf\n'* ]]
-    [[ "$argv" == *$'\n-cpu\nSandyBridge\n'* ]]
+    [[ "$argv" == *$'\n-accel\nhvf\n'* ]] || false
+    [[ "$argv" == *$'\n-cpu\nSandyBridge\n'* ]] || false
     grep -qxF "user,id=net0,hostfwd=tcp:127.0.0.1:2999-:22" "$STUB_QEMU_ARGV"
     grep -q 'vagrant@127.0.0.1' "$STUB_LOG"
     grep -q -- '-p 2999' "$STUB_LOG"
@@ -268,7 +268,7 @@ usb-tablet,bus=ehci.0"
     echo "$OWNED" > "$STATE/qemu.pid"
     run "$SCRIPT" boot "$STATE" "$BOX"
     [ "$status" -eq 3 ]
-    [[ "$output" == *"$OWNED"* ]]
+    [[ "$output" == *"$OWNED"* ]] || false
     [ ! -e "$STUB_QEMU_ARGV" ]
 }
 
@@ -284,7 +284,7 @@ usb-tablet,bus=ehci.0"
     echo "$OWNED" > "$STATE/qemu.pid"
     run "$SCRIPT" boot "$STATE" "$BOX"
     [ "$status" -eq 0 ]
-    [[ "$output" == *"stale qemu.pid names pid $OWNED, which is not QEMU"* ]]
+    [[ "$output" == *"stale qemu.pid names pid $OWNED, which is not QEMU"* ]] || false
     [ -e "$STUB_QEMU_ARGV" ]
 }
 
@@ -292,7 +292,7 @@ usb-tablet,bus=ehci.0"
     export STUB_QEMU_PID=$REAPED STUB_PS_QEMU=$REAPED GATE_SSH_TIMEOUT=30
     run "$SCRIPT" boot "$STATE" "$BOX"
     [ "$status" -eq 1 ]
-    [[ "$output" == *"exited before SSH answered"* ]]
+    [[ "$output" == *"exited before SSH answered"* ]] || false
 }
 
 @test "boot: a state directory that cannot be created is status 3" {
@@ -308,7 +308,7 @@ usb-tablet,bus=ehci.0"
     done
     run "$SCRIPT" screenshot "$BATS_TEST_TMPDIR/nonexistent" "$BATS_TEST_TMPDIR/o.png"
     [ "$status" -eq 0 ]
-    [[ "$output" == *warning* ]]
+    [[ "$output" == *warning* ]] || false
 }
 
 @test "a deep state directory still gets a short QMP socket path" {
@@ -328,12 +328,12 @@ usb-tablet,bus=ehci.0"
     rm "$BOX/opencore.img"
     run "$SCRIPT" boot "$STATE" "$BOX"
     [ "$status" -eq 3 ]
-    [[ "$output" == *opencore.img* ]]
+    [[ "$output" == *opencore.img* ]] || false
     : > "$BOX/opencore.img"
     rm "$GATE_KVM"
     run "$SCRIPT" boot "$STATE" "$BOX"
     [ "$status" -eq 3 ]
-    [[ "$output" == *"$GATE_KVM"* ]]
+    [[ "$output" == *"$GATE_KVM"* ]] || false
     [ ! -e "$STUB_QEMU_ARGV" ]
 }
 
@@ -349,10 +349,10 @@ usb-tablet,bus=ehci.0"
     run "$SCRIPT" boot "$STATE" "$BOX"
     [ "$status" -eq 1 ]
     [ "$SECONDS" -lt 10 ]
-    [[ "$output" == *"SSH did not answer within 2s"* ]]
-    [[ "$output" == *"serial line 60"* ]]
-    [[ "$output" == *"serial line 21"* ]]
-    [[ "$output" != *"serial line 20"$'\n'* ]]
+    [[ "$output" == *"SSH did not answer within 2s"* ]] || false
+    [[ "$output" == *"serial line 60"* ]] || false
+    [[ "$output" == *"serial line 21"* ]] || false
+    [[ "$output" != *"serial line 20"$'\n'* ]] || false
 }
 
 @test "ssh: the options, the key, the command, and no ~/.ssh/config written" {
@@ -360,16 +360,16 @@ usb-tablet,bus=ehci.0"
     run "$SCRIPT" ssh "$STATE" uname -a
     [ "$status" -eq 0 ]
     line=$(grep '^ssh ' "$STUB_LOG" | tail -n 1)
-    [[ "$line" == *"-i $STATE/ssh-key"* ]]
-    [[ "$line" == *"-p 2223"* ]]
-    [[ "$line" == *"StrictHostKeyChecking=no"* ]]
-    [[ "$line" == *"UserKnownHostsFile=/dev/null"* ]]
-    [[ "$line" == *"IdentitiesOnly=yes"* ]]
-    [[ "$line" == *"ConnectTimeout=10"* ]]
-    [[ "$line" == *"LogLevel=ERROR"* ]]
-    [[ "$line" == *"ServerAliveInterval=15"* ]]
-    [[ "$line" == *"ServerAliveCountMax=8"* ]]
-    [[ "$line" == *"vagrant@127.0.0.1 uname -a" ]]
+    [[ "$line" == *"-i $STATE/ssh-key"* ]] || false
+    [[ "$line" == *"-p 2223"* ]] || false
+    [[ "$line" == *"StrictHostKeyChecking=no"* ]] || false
+    [[ "$line" == *"UserKnownHostsFile=/dev/null"* ]] || false
+    [[ "$line" == *"IdentitiesOnly=yes"* ]] || false
+    [[ "$line" == *"ConnectTimeout=10"* ]] || false
+    [[ "$line" == *"LogLevel=ERROR"* ]] || false
+    [[ "$line" == *"ServerAliveInterval=15"* ]] || false
+    [[ "$line" == *"ServerAliveCountMax=8"* ]] || false
+    [[ "$line" == *"vagrant@127.0.0.1 uname -a" ]] || false
     [ ! -e "$HOME/.ssh" ]
 }
 
@@ -387,11 +387,11 @@ STUB
     run "$SCRIPT" put "$STATE" /tmp/local.txt /Users/vagrant/gate/x
     [ "$status" -eq 0 ]
     line=$(grep '^scp ' "$STUB_LOG")
-    [[ "$line" == *"-i $STATE/ssh-key"* ]]
-    [[ "$line" == *"-P 2223"* ]]
-    [[ "$line" == *"StrictHostKeyChecking=no"* ]]
-    [[ "$line" == *"ServerAliveInterval=15"* ]]
-    [[ "$line" == *"/tmp/local.txt vagrant@127.0.0.1:/Users/vagrant/gate/x" ]]
+    [[ "$line" == *"-i $STATE/ssh-key"* ]] || false
+    [[ "$line" == *"-P 2223"* ]] || false
+    [[ "$line" == *"StrictHostKeyChecking=no"* ]] || false
+    [[ "$line" == *"ServerAliveInterval=15"* ]] || false
+    [[ "$line" == *"/tmp/local.txt vagrant@127.0.0.1:/Users/vagrant/gate/x" ]] || false
     [ ! -e "$HOME/.ssh" ]
 }
 
@@ -402,7 +402,7 @@ STUB
     [ "$status" -eq 0 ]
     grep -q 'sysctl -n kern.boottime' "$STUB_LOG"
     grep -q 'sudo /usr/local/sbin/guest-macosx-shutdown -r' "$STUB_LOG"
-    [[ "$output" != *refused* ]]
+    [[ "$output" != *refused* ]] || false
 }
 
 @test "restart, shutdown: through the guest's own guest-macosx-shutdown, or 10.9 can stall 20 s" {
@@ -415,7 +415,7 @@ STUB
     run "$SCRIPT" restart "$STATE"
     [ "$status" -eq 0 ]
     line=$(grep 'guest-macosx-shutdown' "$STUB_LOG")
-    [[ "$line" == *" sudo /usr/local/sbin/guest-macosx-shutdown -r" ]]
+    [[ "$line" == *" sudo /usr/local/sbin/guest-macosx-shutdown -r" ]] || false
     run grep -q 'shutdown -r now\|killall' "$STUB_LOG"
     [ "$status" -eq 1 ]
     : > "$STUB_LOG"
@@ -425,7 +425,7 @@ STUB
     run "$SCRIPT" shutdown "$STATE"
     [ "$status" -eq 0 ]
     line=$(grep 'guest-macosx-shutdown' "$STUB_LOG")
-    [[ "$line" == *" sudo /usr/local/sbin/guest-macosx-shutdown -h" ]]
+    [[ "$line" == *" sudo /usr/local/sbin/guest-macosx-shutdown -h" ]] || false
     run grep -q 'shutdown -h now\|killall' "$STUB_LOG"
     [ "$status" -eq 1 ]
 }
@@ -438,7 +438,7 @@ STUB
     printf '%s\n' 1000 2000 > "$STUB_BOOTTIMES"
     run "$SCRIPT" restart "$STATE"
     [ "$status" -eq 0 ]
-    [[ "$output" == *"the guest said: guest-macosx-shutdown: UserEventAgent (LoginWindow) still dirty after 30s; shutting down anyway"* ]]
+    [[ "$output" == *"the guest said: guest-macosx-shutdown: UserEventAgent (LoginWindow) still dirty after 30s; shutting down anyway"* ]] || false
 }
 
 @test "restart, shutdown: the guest command outlasts guest-macosx-shutdown's three 30 s waits" {
@@ -464,7 +464,7 @@ STUB
     printf '%s\n' 1000 1001 > "$STUB_BOOTTIMES"
     run "$SCRIPT" restart "$STATE"
     [ "$status" -eq 1 ]
-    [[ "$output" == *"did not restart"* ]]
+    [[ "$output" == *"did not restart"* ]] || false
 }
 
 @test "restart, shutdown: a sudo shutdown the guest refuses fails at once with its status" {
@@ -473,11 +473,11 @@ STUB
     SECONDS=0
     run "$SCRIPT" restart "$STATE"
     [ "$status" -eq 1 ]
-    [[ "$output" == *"sudo /usr/local/sbin/guest-macosx-shutdown -r failed in the guest (status 5)"* ]]
+    [[ "$output" == *"sudo /usr/local/sbin/guest-macosx-shutdown -r failed in the guest (status 5)"* ]] || false
     echo "$OWNED" > "$STATE/qemu.pid"
     run "$SCRIPT" shutdown "$STATE"
     [ "$status" -eq 1 ]
-    [[ "$output" == *"sudo /usr/local/sbin/guest-macosx-shutdown -h failed in the guest (status 5)"* ]]
+    [[ "$output" == *"sudo /usr/local/sbin/guest-macosx-shutdown -h failed in the guest (status 5)"* ]] || false
     [ "$SECONDS" -lt 10 ]
 }
 
@@ -488,7 +488,7 @@ STUB
     run "$SCRIPT" restart "$STATE"
     [ "$status" -eq 1 ]
     [ "$SECONDS" -lt 10 ]
-    [[ "$output" == *"restart: the guest answered on the same boot (did not restart)"* ]]
+    [[ "$output" == *"restart: the guest answered on the same boot (did not restart)"* ]] || false
 }
 
 @test "restart: no answer after the shutdown is status 1, never came back" {
@@ -496,7 +496,7 @@ STUB
     printf '%s\n' 1000 down > "$STUB_BOOTTIMES"
     run "$SCRIPT" restart "$STATE"
     [ "$status" -eq 1 ]
-    [[ "$output" == *"restart: SSH never came back within 2s"* ]]
+    [[ "$output" == *"restart: SSH never came back within 2s"* ]] || false
 }
 
 @test "restart: a usec is never mistaken for sec" {
@@ -507,7 +507,7 @@ echo "{ sec = 1000, usec = 2000 } Sun"
 STUB
     run "$SCRIPT" restart "$STATE"
     [ "$status" -eq 1 ]
-    [[ "$output" == *"did not restart"* ]]
+    [[ "$output" == *"did not restart"* ]] || false
 }
 
 @test "restart: a guest whose boottime cannot be read is status 1" {
@@ -518,7 +518,7 @@ echo garbage
 STUB
     run "$SCRIPT" restart "$STATE"
     [ "$status" -eq 1 ]
-    [[ "$output" == *"kern.boottime"* ]]
+    [[ "$output" == *"kern.boottime"* ]] || false
 }
 
 @test "shutdown: waits for the QEMU pid to vanish" {
@@ -536,20 +536,20 @@ STUB
     echo "$OWNED" > "$STATE/qemu.pid"
     run "$SCRIPT" shutdown "$STATE"
     [ "$status" -eq 1 ]
-    [[ "$output" == *"shutdown: QEMU still running after 2s"* ]]
+    [[ "$output" == *"shutdown: QEMU still running after 2s"* ]] || false
 }
 
 @test "screenshot: a QMP screendump through python3, and a failure is only a warning" {
     run "$SCRIPT" screenshot "$STATE" "$BATS_TEST_TMPDIR/out.png"
     [ "$status" -eq 0 ]
-    [[ "$output" == *"no QMP socket"* ]]
+    [[ "$output" == *"no QMP socket"* ]] || false
     echo /tmp/gate-qmp.example > "$STATE/qmp.dir"
     run "$SCRIPT" screenshot "$STATE" "$BATS_TEST_TMPDIR/out.png"
     [ "$status" -eq 0 ]
     grep -q "python3 .*/tmp/gate-qmp.example/qmp.sock" "$STUB_LOG"
     STUB_PY_FAIL=1 run "$SCRIPT" screenshot "$STATE" "$BATS_TEST_TMPDIR/out.png"
     [ "$status" -eq 0 ]
-    [[ "$output" == *warning* ]]
+    [[ "$output" == *warning* ]] || false
 }
 
 @test "kill: signals the owned pid through TERM and KILL" {
@@ -606,7 +606,7 @@ STUB
         run "$SCRIPT" boot "$STATE" "$BOX"
         [ "$status" -eq 0 ] || { echo "$r: $output"; false; }
         [ "$(cat "$STATE/release")" = "$r" ]
-        [[ "$output" == *"the box is Mac OS X $r ($BOX/Vagrantfile)"* ]]
+        [[ "$output" == *"the box is Mac OS X $r ($BOX/Vagrantfile)"* ]] || false
     done
 }
 
@@ -614,21 +614,21 @@ STUB
     rm "$BOX/Vagrantfile"
     run "$SCRIPT" boot "$STATE" "$BOX"
     [ "$status" -eq 3 ]
-    [[ "$output" == *"the box has no Vagrantfile ($BOX)"* ]]
+    [[ "$output" == *"the box has no Vagrantfile ($BOX)"* ]] || false
     printf 'Vagrant.configure("2") do |config|\nend\n' > "$BOX/Vagrantfile"
     run "$SCRIPT" boot "$STATE" "$BOX"
     [ "$status" -eq 3 ]
-    [[ "$output" == *"$BOX/Vagrantfile names no release (no '# guest-macosx-release: ' line): a box built before the gate knew releases; rebuild it"* ]]
+    [[ "$output" == *"$BOX/Vagrantfile names no release (no '# guest-macosx-release: ' line): a box built before the gate knew releases; rebuild it"* ]] || false
     box_release 10.9
     echo '# guest-macosx-release: 10.6' >> "$BOX/Vagrantfile"
     run "$SCRIPT" boot "$STATE" "$BOX"
     [ "$status" -eq 3 ]
-    [[ "$output" == *"$BOX/Vagrantfile names more than one release"* ]]
+    [[ "$output" == *"$BOX/Vagrantfile names more than one release"* ]] || false
     for r in 10.4 '10.9 ' 10.9.5 ''; do
         box_release "$r"
         run "$SCRIPT" boot "$STATE" "$BOX"
         [ "$status" -eq 3 ] || { echo "'$r': $output"; false; }
-        [[ "$output" == *"$BOX/Vagrantfile names release '$r'; gate-vm.sh knows 10.9 or 10.6"* ]]
+        [[ "$output" == *"$BOX/Vagrantfile names release '$r'; gate-vm.sh knows 10.9 or 10.6"* ]] || false
     done
     [ ! -e "$STUB_QEMU_ARGV" ]
 }
@@ -637,18 +637,18 @@ STUB
     export STUB_SSH_UP=1
     run "$SCRIPT" boot "$STATE" "$BOX"
     [ "$status" -eq 0 ]
-    [[ "$(cat "$STUB_QEMU_ARGV")" == *$'\n-smp\n2\n'* ]]
+    [[ "$(cat "$STUB_QEMU_ARGV")" == *$'\n-smp\n2\n'* ]] || false
     box_release 10.6
     rm -f "$STATE/qemu.pid"
     run "$SCRIPT" boot "$STATE" "$BOX"
     [ "$status" -eq 0 ]
-    [[ "$(cat "$STUB_QEMU_ARGV")" == *$'\n-smp\n1\n'* ]]
+    [[ "$(cat "$STUB_QEMU_ARGV")" == *$'\n-smp\n1\n'* ]] || false
     for r in 10.9 10.6; do
         box_release "$r"
         rm -f "$STATE/qemu.pid"
         GATE_SMP=3 run "$SCRIPT" boot "$STATE" "$BOX"
         [ "$status" -eq 0 ]
-        [[ "$(cat "$STUB_QEMU_ARGV")" == *$'\n-smp\n3\n'* ]]
+        [[ "$(cat "$STUB_QEMU_ARGV")" == *$'\n-smp\n3\n'* ]] || false
     done
 }
 
@@ -702,7 +702,7 @@ STUB
     run "$SCRIPT" restart "$STATE"
     [ "$status" -eq 0 ]
     line=$(grep 'shutdown' "$STUB_LOG")
-    [[ "$line" == *" sudo /sbin/shutdown -r now" ]]
+    [[ "$line" == *" sudo /sbin/shutdown -r now" ]] || false
     run grep -q 'guest-macosx-shutdown' "$STUB_LOG"
     [ "$status" -eq 1 ]
     : > "$STUB_LOG"
@@ -712,13 +712,13 @@ STUB
     run "$SCRIPT" shutdown "$STATE"
     [ "$status" -eq 0 ]
     line=$(grep 'shutdown' "$STUB_LOG")
-    [[ "$line" == *" sudo /sbin/shutdown -h now" ]]
+    [[ "$line" == *" sudo /sbin/shutdown -h now" ]] || false
     run grep -q 'guest-macosx-shutdown' "$STUB_LOG"
     [ "$status" -eq 1 ]
     # a refusal names the command that was refused
     STUB_SHUTDOWN_RC=5 run "$SCRIPT" restart "$STATE"
     [ "$status" -eq 1 ]
-    [[ "$output" == *"sudo /sbin/shutdown -r now failed in the guest (status 5)"* ]]
+    [[ "$output" == *"sudo /sbin/shutdown -r now failed in the guest (status 5)"* ]] || false
 }
 
 @test "ssh, put, restart, shutdown: a state dir with no release, or a release gate-vm.sh does not know, is a usage error" {
@@ -742,7 +742,7 @@ STUB
         STUB_IDENTITY=$identity run "$SCRIPT" kill "$STATE"
         [ "$(grep -c '^kill ' "$STUB_LOG")" -eq 0 ]
         [ "$status" -ne 0 ]
-        [[ "$output" == *ownership* ]]
+        [[ "$output" == *ownership* ]] || false
     done
 }
 
