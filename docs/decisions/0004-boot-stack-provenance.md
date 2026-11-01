@@ -39,7 +39,7 @@ from a Tier 2 artifact does not launder it.
 | **HFS+ driver** `OpenHfsPlus.efi` | **0** | the same (`Staging/OpenHfsPlus`, in the default target) | OpenCorePkg `1.0.7` |
 | **Config** `assets/firmware/config.plist` | **0** | ours, derived from 1.0.7's `Sample.plist`; every divergence explained in `assets/firmware/README.md` | this repository |
 | **Kext** `Lilu.kext` | **1** | acidanthera's release zip | Lilu **1.7.2**, zip `53967d7d…` |
-| **Kext** `VirtualSMC.kext` | **1** | acidanthera's release zip | VirtualSMC **1.3.7**, zip `12f1d379…` |
+| **Kext** `VirtualSMC.kext` | **1** | acidanthera's release zip | VirtualSMC **1.3.8**, zip `2e29a8aa…` |
 | **EFI image** `opencore.img` | **0** | a 192 MiB GPT disk with one FAT32 EFI System Partition, written by `internal/diskimg` with no loop device, no mount and no root | assembled from the rows above |
 
 **No Tier 2 row.** That is the point of the table.

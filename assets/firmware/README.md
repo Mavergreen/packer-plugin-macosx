@@ -164,7 +164,7 @@ boot works without `FakeSMC-32.kext`: it was redundant
 | Kext | Release | Why this version |
 |---|---|---|
 | `Lilu` | 1.7.2 | The current release as of 2026-09-17. Pinned to the exact tag, never `latest`. |
-| `VirtualSMC` | 1.3.7 | The current release as of 2026-09-17, and it requires Lilu ≥ 1.2.0, which 1.7.2 satisfies. |
+| `VirtualSMC` | 1.3.8 | The current release as of 2026-10-31, and it requires Lilu ≥ 1.2.0, which 1.7.2 satisfies. 1.3.8's only source change from 1.3.7 is in `SMCBatteryManager`, which we do not ship. |
 
 These are the only things in the assembled EFI image that are not built from
 source: **Tier 1**, acidanthera release binaries, pinned by tag and by
@@ -176,7 +176,7 @@ concretely, by reading each `Contents/Info.plist` rather than by assuming:
 
 ```
 Lilu 1.7.2        OSBundleLibraries_x86_64: com.apple.kpi.* = 10.0.0
-VirtualSMC 1.3.7  OSBundleLibraries_x86_64: com.apple.kpi.* = 10.0.0
+VirtualSMC 1.3.8  OSBundleLibraries_x86_64: com.apple.kpi.* = 10.0.0
                                             as.vit9696.Lilu = 1.2.0
 ```
 
