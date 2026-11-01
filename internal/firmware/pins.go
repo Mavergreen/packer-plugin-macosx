@@ -11,6 +11,7 @@ package firmware
 
 import (
 	"fmt"
+	"path"
 	"slices"
 	"strings"
 
@@ -21,7 +22,7 @@ import (
 // (docs/decisions/0004): the same sources, translated by the same
 // compiler, in the same build directory, give the same bytes.
 const (
-	OCVersion     = "1.0.7"
+	OCVersion     = "1.0.8"
 	OCBuildCommit = "e9ed49cb7a4f7fa2830c024a13d63de27c2e0d1a"
 	AudkCommit    = "0672a009e9ca85753d240324d761341adf0291b3"
 
@@ -189,12 +190,17 @@ func ShipNames() []string {
 // CheckPins checks every source the firmware reads: the registry has it
 // pinned to a real checksum (Lookup refuses TOFU), and, for a source
 // pinned to a commit, its URL names that commit -- the registry holds the
-// URLs and this file holds the commits, and the two must not drift.
+// URLs and this file holds the commits, and the two must not drift. The
+// same goes for OpenCorePkg's tag and OCVersion: the tarball unpacks to
+// OpenCorePkg-<tag>/, which the build finds as OpenCorePkg-OCVersion/.
 func CheckPins(reg *pins.Registry) error {
 	for _, n := range SourceNames() {
 		if _, err := reg.Lookup(n); err != nil {
 			return err
 		}
+	}
+	if s, _ := reg.Lookup("opencorepkg-src"); path.Base(s.URL) != OCVersion+".tar.gz" {
+		return fmt.Errorf("opencorepkg-src in the registry does not name tag %s (OCVersion): %s", OCVersion, s.URL)
 	}
 	for _, p := range OpenCorePins() {
 		s, _ := reg.Lookup(p.Source)

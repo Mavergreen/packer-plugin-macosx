@@ -18,7 +18,9 @@ import (
 
 func (f *fixture) ovmf() ([]string, error) { return f.b.OVMF(context.Background()) }
 
-func (f *fixture) udk() string { return filepath.Join(f.home, "build", "OpenCorePkg-1.0.7", "UDK") }
+func (f *fixture) udk() string {
+	return filepath.Join(f.home, "build", "OpenCorePkg-"+OCVersion, "UDK")
+}
 
 // ovmfFixture is a fixture on which OpenCore has built: an assembled
 // tree and a GenFv.

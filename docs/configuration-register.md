@@ -125,7 +125,7 @@ IDE; `usb-net`; `SystemProductName` `MacPro5,1`; `FakeSMC-32`, `Lilu` and
 
 ## 7. OpenCore `config.plist`
 
-**Every divergence from OpenCorePkg 1.0.7's `Docs/Sample.plist` is listed,
+**Every divergence from OpenCorePkg 1.0.8's `Docs/Sample.plist` is listed,
 with its evidence, in `assets/firmware/README.md`.** This section adds
 columns 3 and 4 where the answer is interesting.
 
@@ -262,7 +262,7 @@ Ranked by cost times the likelihood of being wrong.
 
 ### 1. The five inherited `Booter > Quirks`
 
-**None has been tested on 1.0.7 under KVM.** They decide whether
+**None has been tested on 1.0.7 or 1.0.8 under KVM.** They decide whether
 `boot.efi` is loaded and relocated correctly, so a wrong one does not
 produce a warning; it produces a hang or a panic that looks like something
 else. They came from another bootloader major version, on another

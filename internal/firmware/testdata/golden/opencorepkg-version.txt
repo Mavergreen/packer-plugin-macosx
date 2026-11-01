@@ -1,1 +1,1 @@
-OpenCorePkg 1.0.7
+OpenCorePkg 1.0.8

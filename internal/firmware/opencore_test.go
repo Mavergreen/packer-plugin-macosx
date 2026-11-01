@@ -97,7 +97,7 @@ func TestOpenCoreBuildEnvironment(t *testing.T) {
 		t.Fatalf("%d build_oc.tool calls, want 1", len(cs))
 	}
 	c := cs[0]
-	if want := filepath.Join(f.home, "build", "OpenCorePkg-1.0.7"); c.Dir != want {
+	if want := filepath.Join(f.home, "build", "OpenCorePkg-"+OCVersion); c.Dir != want {
 		t.Errorf("Dir = %s, want %s", c.Dir, want)
 	}
 	for _, kv := range []string{"PATH=/usr/bin:/bin", "ARCHS=X64", "TOOLCHAINS=GCC", "TARGETS=RELEASE",
@@ -158,7 +158,7 @@ func TestTheBuildsRunInTheirOwnWorkspace(t *testing.T) {
 func TestOpenCorePatchesBuildOCToolAndChecksIt(t *testing.T) {
 	f := newFixture(t)
 	f.mustOpenCore()
-	src := filepath.Join(f.home, "build", "OpenCorePkg-1.0.7")
+	src := filepath.Join(f.home, "build", "OpenCorePkg-"+OCVersion)
 	want, err := fs.ReadFile(macosx.Files, "assets/firmware/patches/0001-build_oc-source-pinned-efibuild.patch")
 	if err != nil {
 		t.Fatal(err)
@@ -192,7 +192,7 @@ func TestOpenCorePatchesBuildOCToolAndChecksIt(t *testing.T) {
 func TestOpenCoreAssemblesTheUDKTree(t *testing.T) {
 	f := newFixture(t)
 	f.mustOpenCore()
-	src := filepath.Join(f.home, "build", "OpenCorePkg-1.0.7")
+	src := filepath.Join(f.home, "build", "OpenCorePkg-"+OCVersion)
 	udk := filepath.Join(src, "UDK")
 	if b, _ := os.ReadFile(filepath.Join(udk, ".guest-macosx-prepared")); string(b) != AudkCommit+"\n" {
 		t.Errorf(".guest-macosx-prepared = %q", b)
@@ -225,7 +225,7 @@ func TestOpenCoreAssemblesTheUDKTree(t *testing.T) {
 func TestOpenCoreKeepsAWarmTree(t *testing.T) {
 	f := newFixture(t)
 	f.mustOpenCore()
-	udk := filepath.Join(f.home, "build", "OpenCorePkg-1.0.7", "UDK")
+	udk := filepath.Join(f.home, "build", "OpenCorePkg-"+OCVersion, "UDK")
 	sentinel := filepath.Join(udk, "sentinel")
 	if err := os.WriteFile(sentinel, nil, 0o644); err != nil {
 		t.Fatal(err)
@@ -243,7 +243,7 @@ func TestOpenCoreKeepsAWarmTree(t *testing.T) {
 func TestOpenCoreRebuildsATreeAtAnotherCommit(t *testing.T) {
 	f := newFixture(t)
 	f.mustOpenCore()
-	udk := filepath.Join(f.home, "build", "OpenCorePkg-1.0.7", "UDK")
+	udk := filepath.Join(f.home, "build", "OpenCorePkg-"+OCVersion, "UDK")
 	if err := os.WriteFile(filepath.Join(udk, ".guest-macosx-prepared"), []byte("old\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -303,7 +303,7 @@ func TestOpenCoreRefusesFlagsThatDidNotArrive(t *testing.T) {
 	f := newFixture(t)
 	f.flags = "-std=gnu17"
 	_, err := f.openCore()
-	mk := filepath.Join(f.home, "build", "OpenCorePkg-1.0.7", "UDK", "Build", "OpenCorePkg", "RELEASE_GCC", "X64",
+	mk := filepath.Join(f.home, "build", "OpenCorePkg-"+OCVersion, "UDK", "Build", "OpenCorePkg", "RELEASE_GCC", "X64",
 		"OpenCorePkg", "Library", "x", "GNUmakefile")
 	if err == nil || !strings.Contains(err.Error(), "-Wno-error") || !strings.Contains(err.Error(), mk) {
 		t.Fatalf("err = %v", err)
@@ -388,7 +388,7 @@ func TestOpenCoreNamesEveryMissingTool(t *testing.T) {
 			t.Errorf("the error does not name %s: %v", tool, err)
 		}
 	}
-	if _, err := os.Stat(filepath.Join(f.home, "build", "OpenCorePkg-1.0.7")); !errors.Is(err, fs.ErrNotExist) {
+	if _, err := os.Stat(filepath.Join(f.home, "build", "OpenCorePkg-"+OCVersion)); !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("unpacked without the tools: %v", err)
 	}
 }
@@ -397,7 +397,7 @@ func TestOpenCoreBuildFailureNamesTheLogs(t *testing.T) {
 	f := newFixture(t)
 	f.buildErr = &proc.ExitError{Cmd: "./build_oc.tool", Code: 2}
 	_, err := f.openCore()
-	udkLog := filepath.Join(f.home, "build", "OpenCorePkg-1.0.7", "UDK", "build.log")
+	udkLog := filepath.Join(f.home, "build", "OpenCorePkg-"+OCVersion, "UDK", "build.log")
 	ourLog := filepath.Join(f.home, "build", "opencore-build.log")
 	if err == nil || !strings.Contains(err.Error(), udkLog) || !strings.Contains(err.Error(), ourLog) {
 		t.Fatalf("err = %v", err)
@@ -475,7 +475,7 @@ func TestOpenCoreRefusesAMissingHeaderBeforeUnpacking(t *testing.T) {
 	if probe == nil || !reflect.DeepEqual(probe.Args, []string{"-fsyntax-only", "-x", "c", "-"}) {
 		t.Fatalf("the header was not asked of the compiler: %v", probe)
 	}
-	if _, err := os.Stat(filepath.Join(f.home, "build", "OpenCorePkg-1.0.7")); !errors.Is(err, fs.ErrNotExist) {
+	if _, err := os.Stat(filepath.Join(f.home, "build", "OpenCorePkg-"+OCVersion)); !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("unpacked without the header: %v", err)
 	}
 
@@ -520,7 +520,7 @@ func TestOpenCoreBelowTheFloorUnpacksNothing(t *testing.T) {
 	if _, err := f.openCore(); err == nil {
 		t.Fatal("built below the floor")
 	}
-	if _, err := os.Stat(filepath.Join(f.home, "build", "OpenCorePkg-1.0.7")); !errors.Is(err, fs.ErrNotExist) {
+	if _, err := os.Stat(filepath.Join(f.home, "build", "OpenCorePkg-"+OCVersion)); !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("OpenCorePkg was unpacked: %v", err)
 	}
 }
@@ -607,7 +607,7 @@ func TestOpenCoreRefusesASymlinkedLog(t *testing.T) {
 func TestOpenCoreReadsTheMarkerLessTrailingNewlines(t *testing.T) {
 	f := newFixture(t)
 	f.mustOpenCore()
-	udk := filepath.Join(f.home, "build", "OpenCorePkg-1.0.7", "UDK")
+	udk := filepath.Join(f.home, "build", "OpenCorePkg-"+OCVersion, "UDK")
 	sentinel := filepath.Join(udk, "sentinel")
 	if err := os.WriteFile(sentinel, nil, 0o644); err != nil {
 		t.Fatal(err)
@@ -626,7 +626,7 @@ func TestOpenCoreReadsTheMarkerLessTrailingNewlines(t *testing.T) {
 func TestOpenCoreReplacesAnUnmarkedTree(t *testing.T) {
 	f := newFixture(t)
 	f.mustOpenCore()
-	udk := filepath.Join(f.home, "build", "OpenCorePkg-1.0.7", "UDK")
+	udk := filepath.Join(f.home, "build", "OpenCorePkg-"+OCVersion, "UDK")
 	if err := os.Remove(filepath.Join(udk, ".guest-macosx-prepared")); err != nil {
 		t.Fatal(err)
 	}
@@ -650,7 +650,7 @@ func TestOpenCoreAFailedUpstreamPatchLeavesNoMarker(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "0001-first.patch") {
 		t.Fatalf("err = %v", err)
 	}
-	udk := filepath.Join(f.home, "build", "OpenCorePkg-1.0.7", "UDK")
+	udk := filepath.Join(f.home, "build", "OpenCorePkg-"+OCVersion, "UDK")
 	if _, err := os.Stat(filepath.Join(udk, ".guest-macosx-prepared")); !errors.Is(err, fs.ErrNotExist) {
 		t.Fatalf("a marker after a failed patch: %v", err)
 	}
@@ -674,7 +674,7 @@ func TestOpenCorePatchesAreFoundWhateverTheHome(t *testing.T) {
 			}
 			f.b.Paths.Home = f.home
 			f.mustOpenCore()
-			src := filepath.Join(f.home, "build", "OpenCorePkg-1.0.7")
+			src := filepath.Join(f.home, "build", "OpenCorePkg-"+OCVersion)
 			var got []string
 			for _, c := range f.applies(filepath.Join(src, "UDK"), "--ignore-whitespace") {
 				got = append(got, c.Args[len(c.Args)-1])

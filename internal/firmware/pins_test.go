@@ -126,6 +126,18 @@ func TestCheckPinsRefusesAURLWithoutItsCommit(t *testing.T) {
 	}
 }
 
+// The tarball unpacks to OpenCorePkg-<tag>/ and the build looks for
+// OpenCorePkg-OCVersion/, so a bump that moves one and not the other
+// would fail deep in the build instead of here.
+func TestCheckPinsRefusesAnOpenCorePkgTagOtherThanOCVersion(t *testing.T) {
+	url := "https://github.com/acidanthera/OpenCorePkg/archive/refs/tags/0.0.1.tar.gz"
+	reg := registryWith(t, "opencorepkg-src", url, strings.Repeat("a", 64))
+	err := CheckPins(reg)
+	if err == nil || !strings.Contains(err.Error(), "opencorepkg-src") || !strings.Contains(err.Error(), OCVersion) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
 func TestCheckPinsRefusesUnpinned(t *testing.T) {
 	reg := registryWith(t, "audk-src", "https://example.test/archive/"+AudkCommit+".tar.gz", "TOFU")
 	if err := CheckPins(reg); err == nil || !strings.Contains(err.Error(), "audk-src") {
