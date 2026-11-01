@@ -113,6 +113,10 @@ of its own (`templates/snowleopard/`). What differs, and why:
    2026.10.25 layer passes every step, TLS reach before and after the
    restart included. This measures the individual release paths, not a
    real combined-default invocation or a stress run.
+10. **No CI runner yet.** mavericks-vm offers `release: 10.9` only, so a
+   Mavergreen product cannot yet test on 10.6 in GitHub CI. It becomes
+   macosx-vm, one action for every release, once 10.6 meets the rest of
+   its parity goals; until then a 10.6 box is a local guest only.
 
 ## Measurements
 
