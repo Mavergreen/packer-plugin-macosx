@@ -332,3 +332,9 @@ func TestTheBuildsGuestReachesNothingOffLink(t *testing.T) {
 func TestBoxVagrantfileNamesItsRelease(t *testing.T) {
 	templatetest.CheckBoxRelease(t, osName, boxOverrides, "10.6")
 }
+
+// TestTheBuildOpensAQMPSocket: a stalled build's QEMU can be asked what it
+// thinks before it is stopped, with no device added for it.
+func TestTheBuildOpensAQMPSocket(t *testing.T) {
+	templatetest.CheckQMPSocket(t, osName, osName+".pkr.hcl")
+}

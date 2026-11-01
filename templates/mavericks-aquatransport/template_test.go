@@ -680,3 +680,9 @@ func TestTheBuildsGuestReachesNothingOffLink(t *testing.T) {
 func TestTheBuildsMachineIsTheOneShape(t *testing.T) {
 	templatetest.CheckBuildMachine(t, osName, "mavericks-aquatransport.pkr.hcl")
 }
+
+// TestTheBuildOpensAQMPSocket: a stalled build's QEMU can be asked what it
+// thinks before it is stopped, with no device added for it.
+func TestTheBuildOpensAQMPSocket(t *testing.T) {
+	templatetest.CheckQMPSocket(t, osName, "mavericks-aquatransport.pkr.hcl")
+}

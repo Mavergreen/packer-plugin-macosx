@@ -339,3 +339,9 @@ func TestTheBuildsMachineIsTheOneShape(t *testing.T) {
 func TestTheBoxsMachineIsTheOneShape(t *testing.T) {
 	templatetest.CheckBoxMachine(t, osName, nil)
 }
+
+// TestTheBuildOpensAQMPSocket: a stalled build's QEMU can be asked what it
+// thinks before it is stopped, with no device added for it.
+func TestTheBuildOpensAQMPSocket(t *testing.T) {
+	templatetest.CheckQMPSocket(t, osName, osName+".pkr.hcl")
+}

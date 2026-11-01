@@ -95,6 +95,14 @@ packer {
   }
 }
 
+# The owner-only directory the QMP socket is made in, beside the output directory (not in it: the box is
+# made from that directory). Deterministic, so that every run of the data source (`packer build`, and `packer validate
+# -evaluate-datasources`; not plain validate or inspect, measured) finds it again; a failed build keeps it
+# beside the output directory (docs/decisions/0040).
+data "macosx-qmp-dir" "qmp" {
+  dir = "output-mavericks-aquatransport-qmp"
+}
+
 data "macosx-download" "aquatransport" {
   url    = local.aquatransport_url
   sha256 = local.aquatransport_sha256
@@ -179,6 +187,11 @@ source "qemu" "mavericks-aquatransport" {
 
   qemuargs = [
     ["-uuid", local.build_uuid],
+    # A QMP socket, for a build that stalls: bin/gate-build-evidence.sh qmp asks the live QEMU what it
+    # thinks before it is stopped. QEMU makes it with the umask's mode and a QMP client controls the VM,
+    # so it is made inside the owner-only directory the qmp-dir data source makes beside the output
+    # directory (docs/decisions/0040). It adds no guest device (TestTheBuildOpensAQMPSocket).
+    ["-qmp", "unix:${data.macosx-qmp-dir.qmp.socket},server,nowait"],
     ["-drive", "if=pflash,format=raw,unit=0,readonly=on,file=${var.base_box}/OVMF_CODE.fd"],
     ["-drive", "if=pflash,format=raw,unit=1,file={{ .OutputDir }}/efivars.fd"],
     # detect-zeroes: the zero-fill provisioner's zeros become holes

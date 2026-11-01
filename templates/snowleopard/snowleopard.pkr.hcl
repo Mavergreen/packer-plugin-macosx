@@ -33,6 +33,14 @@ packer {
   }
 }
 
+# The owner-only directory the QMP socket is made in, beside the output directory (not in it: the box is
+# made from that directory). Deterministic, so that every run of the data source (`packer build`, and `packer validate
+# -evaluate-datasources`; not plain validate or inspect, measured) finds it again; a failed build keeps it
+# beside the output directory (docs/decisions/0040).
+data "macosx-qmp-dir" "qmp" {
+  dir = "output-snowleopard-qmp"
+}
+
 data "macosx-snowleopard-installer" "dvd" {
   path = var.installer
 }
@@ -160,6 +168,11 @@ source "qemu" "snowleopard" {
 
   qemuargs = [
     ["-uuid", local.build_uuid],
+    # A QMP socket, for a build that stalls: bin/gate-build-evidence.sh qmp asks the live QEMU what it
+    # thinks before it is stopped. QEMU makes it with the umask's mode and a QMP client controls the VM,
+    # so it is made inside the owner-only directory the qmp-dir data source makes beside the output
+    # directory (docs/decisions/0040). It adds no guest device (TestTheBuildOpensAQMPSocket).
+    ["-qmp", "unix:${data.macosx-qmp-dir.qmp.socket},server,nowait"],
     ["-drive", "if=pflash,format=raw,unit=0,readonly=on,file=${data.macosx-snowleopard-firmware.fw.ovmf_code}"],
     ["-drive", "if=pflash,format=raw,unit=1,file={{ .OutputDir }}/efivars.fd"],
     ["-drive", "id=target,if=none,format=qcow2,detect-zeroes=unmap,discard=unmap,file={{ .OutputDir }}/{{ .Name }}"],

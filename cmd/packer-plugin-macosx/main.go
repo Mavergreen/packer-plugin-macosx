@@ -22,6 +22,7 @@ import (
 	"github.com/Mavergreen/packer-plugin-macosx/datasource/firmware"
 	"github.com/Mavergreen/packer-plugin-macosx/datasource/installesd"
 	"github.com/Mavergreen/packer-plugin-macosx/datasource/media"
+	"github.com/Mavergreen/packer-plugin-macosx/datasource/qmpdir"
 	"github.com/Mavergreen/packer-plugin-macosx/datasource/snowleopardinstaller"
 	"github.com/Mavergreen/packer-plugin-macosx/datasource/snowleopardmedia"
 	fw "github.com/Mavergreen/packer-plugin-macosx/internal/firmware"
@@ -38,6 +39,8 @@ func main() {
 	pps.RegisterDatasource("snowleopard-media", new(snowleopardmedia.Datasource))
 	// The generic pinned download, not tied to a release.
 	pps.RegisterDatasource("download", new(download.Datasource))
+	// The owner-only directory the templates' QMP socket is made in (docs/decisions/0040).
+	pps.RegisterDatasource("qmp-dir", new(qmpdir.Datasource))
 	pps.SetVersion(version.PluginVersion)
 	if err := pps.Run(); err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())

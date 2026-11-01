@@ -380,6 +380,140 @@ func CheckInstallLog(t *testing.T, osName, file string) {
 	}
 }
 
+// CheckQMPSocket holds templates/<osName>/<file>'s qemu source to opening
+// one QMP socket, so a build that stalls can be asked what its QEMU thinks
+// before the QEMU is stopped (bin/gate-build-evidence.sh qmp). QEMU makes
+// a unix socket with the mode 0777 minus the umask, and whoever connects
+// controls the VM, so the socket is made inside the owner-only directory
+// the qmp-dir data source makes (docs/decisions/0040): the directory is
+// named beside the output directory (not in it: the box is made from that
+// directory), and the one qemuargs -qmp row's address is that data
+// source's socket output. The row adds no guest device: the machine's
+// shape (CheckBuildMachine) is held apart from it.
+func CheckQMPSocket(t *testing.T, osName, file string) {
+	t.Helper()
+	path := filepath.Join(RepoRoot(t), "templates", osName, file)
+	src, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range QMPSocketProblems(src, file) {
+		t.Error(p)
+	}
+}
+
+// QMPSocketProblems is CheckQMPSocket's judgement of one template's source, as the problems it finds (none
+// when the template is right), so that the judgement can itself be tested against sources that are wrong.
+func QMPSocketProblems(src []byte, file string) []string {
+	var problems []string
+	bad := func(format string, a ...any) { problems = append(problems, file+": "+fmt.Sprintf(format, a...)) }
+	f, diags := hclsyntax.ParseConfig(src, file, hcl.InitialPos)
+	if diags.HasErrors() {
+		return []string{fmt.Sprintf("parsing %s: %v", file, diags)}
+	}
+	var qemu, qmpDir *hclsyntax.Body
+	locals := map[string]*hclsyntax.Attribute{}
+	dataBlocks := 0
+	for _, b := range f.Body.(*hclsyntax.Body).Blocks {
+		switch {
+		case b.Type == "locals":
+			for k, a := range b.Body.Attributes {
+				locals[k] = a
+			}
+		case b.Type == "source" && len(b.Labels) == 2 && b.Labels[0] == "qemu":
+			qemu = b.Body
+		case b.Type == "data" && len(b.Labels) == 2 && b.Labels[0] == "macosx-qmp-dir":
+			dataBlocks++
+			if b.Labels[1] != "qmp" {
+				bad("the macosx-qmp-dir data source is named %q, want %q", b.Labels[1], "qmp")
+			}
+			qmpDir = b.Body
+		}
+	}
+	if qemu == nil {
+		return append(problems, file+": no qemu source")
+	}
+	if dataBlocks != 1 {
+		return append(problems, fmt.Sprintf("%s: %d macosx-qmp-dir data sources, want one", file, dataBlocks))
+	}
+	od := qemu.Attributes["output_directory"]
+	if od == nil {
+		return append(problems, file+": the qemu source has no output_directory")
+	}
+	ctx := &hcl.EvalContext{Variables: map[string]cty.Value{}}
+	if l := locals["output_directory"]; l != nil {
+		v, d := l.Expr.Value(nil)
+		if d.HasErrors() {
+			return append(problems, fmt.Sprintf("%s: local.output_directory: %v", file, d))
+		}
+		ctx.Variables["local"] = cty.ObjectVal(map[string]cty.Value{"output_directory": v})
+	}
+	out, d := od.Expr.Value(ctx)
+	if d.HasErrors() || out.Type() != cty.String {
+		return append(problems, fmt.Sprintf("%s: output_directory does not evaluate to a string: %v", file, d))
+	}
+	// the data source's directory: beside the output directory, relative as it is
+	if dir := qmpDir.Attributes["dir"]; dir == nil {
+		bad("the macosx-qmp-dir data source has no dir")
+	} else if dv, d := dir.Expr.Value(ctx); d.HasErrors() || dv.Type() != cty.String {
+		bad("macosx-qmp-dir's dir does not evaluate to a string: %v", d)
+	} else {
+		if want := out.AsString() + "-qmp"; dv.AsString() != want {
+			bad("macosx-qmp-dir dir %q, want %q (beside the output directory, which a failed build keeps; relative, so the socket's path stays under the 104 bytes macOS allows)", dv.AsString(), want)
+		}
+		if n := len(dv.AsString() + "/qmp.sock"); n > 103 {
+			bad("the socket's path is %d bytes, over the 103 a unix socket may have on macOS", n)
+		}
+	}
+	for _, k := range []string{"qmp_enable", "qmp_socket_path"} {
+		if qemu.Attributes[k] != nil {
+			bad("sets %s: the socket is a qemuargs row, so that the builder's own QMP use cannot take the path over", k)
+		}
+	}
+	qa := qemu.Attributes["qemuargs"]
+	if qa == nil {
+		return append(problems, file+": the qemu source has no qemuargs, so no -qmp row")
+	}
+	rows, ok := qa.Expr.(*hclsyntax.TupleConsExpr)
+	if !ok {
+		return append(problems, file+": qemuargs is not a list")
+	}
+	ctx.Variables["data"] = cty.ObjectVal(map[string]cty.Value{
+		"macosx-qmp-dir": cty.ObjectVal(map[string]cty.Value{
+			"qmp": cty.ObjectVal(map[string]cty.Value{"socket": cty.StringVal("SOCKET")}),
+		}),
+	})
+	want := "unix:SOCKET,server,nowait"
+	n := 0
+	for _, r := range rows.Exprs {
+		row, ok := r.(*hclsyntax.TupleConsExpr)
+		if !ok || len(row.Exprs) == 0 {
+			continue
+		}
+		first, d := row.Exprs[0].Value(nil)
+		if d.HasErrors() || first.Type() != cty.String || first.AsString() != "-qmp" {
+			continue
+		}
+		n++
+		if len(row.Exprs) != 2 {
+			bad("a -qmp row with %d items, want 2", len(row.Exprs))
+			continue
+		}
+		v, d := row.Exprs[1].Value(ctx)
+		if d.HasErrors() {
+			bad("-qmp's value: %v", d)
+			continue
+		}
+		if v.AsString() != want {
+			bad("-qmp %q, want %q (the qmp-dir data source's socket, in its owner-only directory)", v.AsString(), want)
+		}
+	}
+	if n != 1 {
+		bad("qemuargs passes -qmp %d times, want once", n)
+	}
+	return problems
+}
+
 // CheckHandshakeAttempts holds templates/<osName>/<file>'s qemu source to
 // waiting install_timeout for SSH and to ending the build after a number
 // of refused logins (ssh_handshake_attempts, a literal from 1 to 20): how
