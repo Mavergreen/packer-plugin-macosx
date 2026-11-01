@@ -39,7 +39,14 @@
 #         <evidence>/<step>.log, <evidence>/summary.md (bin/gate-summary.sh); on any
 #         non-pass also screen.png, serial.log, guest/ (the guest's crash, hang, panic, spin and
 #         diag reports, named system-<name> or user-<user>-<name>) and system.log (its last 500
-#         lines). Never an image, box, disk or DMG.
+#         lines). A build that fails after QEMU started also leaves <evidence>/build-<base|layer>/:
+#         packer-debug.log (PACKER_LOG=1), qemu-state.txt (the QEMU's state, CPU time and threads while
+#         it still runs: idle or spinning), install-serial.log (the installer's logs, from the first
+#         serial port), screen.png (the guest's screen, over the VNC port Packer names) and disk/
+#         (its logs and reports, read from its disk by bin/gate-build-evidence.sh), taken before
+#         the next build, or the other release's gate, wipes the build dir. Packer runs with
+#         -on-error=abort so that the failed build's QEMU and disk are still there to read; the
+#         gate stops that QEMU itself. Never an image, box, disk or DMG.
 #   exit: 0 pass, 1 a check ran and failed, 2 usage, 3 could not run the check (CI or the host);
 #         for both releases, 0 when both passed, 1 when either failed, 3 otherwise
 #
@@ -60,8 +67,9 @@
 #         and GATE_KVM reach bin/gate-vm.sh; PACKER_GITHUB_API_TOKEN reaches `packer plugins
 #         install` only, never the build.
 #         Seams: GUEST_MACOSX_GATE_VM, GUEST_MACOSX_GATE_DEV_INSTALL, GUEST_MACOSX_GATE_VERIFY_SOURCES,
-#         GUEST_MACOSX_GATE_VARSTORE (the scripts run in place of bin/gate-vm.sh, bin/dev-install.sh,
-#         bin/verify-changed-sources.sh, bin/gate-varstore.sh),
+#         GUEST_MACOSX_GATE_VARSTORE, GUEST_MACOSX_GATE_BUILD_EVIDENCE (the scripts run in place of
+#         bin/gate-vm.sh, bin/dev-install.sh, bin/verify-changed-sources.sh, bin/gate-varstore.sh,
+#         bin/gate-build-evidence.sh),
 #         GATE_REQUIRED_COMMANDS, GATE_SPACE_AVAILABLE_KIB (preflight, instead of df),
 #         GATE_BUILD_SPACE_AVAILABLE_KIB (during and after a build, instead of df),
 #         GATE_CHILD_STOP_WAIT (30: seconds a child gets between TERM and KILL),
@@ -82,6 +90,7 @@ VM=${GUEST_MACOSX_GATE_VM:-$GUEST_MACOSX_REPO_ROOT/bin/gate-vm.sh}
 DEV_INSTALL=${GUEST_MACOSX_GATE_DEV_INSTALL:-$GUEST_MACOSX_REPO_ROOT/bin/dev-install.sh}
 VERIFY_SOURCES=${GUEST_MACOSX_GATE_VERIFY_SOURCES:-$GUEST_MACOSX_REPO_ROOT/bin/verify-changed-sources.sh}
 VARSTORE=${GUEST_MACOSX_GATE_VARSTORE:-$GUEST_MACOSX_REPO_ROOT/bin/gate-varstore.sh}
+BUILD_EVIDENCE=${GUEST_MACOSX_GATE_BUILD_EVIDENCE:-$GUEST_MACOSX_REPO_ROOT/bin/gate-build-evidence.sh}
 REQUIRED=${GATE_REQUIRED_COMMANDS:-packer qemu-system-x86_64 qemu-img ssh scp python3 go dmg2img mkfs.hfsplus nasm iasl timeout}
 KVM=${GATE_KVM:-/dev/kvm}
 # 60 GiB: mavericks-vm measured a cold base and layer at 44-49 GiB at the peak, and checks for 55;
@@ -115,6 +124,7 @@ GUEST_DIR=/Users/vagrant/gate
 # ("Error launching VM: ...", step_run.go:59) comes after that line, so it is a fail like any
 # other: most likely the checkout's own template's QEMU arguments; the control run tells.
 QEMU_STARTED='Starting VM, booting'
+STRIP_UI_TIME='s/^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.]+(Z|[+-][0-9:]+): //'
 # The one list of report kinds: health judges these (and fails any other file it finds, as a kind
 # it does not know), and the evidence keeps every report of them. 10.9 writes a .shutdownStall when
 # userspace shutdown stalls (com.apple.shutdown_monitor: every 20 s exit timeout left one, no 3 s
@@ -503,12 +513,10 @@ killed_note() {
 
 is_qemu() { ps -p "$1" -o comm= 2>/dev/null | grep -q qemu; }
 
-# shellcheck disable=SC2317  # reached from the traps
-# stop_orphans: a packer killed outright leaves its QEMU running. Stop each QEMU process whose
-# command line names this run's work dir (or, on Linux, whose working directory is in it), and
-# no other process.
-stop_orphans() {
-    local pid args cwd i
+# work_qemus: "pid args" of each QEMU process whose command line names this run's work dir (or,
+# on Linux, whose working directory is in it), and no other process.
+work_qemus() {
+    local pid args cwd
     ps -eo pid=,args= 2>/dev/null | while read -r pid args; do
         case $pid in ''|*[!0-9]*) continue ;; esac
         if [ "$pid" -le 1 ] || [ "$pid" -eq "$$" ]; then continue; fi
@@ -521,6 +529,16 @@ stop_orphans() {
                 inside "$cwd" "$work" || continue ;;
         esac
         is_qemu "$pid" || continue
+        printf '%s %s\n' "$pid" "$args"
+    done
+}
+
+# shellcheck disable=SC2317  # reached from the traps
+# stop_orphans: a packer killed outright leaves its QEMU running. Stop each QEMU work_qemus names
+# (this run's, and no other process).
+stop_orphans() {
+    local pid args i
+    work_qemus | while read -r pid args; do
         # `env kill`: kill from PATH, so tests can stand a stub in front of it
         env kill -TERM "$pid" 2>/dev/null || true
         i=0
@@ -776,11 +794,12 @@ classify_build_failure() {
     fi
     # packer's own lines (==>, -->, Build ... errored) are the host's; the guest's output comes
     # indented ("    qemu.<source>: ..."). ENOSPC on a line of packer's is the host's disk.
-    if grep -iF 'no space left on device' "$log" | grep -qv '^    [^ ]'; then
+    # -timestamp-ui puts "<RFC 3339 time>: " before every line, packer's and guest's alike: strip it first
+    if grep -iF 'no space left on device' "$log" | sed -E "$STRIP_UI_TIME" | grep -qv '^    [^ ]'; then
         note="no space left on device${why:+: $why}"
         return 3
     fi
-    line=$(grep -iF 'no space left on device' "$log" | head -n 1 | sed 's/^ *//')
+    line=$(grep -iF 'no space left on device' "$log" | head -n 1 | sed -E "$STRIP_UI_TIME" | sed 's/^ *//')
     if [ -n "$line" ]; then
         note="the guest's disk filled: $line${why:+ ($why)}"
         return 1
@@ -791,6 +810,62 @@ classify_build_failure() {
     fi
     note="packer failed after QEMU started${why:+: $why}"
     return 1
+}
+
+# build_evidence <base|layer> <dir> <log>: a build failed. Packer ran with -on-error=abort, so its QEMU
+# may still run and its disk is still in <dir>/output-*: take the guest's screen while it runs, stop
+# it, then read its disk. <dir> (and the packer log in it) goes when the next build starts, and the
+# other release's gate wipes the work dir. Everything here is evidence: it fails nothing.
+build_evidence() {
+    local which=$1 dir=$2 log=$3 d=$ev/build-$1 f vnc img pid
+    mkdir -p "$d"
+    if [ -f "$dir/packer-debug.log" ]; then
+        tail -n 200000 "$dir/packer-debug.log" > "$d/packer-debug.log" || true
+    fi
+    if ! grep -qF "$QEMU_STARTED" "$log"; then
+        stop_orphans
+        return 0
+    fi
+    for f in "$dir"/output-*-install.log; do
+        [ -f "$f" ] || continue
+        tail -n 20000 "$f" > "$d/install-serial.log" || true
+        break
+    done
+    vnc=$(sed -n 's|^.*vnc://\([A-Za-z0-9.-]*:[0-9]*\).*$|\1|p' "$log" | tail -n 1)
+    # a guest that stalls mid-install is idle: the host's view of its QEMU (state, CPU time against age,
+    # threads, bytes read and written) says whether it was spinning, waiting or dead
+    # (/proc and ps's etimes are Linux's: elsewhere it says so, and reads nothing)
+    work_qemus | while read -r pid _; do
+        if [ ! -d "${GATE_PROC_ROOT:-/proc}/$pid" ]; then
+            echo "pid $pid: no /proc here; its state is not read" >> "$d/qemu-state.txt"
+            continue
+        fi
+        {
+            echo "pid $pid: state, elapsed s, CPU time, threads"
+            ps -p "$pid" -o stat=,etimes=,cputime=,nlwp= 2>&1
+            echo "io:"
+            cat "${GATE_PROC_ROOT:-/proc}/$pid/io" 2>&1
+            echo "threads (name, state, wchan):"
+            for f in "${GATE_PROC_ROOT:-/proc}/$pid"/task/*; do
+                printf '%s %s %s\n' "$(cat "$f/comm" 2>/dev/null)" "$(sed -n 's/^State:\t//p' "$f/status" 2>/dev/null)" "$(cat "$f/wchan" 2>/dev/null)"
+            done
+        } >> "$d/qemu-state.txt" 2>&1 || true
+    done
+    if [ -n "$vnc" ]; then
+        run_child timeout -k 5 90 "$BUILD_EVIDENCE" screenshot "$vnc" "$d/screen.png" || true
+    fi
+    stop_orphans
+    img=
+    for f in "$dir"/output-*/*.qcow2; do
+        [ -f "$f" ] || continue
+        img=$f
+        break
+    done
+    if [ -n "$img" ]; then
+        run_child timeout -k 10 900 "$BUILD_EVIDENCE" disk "$img" "$d/disk" || true
+    else
+        echo "build evidence: packer left no disk in $dir/output-*: no logs from the guest's disk"
+    fi
 }
 
 # step_build <base|layer>
@@ -814,7 +889,10 @@ step_build() {
     rm -rf "$dir" "$out" "$work/space-low"
     mkdir -p "$dir" "$cache"
     t0=$SECONDS
-    ( cd "$dir" && exec timeout -k "$KILL_AFTER" "$limit" packer build -color=false "${vars[@]}" "$tpl" ) 8>&- 9>&- &
+    # PACKER_LOG into a file of its own, in the build dir; -on-error=abort so that a failed build's QEMU
+    # and disk are left to read (build_evidence), not cleaned up
+    ( cd "$dir" && exec env PACKER_LOG=1 PACKER_LOG_PATH="$dir/packer-debug.log" \
+        timeout -k "$KILL_AFTER" "$limit" packer build -color=false -timestamp-ui -on-error=abort "${vars[@]}" "$tpl" ) 8>&- 9>&- &
     child=$!
     sample_space "$child" "$work/space-low" 8>&- 9>&- &
     sampler=$!
@@ -826,12 +904,14 @@ step_build() {
     note_low "$(build_avail_kib)" "$work/space-low"
     low=$(cat "$work/space-low" 2>/dev/null || true)
     rm -f "$work/space-low"
-    # killed outright by timeout -k: packer could not stop its QEMU
-    [ "$rc" -ne 137 ] || stop_orphans
     if [ "$rc" -ne 0 ]; then
         packer_rc=$rc
         rc=0
+        # classified before the evidence is read: that takes minutes, and a 137 is a timeout only once
+        # the limit had passed (timed_out); the evidence does not touch the log or the note
         classify_build_failure "$log" "$low" "$packer_rc" "$t0" "$limit" || rc=$?
+        # a failed build leaves its QEMU (-on-error=abort), as one killed outright does: build_evidence stops it
+        build_evidence "$which" "$dir" "$log"
         return "$rc"
     fi
     box=

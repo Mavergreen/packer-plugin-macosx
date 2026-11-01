@@ -196,9 +196,13 @@ boot stack (OpenCore, Lilu, VirtualSMC), that it is healthy, and that it
 comes back from restarts; then it shuts the box down. It does that for
 Mavericks and then for Snow Leopard, because the firmware and boot stack
 are both releases', so it needs your Snow Leopard disc image. It needs KVM
-and 60 GiB free, and takes hours: a run has not been timed end to end yet,
-and a Snow Leopard build alone took 93 minutes to answer SSH on a busy
-host (`docs/decisions/0027`):
+and 60 GiB free, and takes a while: on a 12-CPU host the
+default run (both releases, 10 restarts each, a fresh Apple download each)
+took 90 minutes (5,425 s: Mavericks 3,304 s, Snow Leopard 2,121 s; MEASURED
+2026-11-01, N 1), and a Mavericks-only run 45 to 54 minutes (2,675 to 3,265
+s, N 5; its base build 1,852 to 2,431 s, the Aqua Transport layer 336 to 348
+s, each restart about 40 s). A busier host takes longer: a Snow Leopard build
+alone took 93 minutes to answer SSH on one (`docs/decisions/0027`):
 
 ```sh
 bin/gate.sh --installer /path/to/your/dvd-image
@@ -220,4 +224,9 @@ Leopard run has no Aqua Transport layer to build or to reach the network
 with, so it marks those two steps not applicable, saying why
 (`docs/decisions/0014`), and runs every other check as Mavericks does. The
 evidence never holds an image, a box or your disc, and the gate reads the
-disc where it is.
+disc where it is. A build that fails after QEMU started also leaves, in the
+release's evidence directory under `build-base/` or `build-layer/`, what shows
+why the guest never came up: Packer's debug log, the installer's serial log,
+the guest's screen, and its logs read from its disk
+(`bin/gate-build-evidence.sh`), taken before the next build or the other
+release's gate wipes the work directory.

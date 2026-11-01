@@ -66,6 +66,13 @@ STUB
     #   STUB_EXTRA_INSTALLED=<path>  `plugins installed` lists this too
     cat > "$STUBS/packer" <<'STUB'
 #!/bin/sh
+# STUB_TIMESTAMP=1: -timestamp-ui, every line of the UI prefixed with a time
+if [ "$1" = build ] && [ -n "${STUB_TIMESTAMP:-}" ] && [ -z "${STUB_TS_DONE:-}" ]; then
+    STUB_TS_DONE=1 "$0" "$@" > "$STUB_DIR/ts.out"
+    rc=$?
+    sed 's/^/2026-11-01T09:00:00-05:00: /' < "$STUB_DIR/ts.out"
+    exit $rc
+fi
 printf 'packer %s (cwd %s) cache=%s plugins=%s\n' "$*" "$PWD" "${PACKER_CACHE_DIR:-}" "${PACKER_PLUGIN_PATH:-}" >> "$STUB_LOG"
 [ -z "${PACKER_GITHUB_API_TOKEN:-}" ] || printf 'packer %s: had the token\n' "$*" >> "$STUB_LOG"
 case "$1 $2" in
@@ -99,6 +106,9 @@ case "$last" in
 *) echo "stub packer: unknown template $last" >&2; exit 2 ;;
 esac
 echo "qemu.$src: output will be in this color."
+# the gate asks for packer's debug log in a file of its own, and for packer to leave a failed build as it is
+printf 'packer-env %s: PACKER_LOG=%s PACKER_LOG_PATH=%s\n' "$which" "${PACKER_LOG:-}" "${PACKER_LOG_PATH:-}" >> "$STUB_LOG"
+[ "${PACKER_LOG:-}" != 1 ] || echo "stub packer debug log for $src" > "${PACKER_LOG_PATH:?}"
 if [ "${STUB_BUILD_HANG:-}" = "$which" ] || [ "${STUB_BUILD_HANG:-}" = "$which:started" ]; then
     [ "${STUB_BUILD_HANG:-}" = "$which" ] || echo "$started"
     echo "$$" > "$STUB_DIR/hang.pid"
@@ -109,6 +119,14 @@ fi
 case "${STUB_BUILD_FAIL:-}" in
 "$which:started")
     echo "$started"
+    echo "==> qemu.$src: The VM will be run headless, without a GUI. If you want to"
+    echo "==> qemu.$src: view the screen of the VM, connect via VNC without a password to"
+    echo "==> qemu.$src: vnc://127.0.0.1:5977"
+    # what -on-error=abort leaves: the disk, and the install's serial log beside the output directory
+    mkdir -p "output-$src"
+    : > "output-$src/disk.qcow2"
+    echo "serial: Mac OS X installer" > "output-$src-install.log"
+    [ -z "${STUB_KILL_SELF:-}" ] || kill -KILL $$
     echo "==> qemu.$src: Waiting for SSH to become available..."
     echo "Build 'qemu.$src' errored after 38 minutes 2 seconds: Timeout waiting for SSH."
     exit 1 ;;
@@ -144,6 +162,7 @@ for f in box_0.img OVMF_CODE.fd OVMF_VARS.fd opencore.img; do echo "$which $f" >
 case $src in snowleopard) rel=10.6 ;; *) rel=10.9 ;; esac
 printf '# rendered by templates/%s\n# guest-macosx-release: %s\n' "$src" "${STUB_BOX_RELEASE:-$rel}" > "$STUB_DIR/box-$which/Vagrantfile"
 tar -czf "output/$box" -C "$STUB_DIR/box-$which" .
+echo "serial: Mac OS X installer" > "output-$src-install.log"
 # what a real build leaves in the cache: Apple's media
 mkdir -p "$PACKER_CACHE_DIR"
 : > "$PACKER_CACHE_DIR/InstallESD.dmg"
@@ -178,6 +197,23 @@ rc=${STUB_VARSTORE_RC:-0}
 [ "$rc" -eq 0 ] || echo "gate-varstore: warning: ${STUB_VARSTORE_SAYS:-FAIL: 799963 flash bytes programmed}" >&2
 echo "gate-varstore: method: trace" >&2
 exit "$rc"
+STUB
+
+    # the stand-in for bin/gate-build-evidence.sh: records, never connects or mounts.
+    #   STUB_BE_RC  its status, STUB_BE_LEAK  it drops a disk image and a raw image among its files
+    cat > "$BATS_TEST_TMPDIR/gate-build-evidence" <<'STUB'
+#!/bin/sh
+printf 'build-evidence %s\n' "$*" >> "$STUB_LOG"
+[ -z "${STUB_BE_SLEEP:-}" ] || sleep "$STUB_BE_SLEEP"
+case $1 in
+screenshot) echo "not really a png" > "$3" ;;
+disk)
+    mkdir -p "$3"
+    echo "Oct 12 10:00:00 host kernel[0]: from the disk" > "$3/system.log"
+    echo "a crash report" > "$3/report-configd.crash.txt"
+    if [ -n "${STUB_BE_LEAK:-}" ]; then : > "$3/leak.qcow2"; : > "$3/leak.img"; fi ;;
+esac
+exit "${STUB_BE_RC:-0}"
 STUB
 
     # the stand-in for bin/gate-vm.sh: records, never boots or connects.
@@ -281,12 +317,13 @@ echo "stand-in gate-vm: unexpected $cmd" >&2
 exit 2
 STUB
     chmod +x "$STUBS"/* "$BATS_TEST_TMPDIR/dev-install" "$BATS_TEST_TMPDIR/verify-sources" "$BATS_TEST_TMPDIR/gate-vm" \
-        "$BATS_TEST_TMPDIR/gate-varstore"
+        "$BATS_TEST_TMPDIR/gate-varstore" "$BATS_TEST_TMPDIR/gate-build-evidence"
     export PATH="$STUBS:/usr/bin:/bin"
     export GUEST_MACOSX_GATE_VM="$BATS_TEST_TMPDIR/gate-vm"
     export GUEST_MACOSX_GATE_DEV_INSTALL="$BATS_TEST_TMPDIR/dev-install"
     export GUEST_MACOSX_GATE_VERIFY_SOURCES="$BATS_TEST_TMPDIR/verify-sources"
     export GUEST_MACOSX_GATE_VARSTORE="$BATS_TEST_TMPDIR/gate-varstore"
+    export GUEST_MACOSX_GATE_BUILD_EVIDENCE="$BATS_TEST_TMPDIR/gate-build-evidence"
     export GATE_KVM="$BATS_TEST_TMPDIR/kvm"; : > "$GATE_KVM"
     export GATE_SPACE_AVAILABLE_KIB=$((80 * 1024 * 1024))
     export GATE_BUILD_SPACE_AVAILABLE_KIB=$((40 * 1024 * 1024))
@@ -381,8 +418,8 @@ note_of() { awk -F'\t' -v s="$1" '$1 == s { print $4 }' "$EV/steps.tsv"; }
 @test "the builds: the exact packer commands, from their own directories, with a fresh plugin path and cache" {
     gate --accel kvm
     [ "$status" -eq 0 ]
-    grep -qxF "packer build -color=false -var updates=security -var accelerator=kvm -var headless=true $REPO/templates/mavericks (cwd $WORK/base) cache=$WORK/packer-cache plugins=$WORK/plugins" "$STUB_LOG"
-    grep -qxF "packer build -color=false -var accelerator=kvm -var headless=true -var base_box=$WORK/box-base $REPO/templates/mavericks-aquatransport (cwd $WORK/layer) cache=$WORK/packer-cache plugins=$WORK/plugins" "$STUB_LOG"
+    grep -qxF "packer build -color=false -timestamp-ui -on-error=abort -var updates=security -var accelerator=kvm -var headless=true $REPO/templates/mavericks (cwd $WORK/base) cache=$WORK/packer-cache plugins=$WORK/plugins" "$STUB_LOG"
+    grep -qxF "packer build -color=false -timestamp-ui -on-error=abort -var accelerator=kvm -var headless=true -var base_box=$WORK/box-base $REPO/templates/mavericks-aquatransport (cwd $WORK/layer) cache=$WORK/packer-cache plugins=$WORK/plugins" "$STUB_LOG"
     # each box unpacked, packer's own output gone
     [ "$(cat "$WORK/box-base/box_0.img")" = "base box_0.img" ]
     [ "$(cat "$WORK/box-layer/box_0.img")" = "layer box_0.img" ]
@@ -741,6 +778,185 @@ STUB
     [ "$status" -eq 1 ]
     expect_rows build-layer fail
     [[ "$(note_of build-layer)" == *"Error launching VM: Qemu failed to start."* ]] || false
+}
+
+# --- builds: the evidence of a build that failed after QEMU started ---
+# Packer deletes the output directory when a build fails, and the gate wipes the build directory
+# before the next release's build: what shows why a guest never answered SSH is read before either.
+# -on-error=abort leaves the failed build's QEMU and disk where they were; PACKER_LOG=1 into a file
+# of its own is the packer log; the guest's screen is read over the VNC port packer names; the
+# installer's serial log is beside the output directory; the guest's logs are read offline from
+# its disk (bin/gate-build-evidence.sh, here a stand-in). Never an image.
+
+@test "build evidence: packer is told to leave a failed build alone, and to log into the build directory" {
+    gate
+    [ "$status" -eq 0 ]
+    grep -qxF "packer-env base: PACKER_LOG=1 PACKER_LOG_PATH=$WORK/base/packer-debug.log" "$STUB_LOG"
+    grep -qxF "packer-env layer: PACKER_LOG=1 PACKER_LOG_PATH=$WORK/layer/packer-debug.log" "$STUB_LOG"
+}
+
+@test "build evidence: a build-base failure after QEMU started keeps the packer log, the serial log, the screen and the disk's logs" {
+    STUB_BUILD_FAIL=base:started gate
+    [ "$status" -eq 1 ]
+    expect_rows build-base fail
+    d=$EV/build-base
+    [ "$(cat "$d/packer-debug.log")" = "stub packer debug log for mavericks" ]
+    [ "$(cat "$d/install-serial.log")" = "serial: Mac OS X installer" ]
+    [ -f "$d/screen.png" ]
+    [ "$(cat "$d/disk/system.log")" = "Oct 12 10:00:00 host kernel[0]: from the disk" ]
+    [ -f "$d/disk/report-configd.crash.txt" ]
+    grep -qxF "build-evidence screenshot 127.0.0.1:5977 $d/screen.png" "$STUB_LOG"
+    grep -qxF "build-evidence disk $WORK/base/output-mavericks/disk.qcow2 $d/disk" "$STUB_LOG"
+    # the screen while the guest still runs, the disk once it is stopped
+    [ "$(grep -n '^build-evidence' "$STUB_LOG" | head -n 1 | cut -d: -f2- | cut -d' ' -f2)" = screenshot ]
+    # and the summary says where
+    grep -q "build-base" "$EV/summary.md"
+    [[ "$(note_of build-base)" == *"Timeout waiting for SSH"* ]] || false
+}
+
+@test "build evidence: with packer's timestamped UI the failure is still classified, and the screen still found" {
+    STUB_TIMESTAMP=1 STUB_BUILD_FAIL=base:started gate
+    [ "$status" -eq 1 ]
+    expect_rows build-base fail
+    [[ "$(note_of build-base)" == "packer failed after QEMU started: Timeout waiting for SSH"* ]] || false
+    grep -qxF "build-evidence screenshot 127.0.0.1:5977 $EV/build-base/screen.png" "$STUB_LOG"
+    grep -q '^2026-11-01T09:00:00-05:00: ==> qemu.mavericks: vnc://127.0.0.1:5977' "$EV/build-base.log"
+    STUB_TIMESTAMP=1 STUB_BUILD_FAIL=base:noqemu gate
+    [ "$status" -eq 3 ]
+    expect_rows build-base infra
+}
+
+# spec: independent review of ssh-window, 2026-11-02, finding 1 -- -timestamp-ui puts a time before every
+#       line, so the guest's indented output no longer starts with spaces; its full disk read as the host's
+@test "build evidence: with packer's timestamped UI the guest's full disk is still a fail, not infra" {
+    STUB_TIMESTAMP=1 STUB_BUILD_FAIL=base:guestfull gate
+    [ "$status" -eq 1 ]
+    expect_rows build-base fail
+    [[ "$(note_of build-base)" == "the guest's disk filled: "*"No space left on device"* ]] || false
+    # the time packer put before the line is not part of what the guest said
+    [[ "$(note_of build-base)" == "the guest's disk filled: qemu.mavericks: cp: /Users/vagrant/big: No space left on device"* ]] || { note_of build-base; false; }
+}
+
+@test "build evidence: with packer's timestamped UI the host's full disk is still infra" {
+    STUB_TIMESTAMP=1 STUB_BUILD_FAIL=base:nospace gate
+    [ "$status" -eq 3 ]
+    expect_rows build-base infra
+}
+
+# spec: independent review of ssh-window, 2026-11-02, finding 2 -- the evidence takes minutes (up to about 20),
+#       and a 137 is a timeout only once the limit had passed: the clock stops when packer does
+@test "build evidence: a packer KILLed from outside before its limit is not called a timeout because the evidence was slow" {
+    GATE_BUILD_TIMEOUT=2 STUB_BE_SLEEP=3 STUB_KILL_SELF=1 STUB_BUILD_FAIL=base:started gate
+    [ "$status" -eq 3 ]
+    expect_rows build-base infra
+    [[ "$(note_of build-base)" == *"was killed (status 137"* ]] || false
+    [[ "$(note_of build-base)" != *"did not finish"* ]] || false
+    grep -q '^build-evidence screenshot' "$STUB_LOG"
+}
+
+@test "build evidence: a build-layer failure keeps its own, under build-layer" {
+    STUB_BUILD_FAIL=layer:started gate
+    [ "$status" -eq 1 ]
+    expect_rows build-layer fail
+    d=$EV/build-layer
+    [ "$(cat "$d/packer-debug.log")" = "stub packer debug log for mavericks-aquatransport" ]
+    [ -f "$d/screen.png" ]
+    grep -qxF "build-evidence disk $WORK/layer/output-mavericks-aquatransport/disk.qcow2 $d/disk" "$STUB_LOG"
+    [ ! -e "$EV/build-base" ]
+}
+
+@test "build evidence: a 10.6 base failure keeps it too" {
+    : > "$BATS_TEST_TMPDIR/disc.iso"
+    STUB_BUILD_FAIL=base:started gate --release 10.6 --installer "$BATS_TEST_TMPDIR/disc.iso"
+    [ "$status" -eq 1 ]
+    [ -f "$EV/build-base/screen.png" ]
+    [ -f "$EV/build-base/disk/system.log" ]
+}
+
+@test "build evidence: a pass keeps none of it" {
+    gate
+    [ "$status" -eq 0 ]
+    [ ! -e "$EV/build-base" ]
+    [ ! -e "$EV/build-layer" ]
+    [ "$(grep -c '^build-evidence' "$STUB_LOG")" -eq 0 ]
+    [ -z "$(find "$EV" -name 'packer-debug.log' -o -name 'install-serial.log')" ]
+}
+
+@test "build evidence: a failure before QEMU started keeps the packer log and has no screen or disk to read" {
+    STUB_BUILD_FAIL=base:noqemu gate
+    [ "$status" -eq 3 ]
+    [ "$(cat "$EV/build-base/packer-debug.log")" = "stub packer debug log for mavericks" ]
+    [ "$(grep -c '^build-evidence' "$STUB_LOG")" -eq 0 ]
+    [ ! -e "$EV/build-base/screen.png" ]
+}
+
+@test "build evidence: it never keeps an image, whatever the reader leaves among its files" {
+    STUB_BE_LEAK=1 STUB_BUILD_FAIL=base:started gate
+    [ "$status" -eq 1 ]
+    [ -f "$EV/build-base/disk/system.log" ]
+    [ -z "$(find "$EV" -name '*.qcow2' -o -name '*.img' -o -name '*.iso' -o -name '*.dmg' -o -name '*.box')" ]
+}
+
+@test "build evidence: a reader that fails costs the evidence, never the verdict" {
+    STUB_BE_RC=1 STUB_BUILD_FAIL=base:started gate
+    [ "$status" -eq 1 ]
+    expect_rows build-base fail
+    [[ "$(note_of build-base)" == *"Timeout waiting for SSH"* ]] || false
+    [ -f "$EV/build-base/packer-debug.log" ]
+    [ -f "$EV/build-base/install-serial.log" ]
+}
+
+# an aborted build's QEMU: a sleep that the stand-in ps calls a QEMU naming the base disk
+fake_aborted_qemu() {
+    sleep 300 3>&- & q1=$!
+    OWNED="$q1"
+    echo "$q1 qemu-system-x86_64 -drive file=$WORK/base/output-mavericks/mavericks.qcow2" > "$STUBS/ps.table"
+    cat > "$STUBS/ps" <<'STUB'
+#!/bin/sh
+table="$(dirname "$0")/ps.table"
+if [ "$*" = "-eo pid=,args=" ]; then
+    cat "$table"
+    exit 0
+fi
+if [ "$1" = -p ]; then
+    comm=$(awk -v p="$2" '$1 == p { print $2; exit }' "$table")
+    if [ -n "$comm" ]; then
+        echo "$comm"
+        exit 0
+    fi
+fi
+[ -x /usr/bin/ps ] && exec /usr/bin/ps "$@"
+exec /bin/ps "$@"
+STUB
+    chmod +x "$STUBS/ps"
+}
+
+@test "build evidence: the QEMU an aborted build leaves is read, then stopped" {
+    fake_aborted_qemu
+    STUB_BUILD_FAIL=base:started GATE_CHILD_STOP_WAIT=1 gate
+    [ "$status" -eq 1 ]
+    grep -qxF "kill -TERM $q1" "$STUB_LOG"
+    grep -q "stopped an orphaned QEMU (pid $q1)" "$EV/evidence.log"
+    # its state while it still ran
+    grep -q "^pid $q1: state, elapsed s, CPU time, threads" "$EV/build-base/qemu-state.txt"
+    # the screen was taken before the stop, the disk after it
+    a=$(grep -n '^build-evidence screenshot' "$STUB_LOG" | cut -d: -f1)
+    b=$(grep -n "^kill -TERM $q1\$" "$STUB_LOG" | cut -d: -f1)
+    c=$(grep -n '^build-evidence disk' "$STUB_LOG" | cut -d: -f1)
+    [ "$a" -lt "$b" ]
+    [ "$b" -lt "$c" ]
+}
+
+# spec: independent review of ssh-window, 2026-11-02, finding 6 -- /proc and `ps -o etimes` are Linux's: where
+#       they are not, the QEMU's state is said to be unread, not filled with their error messages
+@test "build evidence: with no /proc to read, the QEMU's state says so and holds no error messages" {
+    fake_aborted_qemu
+    mkdir "$BATS_TEST_TMPDIR/noproc"
+    GATE_PROC_ROOT="$BATS_TEST_TMPDIR/noproc" STUB_BUILD_FAIL=base:started GATE_CHILD_STOP_WAIT=1 gate
+    [ "$status" -eq 1 ]
+    grep -q "^pid $q1: no /proc here; its state is not read" "$EV/build-base/qemu-state.txt" || { cat "$EV/build-base/qemu-state.txt"; false; }
+    [ "$(grep -c 'No such file' "$EV/build-base/qemu-state.txt")" -eq 0 ]
+    grep -q "stopped an orphaned QEMU (pid $q1)" "$EV/evidence.log"
 }
 
 @test "Review Focus 4: the disk filling after QEMU started is infra, 'no space left on device'" {
@@ -1239,7 +1455,7 @@ sl_gate() {
     [ "$(note_of build-layer)" = "10.6 has no Aqua Transport layer yet (G5): the gate boots the base box" ]
     [ "$(note_of reach)" = "10.6 has no TLS layer yet (G5): its curl, on OpenSSL 0.9.8, fails all three hosts with a TLS protocol-version alert (MEASURED 2026-10-29)" ]
     [ "$(head -n 1 "$EV/summary.md")" = "Passed: every step that applies, 2 restarts; not applicable: build-layer, reach" ]
-    grep -qxF "packer build -color=false -var updates=security -var installer=$BATS_TEST_TMPDIR/disc.iso -var accelerator=kvm -var headless=true $REPO/templates/snowleopard (cwd $WORK/base) cache=$WORK/packer-cache plugins=$WORK/plugins" "$STUB_LOG"
+    grep -qxF "packer build -color=false -timestamp-ui -on-error=abort -var updates=security -var installer=$BATS_TEST_TMPDIR/disc.iso -var accelerator=kvm -var headless=true $REPO/templates/snowleopard (cwd $WORK/base) cache=$WORK/packer-cache plugins=$WORK/plugins" "$STUB_LOG"
     [ "$(grep -c '^packer build' "$STUB_LOG")" -eq 1 ]
     [ ! -e "$WORK/box-layer" ]
     grep -qxF "release: 10.6" "$EV/preflight.log"
