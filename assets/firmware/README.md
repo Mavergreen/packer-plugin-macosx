@@ -5,9 +5,14 @@ that every setting is diffable, attributable and arguable.
 
 ## Where it came from, and where it deliberately did not
 
-It was derived from **OpenCorePkg 1.0.7's own `Docs/Sample.plist`**, in the
-same source tree `mavericks-firmware` builds. Anything not listed below is
-that sample's value, unchanged.
+It was derived from **OpenCorePkg 1.0.7's own `Docs/Sample.plist`** and
+carried to **1.0.8**, the release `mavericks-firmware` now builds. Anything
+not listed below is that sample's value, unchanged. 1.0.8's sample differs
+from 1.0.7's in only two ways: every `UEFI > Drivers` entry gains a
+`HideVerbose` key, which both of our configs set to the sample's `false` on
+all three drivers (the sample's one `true` is on `HfsPlus.efi`, which we do
+not ship); and `Kernel > Patch` gains a disabled 10.4-only entry, which we do
+not carry, as we carry none of the sample's patches.
 
 It was **not** derived from khronokernel's `config.plist`, the one inside the
 reference `EFI-LEGACY.img` from a UTM bundle that booted 10.9 before this
@@ -24,10 +29,10 @@ model set) and refuses a config it rejects. By hand, from the firmware
 workspace in Packer's cache (`docs/decisions/0003`):
 
 ```
-<cache>/guest-macosx/firmware-build/build/OpenCorePkg-1.0.7/Utilities/ocvalidate/ocvalidate assets/firmware/config.plist
+<cache>/guest-macosx/firmware-build/build/OpenCorePkg-1.0.8/Utilities/ocvalidate/ocvalidate assets/firmware/config.plist
 ```
 
-It announces that it is "only compatible with OpenCore version 1.0.7", which
+It announces that it is "only compatible with OpenCore version 1.0.8", which
 is exactly why it is the validator used rather than eyeballing the plist.
 It reports **no issues**.
 
@@ -49,7 +54,7 @@ of evidence appear:
 - **Property of 10.9** — a fact about the guest OS, e.g. that it predates a
   technology entirely.
 
-Anything with no entry below is a 1.0.7 sample default we did not touch. If
+Anything with no entry below is a sample default we did not touch. If
 you are looking for a setting and cannot find it here, that is the answer:
 nobody chose it, and changing it is fair game.
 
@@ -226,7 +231,7 @@ reference config sets it too.
 
 ### `Kernel > Quirks` settings we did **not** copy from the reference
 
-- **`DisableLinkeditJettison`** is on — but it is already 1.0.7's sample
+- **`DisableLinkeditJettison`** is on — but it is already the sample's
   default, so this is agreement, not a decision.
 - **`SetApfsTrimTimeout`** is left at the sample default `-1`. The reference
   sets it. 10.9 predates APFS by four years and cannot mount an APFS volume,
@@ -240,7 +245,7 @@ reference config sets it too.
 ### `Booter > Quirks > AllowRelocationBlock` = `true`
 
 **Evidence: reference config.** This is the only Booter quirk we had to
-change: 1.0.7's sample already enables `AvoidRuntimeDefrag`,
+change: the sample already enables `AvoidRuntimeDefrag`,
 `EnableWriteUnprotector`, `ProvideCustomSlide` and `EnableSafeModeSlide`, the
 other four the reference turns on.
 
@@ -249,13 +254,13 @@ the lower memory it wants is occupied. It is specifically a legacy-macOS
 accommodation and the reference config, which is the only verified 10.9
 configuration we have, enables it.
 
-**None of the five has been re-tested on 1.0.7.** They are inherited from a
+**None of the five has been re-tested on 1.0.7 or 1.0.8.** They are inherited from a
 0.6.6 configuration on a different hypervisor. If a boot misbehaves in the
 booter, change one quirk at a time; none has misbehaved yet.
 
-### Two Booter quirks where we keep 1.0.7's default over the reference's
+### Two Booter quirks where we keep the sample's default over the reference's
 
-The reference config leaves `SetupVirtualMap` **off**; 1.0.7's sample has it
+The reference config leaves `SetupVirtualMap` **off**; the sample has it
 **on**, and we keep it on. It corrects `SetVirtualAddresses` handling on
 firmware that mishandles it, and it is what OVMF-based setups generally use.
 The same applies to `FixupAppleEfiImages`, which did not exist in 0.6.6 at
@@ -358,7 +363,7 @@ modes a boot has to be diagnosable from. Show everything.
 
 Not a change, but worth knowing it is load-bearing: bit `0x2` is what makes
 OpenCore write its version into NVRAM, which is how a boot confirms it ran
-*our* 1.0.7 build and not some other OpenCore image. Turning this off would
+*our* build and not some other OpenCore image. Turning this off would
 remove the only direct evidence of which bootloader ran.
 
 ### `Misc > Tools` — empty
@@ -498,7 +503,7 @@ booting without installer media and answering SSH
 down so nobody mistakes a working boot for a tested setting:
 
 1. **The five Booter quirks are inherited from 0.6.6 under TCG**, not
-   re-tested on 1.0.7 under KVM. No boot has misbehaved, so no quirk has
+   re-tested on 1.0.7 or 1.0.8 under KVM. No boot has misbehaved, so no quirk has
    been flipped.
 2. **Whether each driver is needed.** Nobody has removed one to see what
    breaks; `OpenPartitionDxe` is the likeliest to be redundant.

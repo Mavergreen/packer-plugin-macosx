@@ -33,11 +33,11 @@ from a Tier 2 artifact does not launder it.
 | **Firmware** `OVMF_CODE.fd` | **0** | EDK II's `build -a X64 -b RELEASE -t GCC -p OvmfPkg/OvmfPkgX64.dsc`, in the same EDK II tree OpenCore builds in | `acidanthera/audk` `0672a009e9ca85753d240324d761341adf0291b3` |
 | **Firmware** `OVMF_VARS.fd` | **0** | the same build; the template copies it per build (`efivars.fd`), so the one in the cache is never booted in place | the same |
 | `OVMF.fd` | **0** | the same build; the combined image, which nothing downstream reads | the same |
-| **Bootloader** `BOOTx64.efi` (= `Bootstrap.efi`) | **0** | OpenCorePkg's `build_oc.tool` | OpenCorePkg `1.0.7` |
-| **Bootloader** `OpenCore.efi` | **0** | the same | OpenCorePkg `1.0.7` |
-| `OpenRuntime.efi`, `OpenPartitionDxe.efi` | **0** | the same | OpenCorePkg `1.0.7` |
-| **HFS+ driver** `OpenHfsPlus.efi` | **0** | the same (`Staging/OpenHfsPlus`, in the default target) | OpenCorePkg `1.0.7` |
-| **Config** `assets/firmware/config.plist` | **0** | ours, derived from 1.0.7's `Sample.plist`; every divergence explained in `assets/firmware/README.md` | this repository |
+| **Bootloader** `BOOTx64.efi` (= `Bootstrap.efi`) | **0** | OpenCorePkg's `build_oc.tool` | OpenCorePkg `1.0.8` |
+| **Bootloader** `OpenCore.efi` | **0** | the same | OpenCorePkg `1.0.8` |
+| `OpenRuntime.efi`, `OpenPartitionDxe.efi` | **0** | the same | OpenCorePkg `1.0.8` |
+| **HFS+ driver** `OpenHfsPlus.efi` | **0** | the same (`Staging/OpenHfsPlus`, in the default target) | OpenCorePkg `1.0.8` |
+| **Config** `assets/firmware/config.plist` | **0** | ours, derived from 1.0.8's `Sample.plist`; every divergence explained in `assets/firmware/README.md` | this repository |
 | **Kext** `Lilu.kext` | **1** | acidanthera's release zip | Lilu **1.7.2**, zip `53967d7d…` |
 | **Kext** `VirtualSMC.kext` | **1** | acidanthera's release zip | VirtualSMC **1.3.7**, zip `12f1d379…` |
 | **EFI image** `opencore.img` | **0** | a 192 MiB GPT disk with one FAT32 EFI System Partition, written by `internal/diskimg` with no loop device, no mount and no root | assembled from the rows above |
@@ -52,7 +52,7 @@ Building them from source would need Xcode.
 
 | Input | Pin |
 |---|---|
-| OpenCorePkg | release tarball for tag `1.0.7` (`opencorepkg-src`) |
+| OpenCorePkg | release tarball for tag `1.0.8` (`opencorepkg-src`) |
 | `ocbuild/efibuild.sh` | commit `e9ed49cb7a4f7fa2830c024a13d63de27c2e0d1a` (`ocbuild-efibuild`) |
 | `acidanthera/audk` (EDK II) | commit `0672a009e9ca85753d240324d761341adf0291b3` (`audk-src`) |
 | audk's 12 submodules | the commits audk's gitlinks name (`audk-*`); all twelve, because EDK II's `build.py` validates every `[Includes]` path in every `.dec` it parses |

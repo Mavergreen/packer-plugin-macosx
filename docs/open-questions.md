@@ -101,7 +101,7 @@ decides how small a runner can build a guest.
 ## Q5. Do the inherited `Booter` quirks matter?
 
 Five `Booter > Quirks` came from an OpenCore 0.6.6 configuration under TCG
-on Apple Silicon and have never been tested on OpenCore 1.0.7 under KVM.
+on Apple Silicon and have never been tested on OpenCore 1.0.7 or 1.0.8 under KVM.
 Nothing has failed, so nothing has been flipped. **Turning each off, one
 boot at a time,** would say which are needed
 (`docs/configuration-register.md` §12).
