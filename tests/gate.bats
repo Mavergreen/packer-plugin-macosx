@@ -126,6 +126,9 @@ case "${STUB_BUILD_FAIL:-}" in
     mkdir -p "output-$src"
     : > "output-$src/disk.qcow2"
     echo "serial: Mac OS X installer" > "output-$src-install.log"
+    # and the QMP socket the template opens beside the output directory (a plain file stands in for it)
+    # (the qmp-dir data source's directory, 0700, beside the output directory, with the socket inside)
+    [ -n "${STUB_NO_QMP:-}" ] || { mkdir -m 0700 "output-$src-qmp" && : > "output-$src-qmp/qmp.sock"; }
     [ -z "${STUB_KILL_SELF:-}" ] || kill -KILL $$
     echo "==> qemu.$src: Waiting for SSH to become available..."
     echo "Build 'qemu.$src' errored after 38 minutes 2 seconds: Timeout waiting for SSH."
@@ -207,6 +210,10 @@ printf 'build-evidence %s\n' "$*" >> "$STUB_LOG"
 [ -z "${STUB_BE_SLEEP:-}" ] || sleep "$STUB_BE_SLEEP"
 case $1 in
 screenshot) echo "not really a png" > "$3" ;;
+qmp)
+    mkdir -p "$3"
+    echo "== query-status ==" > "$3/read-1.txt"
+    : > "$3/screen-1.png" ;;
 disk)
     mkdir -p "$3"
     echo "Oct 12 10:00:00 host kernel[0]: from the disk" > "$3/system.log"
@@ -807,11 +814,70 @@ STUB
     [ -f "$d/disk/report-configd.crash.txt" ]
     grep -qxF "build-evidence screenshot 127.0.0.1:5977 $d/screen.png" "$STUB_LOG"
     grep -qxF "build-evidence disk $WORK/base/output-mavericks/disk.qcow2 $d/disk" "$STUB_LOG"
-    # the screen while the guest still runs, the disk once it is stopped
-    [ "$(grep -n '^build-evidence' "$STUB_LOG" | head -n 1 | cut -d: -f2- | cut -d' ' -f2)" = screenshot ]
+    # what the QEMU says and the screen while the guest still runs, the disk once it is stopped
+    [ "$(grep '^build-evidence' "$STUB_LOG" | sed -n 1p | cut -d' ' -f2)" = qmp ]
+    [ "$(grep '^build-evidence' "$STUB_LOG" | sed -n 2p | cut -d' ' -f2)" = screenshot ]
     # and the summary says where
     grep -q "build-base" "$EV/summary.md"
     [[ "$(note_of build-base)" == *"Timeout waiting for SSH"* ]] || false
+}
+
+@test "build evidence: a failure after QEMU started reads the live QEMU over its QMP socket, 30 s apart, into qmp/" {
+    STUB_BUILD_FAIL=base:started gate
+    [ "$status" -eq 1 ]
+    d=$EV/build-base
+    grep -qxF "build-evidence qmp $WORK/base/output-mavericks-qmp/qmp.sock $d/qmp 30" "$STUB_LOG"
+    [ -f "$d/qmp/read-1.txt" ]
+    STUB_BUILD_FAIL=layer:started gate
+    [ "$status" -eq 1 ]
+    grep -qxF "build-evidence qmp $WORK/layer/output-mavericks-aquatransport-qmp/qmp.sock $EV/build-layer/qmp 30" "$STUB_LOG"
+}
+
+@test "build evidence: the QMP read comes while the QEMU still runs: after its host-side state, before the stop" {
+    sleep 300 3>&- & q1=$!
+    OWNED="$q1"
+    echo "$q1 qemu-system-x86_64 -drive file=$WORK/base/output-mavericks/mavericks.qcow2" > "$STUBS/ps.table"
+    cat > "$STUBS/ps" <<'STUB'
+#!/bin/sh
+table="$(dirname "$0")/ps.table"
+if [ "$*" = "-eo pid=,args=" ]; then
+    cat "$table"
+    exit 0
+fi
+if [ "$1" = -p ]; then
+    comm=$(awk -v p="$2" '$1 == p { print $2; exit }' "$table")
+    if [ -n "$comm" ]; then
+        echo "$comm"
+        exit 0
+    fi
+fi
+[ -x /usr/bin/ps ] && exec /usr/bin/ps "$@"
+exec /bin/ps "$@"
+STUB
+    chmod +x "$STUBS/ps"
+    STUB_BUILD_FAIL=base:started GATE_CHILD_STOP_WAIT=1 gate
+    [ "$status" -eq 1 ]
+    q=$(grep -n '^build-evidence qmp' "$STUB_LOG" | cut -d: -f1)
+    k=$(grep -n "^kill -TERM $q1\$" "$STUB_LOG" | cut -d: -f1)
+    sc=$(grep -n '^build-evidence screenshot' "$STUB_LOG" | cut -d: -f1)
+    [ "$q" -lt "$k" ]
+    [ "$q" -lt "$sc" ]
+}
+
+@test "build evidence: no QMP socket (a template that opens none) is no qmp read, and no failure" {
+    STUB_NO_QMP=1 STUB_BUILD_FAIL=base:started gate
+    [ "$status" -eq 1 ]
+    expect_rows build-base fail
+    [ "$(grep -c '^build-evidence qmp' "$STUB_LOG")" -eq 0 ]
+    [ -f "$EV/build-base/screen.png" ]
+}
+
+@test "build evidence: a QMP reader that fails costs the QMP evidence, never the verdict or the rest" {
+    STUB_BE_RC=1 STUB_BUILD_FAIL=base:started gate
+    [ "$status" -eq 1 ]
+    expect_rows build-base fail
+    grep -q '^build-evidence qmp' "$STUB_LOG"
+    grep -q '^build-evidence disk' "$STUB_LOG"
 }
 
 @test "build evidence: with packer's timestamped UI the failure is still classified, and the screen still found" {
@@ -851,7 +917,7 @@ STUB
     expect_rows build-base infra
     [[ "$(note_of build-base)" == *"was killed (status 137"* ]] || false
     [[ "$(note_of build-base)" != *"did not finish"* ]] || false
-    grep -q '^build-evidence screenshot' "$STUB_LOG"
+    grep -q '^build-evidence qmp' "$STUB_LOG"
 }
 
 @test "build evidence: a build-layer failure keeps its own, under build-layer" {

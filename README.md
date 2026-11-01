@@ -227,6 +227,10 @@ evidence never holds an image, a box or your disc, and the gate reads the
 disc where it is. A build that fails after QEMU started also leaves, in the
 release's evidence directory under `build-base/` or `build-layer/`, what shows
 why the guest never came up: Packer's debug log, the installer's serial log,
-the guest's screen, and its logs read from its disk
-(`bin/gate-build-evidence.sh`), taken before the next build or the other
-release's gate wipes the work directory.
+what the still-running QEMU itself says over the QMP socket each template
+opens beside its output directory (`qmp/`: status, block counters, the PCI
+tree, interrupt and vCPU state, USB, a screen, read twice 30 seconds apart,
+and what moved between the reads), the guest's screen, and its logs read from
+its disk (`bin/gate-build-evidence.sh`), taken before the next build or the
+other release's gate wipes the work directory. The socket is not a guest
+device.

@@ -41,8 +41,10 @@
 #         diag reports, named system-<name> or user-<user>-<name>) and system.log (its last 500
 #         lines). A build that fails after QEMU started also leaves <evidence>/build-<base|layer>/:
 #         packer-debug.log (PACKER_LOG=1), qemu-state.txt (the QEMU's state, CPU time and threads while
-#         it still runs: idle or spinning), install-serial.log (the installer's logs, from the first
-#         serial port), screen.png (the guest's screen, over the VNC port Packer names) and disk/
+#         it still runs: idle or spinning), qmp/ (what the QEMU itself says over the QMP socket the
+#         template opens: status, block counters, PCI tree, interrupt and vCPU state, USB, a screendump,
+#         read twice 30 s apart, and what differs: bin/gate-build-evidence.sh qmp), install-serial.log
+#         (the installer's logs, from the first serial port), screen.png (the guest's screen, over the VNC port Packer names) and disk/
 #         (its logs and reports, read from its disk by bin/gate-build-evidence.sh), taken before
 #         the next build, or the other release's gate, wipes the build dir. Packer runs with
 #         -on-error=abort so that the failed build's QEMU and disk are still there to read; the
@@ -813,8 +815,8 @@ classify_build_failure() {
 }
 
 # build_evidence <base|layer> <dir> <log>: a build failed. Packer ran with -on-error=abort, so its QEMU
-# may still run and its disk is still in <dir>/output-*: take the guest's screen while it runs, stop
-# it, then read its disk. <dir> (and the packer log in it) goes when the next build starts, and the
+# may still run and its disk is still in <dir>/output-*: read what the QEMU says and take the guest's
+# screen while it runs, stop it, then read its disk. <dir> (and the packer log in it) goes when the next build starts, and the
 # other release's gate wipes the work dir. Everything here is evidence: it fails nothing.
 build_evidence() {
     local which=$1 dir=$2 log=$3 d=$ev/build-$1 f vnc img pid
@@ -850,6 +852,13 @@ build_evidence() {
                 printf '%s %s %s\n' "$(cat "$f/comm" 2>/dev/null)" "$(sed -n 's/^State:\t//p' "$f/status" 2>/dev/null)" "$(cat "$f/wchan" 2>/dev/null)"
             done
         } >> "$d/qemu-state.txt" 2>&1 || true
+    done
+    # what the QEMU itself says while it still runs, twice 30 s apart so that counters show whether
+    # anything moves (the template opens the socket beside the output directory; an older one has none)
+    for f in "$dir"/output-*-qmp/qmp.sock; do
+        [ -e "$f" ] || continue
+        run_child timeout -k 10 240 "$BUILD_EVIDENCE" qmp "$f" "$d/qmp" 30 || true
+        break
     done
     if [ -n "$vnc" ]; then
         run_child timeout -k 5 90 "$BUILD_EVIDENCE" screenshot "$vnc" "$d/screen.png" || true

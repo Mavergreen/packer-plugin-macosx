@@ -1,15 +1,25 @@
 #!/usr/bin/env bash
-# platform: host-agnostic -- tested on Linux with KVM only (the disk is read through qemu-storage-daemon's FUSE export)
+# platform: host-agnostic -- screenshot and qmp need only python3 (qmp tested on Linux only); disk needs Linux (qemu-storage-daemon's FUSE export, fusermount, 7z) and warns and reads nothing where a tool is missing
+#   bin/gate.sh, which calls this, reads a QEMU's /proc and `ps -o etimes` only where /proc exists.
 # What a build that failed after QEMU started leaves for a person, for bin/gate.sh. Evidence only:
 # whatever this cannot get it says so (a warning) and exits 0, so it never changes a verdict.
 #
 #   usage: bin/gate-build-evidence.sh screenshot <host:port> <out.png>
 #          bin/gate-build-evidence.sh disk       <image.qcow2> <out-dir>
+#          bin/gate-build-evidence.sh qmp        <qmp.sock> <out-dir> <seconds>
 #
+#   qmp         what the live QEMU thinks, over the QMP socket the templates open beside their output
+#               directory, read twice <seconds> apart so that counters show whether anything moves.
+#               Into <out-dir>: read-1.txt and read-2.txt (QMP status, KVM, vCPUs, block devices and
+#               their counters, the PCI tree, and through the human monitor the interrupt state
+#               (irq, pic, ioapic, each lapic), the registers and halted state of every vCPU, USB and
+#               the device tree), screen-1.png and screen-2.png (QEMU's own screendump; a .ppm when
+#               QEMU cannot do PNG), and delta.txt (what differs between the two reads). It only
+#               asks: no command that stops, resets or writes the guest. The guest must still be
+#               running, and no one else may hold the socket (QMP serves one client).
 #   screenshot  one frame of the guest's screen over VNC, the port Packer's qemu builder names
-#               ("vnc://127.0.0.1:59xx"; no password): a PNG. QEMU's `screendump` would need a QMP
-#               socket, which the templates' QEMU arguments do not open, and the evidence is not worth
-#               a change to what ships.
+#               ("vnc://127.0.0.1:59xx"; no password): a PNG. It needs no QMP socket, so it also works
+#               for a build whose template opened none (qmp's screendump is the other way to a frame).
 #   disk        the guest's logs, read from its disk with no root and no boot: the image's HFS+
 #               partition (the first Apple HFS+ one in the GPT) as a read-only file through
 #               qemu-storage-daemon's FUSE export, read with 7z. Into <out-dir>, as text only:
@@ -19,14 +29,11 @@
 #               holds). Never the image, nor any part of it. The image must not be in use: stop the
 #               guest first. The daemon is stopped by the pid it wrote.
 #   env:  GATE_BUILD_EVIDENCE_TOOLS (the commands disk needs: qemu-img qemu-storage-daemon 7z python3)
+#         GATE_BUILD_EVIDENCE_QMP_TIMEOUT (seconds QMP waits for one answer, default 20)
 set -euo pipefail
 
-GUEST_MACOSX_REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-export GUEST_MACOSX_REPO_ROOT
-GUEST_MACOSX_LOG_PREFIX=gate-build-evidence
-export GUEST_MACOSX_LOG_PREFIX
-# shellcheck source=../lib/common.sh
-. "$GUEST_MACOSX_REPO_ROOT/lib/common.sh"
+# standalone: this file also ships inside each template zip, where nothing else of this repository is
+warn() { printf 'gate-build-evidence: warning: %s\n' "$*" >&2; }
 
 TOOLS=${GATE_BUILD_EVIDENCE_TOOLS:-qemu-img qemu-storage-daemon 7z python3}
 # a log can be big (a first boot that spins fills it): the end is what shows how it stopped
@@ -36,6 +43,7 @@ usage() {
     cat >&2 <<'EOF'
 usage: gate-build-evidence.sh screenshot <host:port> <out.png>
        gate-build-evidence.sh disk <image.qcow2> <out-dir>
+       gate-build-evidence.sh qmp <qmp.sock> <out-dir> <seconds>
 EOF
     exit 2
 }
@@ -118,6 +126,199 @@ PY
         rm -f "$tmp"
         warn "screenshot: could not capture the screen at $1"
     fi
+    return 0
+}
+
+# --- qmp ---
+
+cmd_qmp() {
+    [ "$#" -eq 3 ] || usage
+    case $3 in ''|*[!0-9]*) usage ;; esac
+    command -v python3 >/dev/null 2>&1 || { warn "qmp: no python3"; return 0; }
+    [ -S "$1" ] || { warn "qmp: no QMP socket at $1"; return 0; }
+    mkdir -p "$2"
+    GATE_BUILD_EVIDENCE_QMP_TIMEOUT=${GATE_BUILD_EVIDENCE_QMP_TIMEOUT:-20} \
+        python3 -I - "$1" "$2" "$3" <<'PY' || warn "qmp: could not read the QEMU at $1 (a partial read is in $2)"
+import difflib, json, os, socket, struct, sys, time, zlib
+
+sock_path, out, gap = sys.argv[1], os.path.abspath(sys.argv[2]), int(sys.argv[3])
+timeout = float(os.environ["GATE_BUILD_EVIDENCE_QMP_TIMEOUT"])
+
+# What a stall is told apart by: whether QEMU still runs the vCPUs and what they are doing
+# (registers, halted), whether any block device has work it never finished (counters), and
+# whether an interrupt is pending or masked (irq counts, pic, ioapic, lapic) -- a lost interrupt
+# and a lost completion look alike from inside the guest. All of it is a question.
+QMP = [
+    ("query-status", None),
+    ("query-kvm", None),
+    ("query-cpus-fast", None),
+    ("query-block", None),
+    ("query-blockstats", None),
+    ("query-pci", None),
+]
+HMP = [
+    "info irq", "info pic", "info ioapic",
+    "info registers -a", "info cpus", "info usb", "info qtree", "info block -n",
+    "info chardev", "info network",
+]
+
+s = socket.socket(socket.AF_UNIX)
+s.settimeout(timeout)
+# connect relative to the socket's directory: sun_path is 104 bytes on macOS and 108 on Linux, and a
+# work directory's absolute path can be longer than that
+os.chdir(os.path.dirname(os.path.abspath(sock_path)))
+s.connect(os.path.basename(sock_path))
+buf = b""
+
+def msg():
+    global buf
+    while b"\n" not in buf:
+        c = s.recv(65536)
+        if not c:
+            raise EOFError("QEMU closed the QMP socket")
+        buf += c
+    line, buf = buf.split(b"\n", 1)
+    return json.loads(line)
+
+def call(cmd, args=None):
+    req = {"execute": cmd}
+    if args:
+        req["arguments"] = args
+    s.sendall(json.dumps(req).encode() + b"\n")
+    while True:
+        m = msg()
+        if "return" in m or "error" in m:
+            return m
+
+msg()  # the greeting
+r = call("qmp_capabilities")
+if "error" in r:
+    raise SystemExit("qmp_capabilities: %r" % r)
+
+def show(m):
+    if "error" in m:
+        return "ERROR %s: %s\n" % (m["error"].get("class"), m["error"].get("desc"))
+    v = m["return"]
+    return v.replace("\r\n", "\n") if isinstance(v, str) else json.dumps(v, indent=1, sort_keys=True) + "\n"
+
+# An AHCI command the guest issued and the controller has not completed is a bit in a port's CI
+# (PxCI), and one that completed but whose interrupt was not taken is IS with the line asserted:
+# these registers tell a lost completion from a lost interrupt, which no counter does. Read-only: a
+# memory read of the controller's BAR 5.
+def ahci(pci):
+    found = []
+    for bus in pci.get("return", []) if isinstance(pci.get("return"), list) else []:
+        for d in bus.get("devices", []):
+            if d.get("class_info", {}).get("class") != 0x106:
+                continue
+            for r in d.get("regions", []):
+                if r.get("bar") == 5 and r.get("type") == "memory":
+                    found.append((bus.get("bus", 0), d["slot"], d["function"], r["address"]))
+    if not found:
+        return "no SATA controller with a BAR 5 in query-pci\n"
+    out = ""
+    for b, slot, fn, addr in found:
+        m = call("human-monitor-command", {"command-line": "xp /256xw 0x%x" % addr})
+        if "error" in m:
+            out += show(m)
+            continue
+        words = []
+        for line in m["return"].splitlines():
+            if ":" in line:
+                words += [int(w, 16) for w in line.split(":", 1)[1].split() if w.startswith("0x")]
+        if len(words) < 256:
+            out += "short read: %d words\n%s" % (len(words), m["return"])
+            continue
+        out += "ahci 0000:%02x:%02x.%d BAR5 0x%x: CAP=0x%08x GHC=0x%08x IS=0x%08x PI=0x%08x VS=0x%08x\n" % (
+            b, slot, fn, addr, words[0], words[1], words[2], words[3], words[4])
+        for p in range(6):
+            w = words[(0x100 + 0x80 * p) // 4:(0x100 + 0x80 * (p + 1)) // 4]
+            ci, sact = w[14], w[13]
+            line = "ahci port %d: CI=0x%08x SACT=0x%08x IS=0x%08x IE=0x%08x CMD=0x%08x TFD=0x%08x SSTS=0x%08x" % (
+                p, ci, sact, w[4], w[5], w[6], w[8], w[10])
+            if ci or sact:
+                slots = [str(i) for i in range(32) if (ci | sact) >> i & 1]
+                line += "  OUTSTANDING: commands issued and not completed (slots %s)" % ",".join(slots)
+            out += line + "\n"
+    return out
+
+def ppm_to_png(src, dst):
+    b = open(src, "rb").read()
+    fields, pos = [], 0
+    while len(fields) < 4:
+        while pos < len(b) and b[pos:pos + 1].isspace():
+            pos += 1
+        if pos >= len(b):
+            raise ValueError("the PPM ends inside its header")
+        if b[pos:pos + 1] == b"#":
+            pos = b.index(b"\n", pos)
+            continue
+        end = pos
+        while end < len(b) and not b[end:end + 1].isspace():
+            end += 1
+        fields.append(b[pos:end])
+        pos = end
+    magic, w, h, maxv = fields[0], int(fields[1]), int(fields[2]), int(fields[3])
+    if magic != b"P6" or maxv != 255:
+        raise ValueError("not an 8-bit P6 PPM")
+    px = b[pos + 1:pos + 1 + w * h * 3]
+    if len(px) != w * h * 3:
+        raise ValueError("the PPM holds %d bytes of pixels, not the %d its header says" % (len(px), w * h * 3))
+    def chunk(t, d):
+        return struct.pack(">I", len(d)) + t + d + struct.pack(">I", zlib.crc32(t + d))
+    raw = b"".join(b"\0" + px[y * w * 3:(y + 1) * w * 3] for y in range(h))
+    open(dst, "wb").write(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0))
+                          + chunk(b"IDAT", zlib.compress(raw, 6)) + chunk(b"IEND", b""))
+
+def read(n):
+    started = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    parts = []
+    # written as it goes: a QEMU that stops answering halfway leaves what it did say
+    f = open(os.path.join(out, "read-%d.txt" % n), "w")
+    def put(text, keep=True):
+        f.write(text)
+        f.flush()
+        if keep:
+            parts.append(text)
+    put("read %d at %s\n" % (n, started), keep=False)
+    cpus = []
+    pci = {}
+    for cmd, args in QMP:
+        m = call(cmd, args)
+        if cmd == "query-cpus-fast" and isinstance(m.get("return"), list):
+            cpus = [c["cpu-index"] for c in m["return"] if isinstance(c, dict) and "cpu-index" in c][:16]
+        if cmd == "query-pci":
+            pci = m
+        put("== %s ==\n%s" % (cmd, show(m)))
+    put("== ahci registers ==\n" + ahci(pci))
+    for h in HMP + ["info lapic %d" % i for i in cpus]:
+        put("== %s ==\n%s" % (h, show(call("human-monitor-command", {"command-line": h}))))
+    shot = os.path.join(out, "screen-%d" % n)
+    m = call("screendump", {"filename": shot + ".png", "format": "png"})
+    if "error" in m:
+        # QEMU before 7.1 writes only PPM; it goes as a PNG, which is what the evidence keeps
+        m = call("screendump", {"filename": shot + ".ppm"})
+        if "return" in m:
+            try:
+                ppm_to_png(shot + ".ppm", shot + ".png")
+            except (ValueError, OSError) as e:
+                m = {"return": "screen: could not convert QEMU's PPM: %s" % e}
+            finally:
+                os.unlink(shot + ".ppm")
+    put("== screendump ==\n%s" % show(m))
+    f.close()
+    return parts
+
+first = read(1)
+time.sleep(gap)
+second = read(2)
+body = lambda parts: [l for p in parts for l in p.splitlines(True)]
+d = list(difflib.unified_diff(body(first), body(second), "read 1", "read 2", n=0))
+with open(os.path.join(out, "delta.txt"), "w") as f:
+    f.write("read 2 came %d s after read 1\n" % gap)
+    f.write("".join(d) if d else "nothing changed between the reads\n")
+PY
+    echo "qmp: read the QEMU at $1 twice, $3 s apart, into $2"
     return 0
 }
 
@@ -261,5 +462,6 @@ shift
 case $cmd in
     screenshot) cmd_screenshot "$@" ;;
     disk) cmd_disk "$@" ;;
+    qmp) cmd_qmp "$@" ;;
     *) usage ;;
 esac
