@@ -233,4 +233,4 @@ tree, interrupt and vCPU state, USB, a screen, read twice 30 seconds apart,
 and what moved between the reads), the guest's screen, and its logs read from
 its disk (`bin/gate-build-evidence.sh`), taken before the next build or the
 other release's gate wipes the work directory. The socket is not a guest
-device.
+device (`docs/decisions/0040`).
