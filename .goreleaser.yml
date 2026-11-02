@@ -113,6 +113,10 @@ archives:
   # `git ls-files templates/<os>/` minus the tests and their testdata/, and template's TestValidate validates a
   # copy of exactly these files, so a file the template needs cannot be
   # left off.
+  #
+  # Each archive also carries the failed-build reader, bin/gate-build-evidence.sh, beside the template
+  # (dst), by name: the archive is covered by the release's SHA256SUMS, so a consumer that verifies the
+  # template verifies the reader it runs on a stalled build (docs/decisions/0040).
   - id: template-mavericks
     meta: true
     formats: [zip]
@@ -124,6 +128,8 @@ archives:
       - src: templates/mavericks/vagrant-standard-insecure-first-boot-only.key.rsa
       - src: templates/mavericks/variables.pkr.hcl
       - src: templates/mavericks/verify.sh
+      - src: bin/gate-build-evidence.sh
+        dst: templates/mavericks/gate-build-evidence.sh
 
   - id: template-snowleopard
     meta: true
@@ -136,6 +142,8 @@ archives:
       - src: templates/snowleopard/vagrant-standard-insecure-first-boot-only.key.rsa
       - src: templates/snowleopard/variables.pkr.hcl
       - src: templates/snowleopard/verify.sh
+      - src: bin/gate-build-evidence.sh
+        dst: templates/snowleopard/gate-build-evidence.sh
 
   # The Aqua Transport layer over the Mavericks base box. Its DMG is never
   # in it: the template's data source fetches that at build time.
@@ -150,6 +158,8 @@ archives:
       - src: templates/mavericks-aquatransport/vagrant-standard-insecure-first-boot-only.key.rsa
       - src: templates/mavericks-aquatransport/variables.pkr.hcl
       - src: templates/mavericks-aquatransport/verify.sh
+      - src: bin/gate-build-evidence.sh
+        dst: templates/mavericks-aquatransport/gate-build-evidence.sh
 
 checksum:
   name_template: "{{ .ProjectName }}_v{{ .Version }}_SHA256SUMS"

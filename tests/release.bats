@@ -445,6 +445,32 @@ template_oses() {
     done
 }
 
+# the lines of one OS's template archive block in .goreleaser.yml, from its name_template to the next archive
+template_block() {
+    awk -v n="name_template: \"packer-plugin-macosx_v{{ .Version }}_$1_template\"" '
+        $0 ~ /^  - id: / { on = 0 }
+        index($0, n) { on = 1 }
+        on { print }' "$REPO/.goreleaser.yml"
+}
+
+# spec: owner ruling R70, 2026-11-02 -- the reader (bin/gate-build-evidence.sh) ships beside each template, in
+#       the same archive, so the SHA256SUMS that already covers the archive covers the reader, and a consumer
+#       takes template and reader from one verified download
+@test "each template archive carries bin/gate-build-evidence.sh beside the template, by name" {
+    for os in $(template_oses); do
+        run template_block "$os"
+        [ "$status" -eq 0 ]
+        [[ "$output" == *"- src: bin/gate-build-evidence.sh"$'\n'"        dst: templates/$os/gate-build-evidence.sh"* ]] || { echo "$os: $output"; false; }
+    done
+}
+
+@test "the archive with the reader passes archive mode, and the reader is a plain text script" {
+    mkdir -p "$BATS_TEST_TMPDIR/dist"
+    (cd "$REPO" && zip -q "$BATS_TEST_TMPDIR/dist/t_template.zip" bin/gate-build-evidence.sh)
+    run "$REPO/bin/no-apple-bytes.sh" --archives "$BATS_TEST_TMPDIR/dist"
+    [ "$status" -eq 0 ]
+}
+
 @test "each OS's template archive is named for its OS" {
     for os in $(template_oses); do
         run grep -c "name_template: \"packer-plugin-macosx_v{{ .Version }}_${os}_template\"" "$REPO/.goreleaser.yml"
