@@ -96,7 +96,11 @@ func (b Backend) Run(ctx context.Context, target string, payload []byte, disks [
 	if err := os.WriteFile(initrdPath, initrd, 0o600); err != nil {
 		return nil, err
 	}
-	args := []string{"-enable-kvm", "-m", fmt.Sprint(b.MemMiB), "-nographic", "-no-reboot",
+	// -cpu host: the microVM runs the host's own kernel and busybox, built
+	// for the host's CPU, and its output does not depend on the CPU. QEMU's
+	// default, qemu64, has no AVX, which Ubuntu 26.04's busybox-static uses
+	// throughout: as init it died of SIGILL (docs/decisions/0041).
+	args := []string{"-enable-kvm", "-cpu", "host", "-m", fmt.Sprint(b.MemMiB), "-nographic", "-no-reboot",
 		"-kernel", kernel, "-initrd", initrdPath,
 		"-append", "console=ttyS0 loglevel=3 panic=1 gm_modules=" + strings.Join(b.Modules, ","),
 		"-drive", "file=" + driveFile(target) + ",format=raw,if=virtio"}

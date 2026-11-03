@@ -387,7 +387,7 @@ func TestRunDrives(t *testing.T) {
 	var stdinErr error
 	fx.fake.Handle = func(c proc.Cmd) error {
 		if c.Name == "qemu-system-x86_64" {
-			initrd, _ = os.ReadFile(c.Args[8])
+			initrd, _ = os.ReadFile(argAfter(c.Args, "-initrd"))
 			stdinN, stdinErr = c.Stdin.Read(make([]byte, 1))
 			_, _ = io.WriteString(c.Stdout, "GUEST-MACOSX-PRIVOPS-OK rc=0\n")
 		}
@@ -402,7 +402,7 @@ func TestRunDrives(t *testing.T) {
 	}
 	a := q[0].Args
 	kernel := filepath.Join(fx.root, "boot/vmlinuz-6.1.0-test")
-	head := []string{"-enable-kvm", "-m", "512", "-nographic", "-no-reboot", "-kernel", kernel, "-initrd"}
+	head := []string{"-enable-kvm", "-cpu", "host", "-m", "512", "-nographic", "-no-reboot", "-kernel", kernel, "-initrd"}
 	tail := []string{
 		"-append", "console=ttyS0 loglevel=3 panic=1 gm_modules=nls_base,nls_utf8,hfsplus,virtio,virtio_ring,virtio_pci,virtio_blk",
 		"-drive", "file=" + img[0] + ",format=raw,if=virtio",
@@ -487,7 +487,7 @@ func TestModulesAreStagedOncePerBackend(t *testing.T) {
 		case "modprobe":
 			modprobes++
 		case "qemu-system-x86_64":
-			initrd, _ := os.ReadFile(c.Args[8])
+			initrd, _ := os.ReadFile(argAfter(c.Args, "-initrd"))
 			if got := string(byName(readNewc(t, initrd))["lib/modules/hfsplus.ko"].data); got != "hfsplus" {
 				t.Errorf("pass staged hfsplus.ko as %q", got)
 			}
@@ -887,5 +887,36 @@ func TestRunChecksTheContextFirst(t *testing.T) {
 	}
 	if len(fx.fake.Calls) != 0 || len(fx.log.all()) != 0 {
 		t.Fatalf("calls %v, log %q", fx.fake.Calls, fx.log.all())
+	}
+}
+
+// argAfter is the argument that follows flag in args, or "".
+func argAfter(args []string, flag string) string {
+	for i := 0; i+1 < len(args); i++ {
+		if args[i] == flag {
+			return args[i+1]
+		}
+	}
+	return ""
+}
+
+// The microVM runs the host's own kernel and the host's own busybox, so it
+// has the host's CPU: QEMU's default (qemu64) has no AVX, and Ubuntu 26.04's
+// busybox-static is built with it, so as init it died of SIGILL on every
+// runner probed, whatever its CPU, and booted on every one with -cpu host
+// (mavericks-vm Actions runs 41565179330 and 41569584948).
+func TestRunGivesTheMicroVMTheHostsCPU(t *testing.T) {
+	fx := newRunFixture(t)
+	img := fx.images(t, "t.img")
+	fx.console(t, "GUEST-MACOSX-PRIVOPS-OK rc=0\n")
+	if _, err := fx.b.Run(context.Background(), img[0], nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	q := qemuCalls(fx.fake)
+	if len(q) != 1 {
+		t.Fatalf("%d QEMU calls", len(q))
+	}
+	if cpu := argAfter(q[0].Args, "-cpu"); cpu != "host" {
+		t.Fatalf("-cpu %q, want host: argv %q", cpu, q[0].Args)
 	}
 }
