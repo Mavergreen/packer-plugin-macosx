@@ -96,7 +96,7 @@ func TestOVMFAppliesItsPatchesAndChecksThem(t *testing.T) {
 	}
 	names := []string{"0002-ovmf-pin-the-c-dialect.patch", "0003-firmware-drop-werror.patch",
 		"0004-ovmf-reserve-the-igvm-parameter-area.patch", "0005-ovmf-never-read-igvm-parameters.patch",
-		"0006-ovmf-program-only-the-flash-bytes-that-change.patch"}
+		"0006-ovmf-program-only-the-flash-bytes-that-change.patch", "0007-firmware-state-the-cpu-baseline.patch"}
 	var want [][]byte
 	for _, p := range names {
 		b, err := fs.ReadFile(macosx.Files, "assets/firmware/patches/"+p)
@@ -106,13 +106,13 @@ func TestOVMFAppliesItsPatchesAndChecksThem(t *testing.T) {
 		want = append(want, b)
 	}
 	if !reflect.DeepEqual(f.stdins[1:], want) {
-		t.Errorf("%d patches after 0001; want 0002, 0003, 0004, 0005 then 0006", len(f.stdins)-1)
+		t.Errorf("%d patches after 0001; want 0002 through 0007", len(f.stdins)-1)
 	}
-	if n := len(f.applies(f.udk(), "-p1", "-")); n != 5 {
-		t.Errorf("%d `git -C %s apply -p1 -` calls, want 5", n, f.udk())
+	if n := len(f.applies(f.udk(), "-p1", "-")); n != 6 {
+		t.Errorf("%d `git -C %s apply -p1 -` calls, want 6", n, f.udk())
 	}
 	dsc, _ := os.ReadFile(filepath.Join(f.udk(), "OvmfPkg", "OvmfPkgX64.dsc"))
-	if !strings.Contains(string(dsc), "std=gnu17") || !strings.Contains(string(dsc), "Wno-error") {
+	if !strings.Contains(string(dsc), "std=gnu17") || !strings.Contains(string(dsc), "Wno-error") || !strings.Contains(string(dsc), "-march=x86-64 -mtune=generic") {
 		t.Errorf("the dsc lacks a flag:\n%s", dsc)
 	}
 	c, _ := os.ReadFile(filepath.Join(f.udk(), filepath.FromSlash(igvmC)))

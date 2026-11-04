@@ -47,6 +47,9 @@ var ovmfPatches = []struct{ patch, file, marker, doing, still string }{
 	{"0006-ovmf-program-only-the-flash-bytes-that-change.patch", qemuFlashC, "packer-plugin-macosx: assets/firmware/patches/0006",
 		"program only the flash bytes that change, so a variable reclaim takes seconds, not a minute",
 		"programs every byte of a flash write, the ones that already hold their value too"},
+	// The CPU, like the dialect: stated, not the host compiler's default
+	// (docs/decisions/0042).
+	{"0007-firmware-state-the-cpu-baseline.patch", OVMFDsc, March + " " + Mtune, "state the CPU it is compiled for", "does not state a CPU"},
 }
 
 // qemuFlashC is OVMF's driver for QEMU's flash device, whose
@@ -181,6 +184,14 @@ func (b *Builder) OVMF(ctx context.Context) ([]string, error) {
 	b.logf("build finished in %s", time.Since(start).Round(time.Second))
 	if ccache {
 		b.ccacheStats(ctx)
+	}
+
+	images, err := everyDebugImage(filepath.Join(b.udk(), "Build", "OvmfX64", EDKTarget+"_"+EDKToolchain, Arch))
+	if err != nil {
+		return nil, err
+	}
+	if err := b.checkBaseline(ctx, images); err != nil {
+		return nil, err
 	}
 
 	fv := filepath.Join(b.udk(), "Build", "OvmfX64", EDKTarget+"_"+EDKToolchain, "FV")

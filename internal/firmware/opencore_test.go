@@ -102,7 +102,7 @@ func TestOpenCoreBuildEnvironment(t *testing.T) {
 	}
 	for _, kv := range []string{"PATH=/usr/bin:/bin", "ARCHS=X64", "TOOLCHAINS=GCC", "TARGETS=RELEASE",
 		"OFFLINE_MODE=1", "EFIBUILD_SH=" + f.in["ocbuild-efibuild"],
-		"BUILD_ARGUMENTS=-D OCPKG_BUILD_OPTIONS=-std=gnu17\t-Wno-error"} {
+		"BUILD_ARGUMENTS=-D OCPKG_BUILD_OPTIONS=-std=gnu17\t-Wno-error\t-march=x86-64\t-mtune=generic"} {
 		if !hasEnv(c.Env, kv) {
 			t.Errorf("Env lacks %q: %q", kv, c.Env)
 		}
@@ -311,6 +311,17 @@ func TestOpenCoreRefusesFlagsThatDidNotArrive(t *testing.T) {
 	efis, _ := filepath.Glob(filepath.Join(f.home, "build", "artifacts", "*.efi"))
 	if len(efis) != 0 {
 		t.Errorf("artifacts shipped anyway: %v", efis)
+	}
+}
+
+// The CPU baseline is checked like the dialect: a build whose makefiles
+// lack -march=x86-64 compiled for the host compiler's default CPU.
+func TestOpenCoreRefusesACPUBaselineThatDidNotArrive(t *testing.T) {
+	f := newFixture(t)
+	f.flags = "-std=gnu17 -Wno-error"
+	_, err := f.openCore()
+	if err == nil || !strings.Contains(err.Error(), "-march=x86-64 never reached the compiler") {
+		t.Fatalf("err = %v", err)
 	}
 }
 

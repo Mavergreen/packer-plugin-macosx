@@ -174,7 +174,7 @@ func registryWith(t *testing.T, name, url, sha string) *pins.Registry {
 // One list per build is what each build requires and what doctor asks
 // about: Tools is their union, each once, in the order they first appear.
 func TestToolsIsEachBuildsListTogether(t *testing.T) {
-	want := []string{"bash", "make", "x-gcc", "git", "python3", "nasm", "iasl", "zip"}
+	want := []string{"bash", "make", "x-gcc", "git", "python3", "nasm", "iasl", "x-objdump", "zip"}
 	if got := Tools("x-gcc"); !reflect.DeepEqual(got, want) {
 		t.Errorf("Tools = %q, want %q", got, want)
 	}

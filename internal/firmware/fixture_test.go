@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -71,6 +72,9 @@ type fixture struct {
 	missingHeaders []string          // headers the fake compiler cannot find
 	applyErr       error             // `git apply --ignore-whitespace`'s result
 	makefiles      map[string]string // more GNUmakefiles build_oc.tool writes: path under the build dir -> CC_FLAGS
+	noDebug        []string          // shipped modules build_oc.tool leaves without a DEBUG .dll
+	objdump        map[string]string // objdump's listing of a module, by .dll name; default: cleanObjdump
+	objdumpErr     error             // objdump's result
 }
 
 func sha(t *testing.T, p string) string {
@@ -123,7 +127,7 @@ func shortHome(t *testing.T) string {
 func newFixture(t *testing.T) *fixture {
 	t.Helper()
 	f := &fixture{t: t, home: shortHome(t), in: Inputs{}, banner: "gcc (GCC) 13.3.0",
-		flags: "-std=gnu17 -Wno-error", patchesTake: true}
+		flags: "-std=gnu17 -Wno-error -march=x86-64 -mtune=generic", patchesTake: true}
 	for _, a := range Artifacts {
 		f.built = append(f.built, a.Built)
 	}
@@ -160,7 +164,7 @@ func newFixture(t *testing.T) *fixture {
 	}
 
 	f.fake = &proc.Fake{Paths: map[string]string{}, Handle: f.handle}
-	for _, tool := range []string{"bash", "git", "zip", "make", "python3", "gcc", "nasm", "iasl"} {
+	for _, tool := range []string{"bash", "git", "zip", "make", "python3", "gcc", "nasm", "iasl", "objdump"} {
 		f.fake.Paths[tool] = "/usr/bin/" + tool
 	}
 	f.b = &Builder{
@@ -249,8 +253,16 @@ func (f *fixture) handle(c proc.Cmd) error {
 		for _, n := range f.built {
 			os.WriteFile(filepath.Join(built, n), []byte("built "+n), 0o644)
 		}
+		for _, a := range Artifacts {
+			base := strings.TrimSuffix(a.Built, ".efi")
+			if !slices.Contains(f.noDebug, base) {
+				debugImage(filepath.Join(built, "OpenCorePkg", base, base, "DEBUG", base+".dll"))
+			}
+		}
 		os.MkdirAll(filepath.Join(c.Dir, "UDK", "BaseTools", "Source", "C", "bin"), 0o755)
 		os.WriteFile(filepath.Join(c.Dir, "UDK", "BaseTools", "Source", "C", "bin", "GenFv"), testdataFile(f.t, "noop.sh"), 0o755)
+	case c.Name == "objdump":
+		return f.playObjdump(c)
 	case filepath.Base(c.Name) == "ocvalidate":
 		return f.ocvalidate
 	case c.Name == "bash" && len(c.Args) == 2 && c.Args[0] == "-c" && strings.Contains(c.Args[1], "edksetup.sh"):
@@ -260,6 +272,9 @@ func (f *fixture) handle(c proc.Cmd) error {
 		if f.buildErr != nil {
 			return f.buildErr
 		}
+		x64 := filepath.Join(c.Dir, "Build", "OvmfX64", EDKTarget+"_"+EDKToolchain, Arch)
+		debugImage(filepath.Join(x64, "OvmfPkg", "Sec", "SecMain", "DEBUG", "SecMain.dll"))
+		debugImage(filepath.Join(x64, "MdeModulePkg", "Core", "Dxe", "DxeMain", "DEBUG", "DxeCore.dll"))
 		fv := filepath.Join(c.Dir, "Build", "OvmfX64", EDKTarget+"_"+EDKToolchain, "FV")
 		os.MkdirAll(fv, 0o755)
 		for _, n := range f.fv {
@@ -270,11 +285,13 @@ func (f *fixture) handle(c proc.Cmd) error {
 }
 
 // applyFake makes a patch's effect happen: build_oc.tool stops fetching
-// efibuild.sh, the OVMF dsc gains the flag its patch adds, Igvm.c
+// efibuild.sh, the OVMF dsc gains the flags its patches add, Igvm.c
 // reserves the IGVM parameter area or stops reading it, or QemuFlash.c
 // programs only the bytes that change.
 func (f *fixture) applyFake(dir, patch string) {
 	switch {
+	case strings.Contains(patch, "+  GCC:*_*_*_CC_FLAGS = -march=x86-64"):
+		appendTo(filepath.Join(dir, OVMFDsc), "  GCC:*_*_*_CC_FLAGS = -march=x86-64 -mtune=generic\n")
 	case strings.Contains(patch, "+  // packer-plugin-macosx: assets/firmware/patches/0006"):
 		appendTo(filepath.Join(dir, filepath.FromSlash(qemuFlashC)), "  // packer-plugin-macosx: assets/firmware/patches/0006\n")
 	case strings.Contains(patch, "+// packer-plugin-macosx: assets/firmware/patches/0005"):
@@ -290,6 +307,12 @@ func (f *fixture) applyFake(dir, patch string) {
 	case strings.Contains(patch, "Wno-error"):
 		appendTo(filepath.Join(dir, OVMFDsc), "  GCC:*_*_*_CC_FLAGS = -Wno-error\n")
 	}
+}
+
+// debugImage writes a module's DEBUG .dll, which only the fake objdump reads.
+func debugImage(p string) {
+	os.MkdirAll(filepath.Dir(p), 0o755)
+	os.WriteFile(p, []byte("ELF "+filepath.Base(p)), 0o644)
 }
 
 func appendTo(p, s string) {

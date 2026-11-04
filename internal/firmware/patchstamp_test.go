@@ -28,7 +28,7 @@ func wantStamp(t *testing.T) string {
 	var b strings.Builder
 	for _, n := range []string{"0002-ovmf-pin-the-c-dialect.patch", "0003-firmware-drop-werror.patch",
 		"0004-ovmf-reserve-the-igvm-parameter-area.patch", "0005-ovmf-never-read-igvm-parameters.patch",
-		"0006-ovmf-program-only-the-flash-bytes-that-change.patch"} {
+		"0006-ovmf-program-only-the-flash-bytes-that-change.patch", "0007-firmware-state-the-cpu-baseline.patch"} {
 		data, err := fs.ReadFile(macosx.Files, "assets/firmware/patches/"+n)
 		if err != nil {
 			t.Fatal(err)
@@ -72,10 +72,10 @@ func TestOVMFStampsEachPatchBeforeApplyingIt(t *testing.T) {
 	}
 	lines := strings.SplitAfter(wantStamp(t), "\n")
 	// stdins[0] is OpenCore's 0001; the OVMF patches follow.
-	if len(f.stampsAt) != 6 {
-		t.Fatalf("%d applies, want 0001 and five OVMF patches", len(f.stampsAt))
+	if len(f.stampsAt) != 7 {
+		t.Fatalf("%d applies, want 0001 and six OVMF patches", len(f.stampsAt))
 	}
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 6; i++ {
 		if got, want := f.stampsAt[i+1], strings.Join(lines[:i+1], ""); got != want {
 			t.Errorf("as patch %d was applied the stamp was\n%s\nwant it to name it already:\n%s", i+2, got, want)
 		}

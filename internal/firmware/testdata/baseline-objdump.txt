@@ -1,0 +1,25 @@
+
+/b/Build/OpenCorePkg/RELEASE_GCC/X64/Bootstrap/DEBUG/Bootstrap.dll:     file format elf64-x86-64
+
+
+Disassembly of section .text:
+
+0000000000001000 <PhaseAllocatePool>:
+PhaseAllocatePool():
+/b/MdePkg/Library/UefiMemoryAllocationLib/MemoryAllocationLib.c:113
+    1000:	55                   	push   %rbp
+    1014:	44 0f 29 4d 80       	movaps %xmm9,-0x80(%rbp)
+    1018:	f3 0f bc c0          	tzcnt  %eax,%eax
+    101c:	8f 45 f8             	pop    -0x8(%rbp)
+0000000000002ac0 <_ModuleEntryPointReal>:
+_ModuleEntryPointReal():
+/b/OpenCorePkg/Library/OcApplicationEntryPoint/ApplicationEntryPoint.c:39 (discriminator 2)
+    2ac0:	f3 0f 1e fa          	endbr64
+    2ad3:	48 81 ec 18 01 00 00 	sub    $0x118,%rsp
+    2ada:	c5 f8 29 bd 30 ff ff ff 	vmovaps %xmm7,-0xd0(%rbp)
+    2ae2:	f3 48 0f b8 c7       	popcnt %rdi,%rax
+0000000000003000 <Sha512TransformAccel>:
+    3000:	c5 fa 7f 84 24 d8 02 00 00 	vmovdqu %xmm0,0x2d8(%rsp)
+0000000000003100 <Sha512Avx>:
+/b/Build/OpenCorePkg/RELEASE_GCC/X64/OpenCorePkg/Library/OcCryptoLib/OcCryptoLib/OUTPUT/X64/Sha512Avx.iii:40
+    3100:	c4 e2 7d 00 c1       	vpshufb %ymm1,%ymm0,%ymm0

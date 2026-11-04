@@ -1,0 +1,39 @@
+State the CPU OvmfPkg is compiled for, instead of inheriting gcc's.
+
+EDK II's tools_def sets no -march, so every file is compiled for whatever
+CPU the host compiler defaults to. That was x86-64 itself on every host
+this project had built on. Ubuntu 26.04's gcc 15.2.0 is configured
+--with-arch-64=x86-64-v3, and defaults to AVX2: OpenCore 1.0.7's
+Bootstrap, built with it, saved its callee-saved XMM registers with
+vmovaps (c5 f8 29) and took #UD at its first instruction on a Penryn
+guest (mavericks-vm Actions runs 41751719776 and 41761015528;
+docs/decisions/0042).
+
+x86-64, because it is what every guest CPU model offers and what these
+trees have always been compiled for: on a host already correct this
+changes nothing. -mtune=generic for the same reason.
+
+Applied by internal/firmware's OVMF build, guarded by a grep, against the
+EDK II tree its OpenCore build assembles from the pinned audk tarball.
+OpenCore's own build gets the same flags through upstream's
+$(OCPKG_BUILD_OPTIONS) hook and needs no patch. Either build then refuses
+an instruction above x86-64 that the compiler generated
+(internal/firmware/baseline.go).
+
+--- a/OvmfPkg/OvmfPkgX64.dsc
++++ b/OvmfPkg/OvmfPkgX64.dsc
+@@ -135,6 +135,14 @@
+   #
+   GCC:*_*_*_CC_FLAGS = -Wno-error
+ 
++  #
++  # The CPU the firmware is compiled for is an input to the build, so it is
++  # stated rather than inherited from the host compiler's default: Ubuntu
++  # 26.04's gcc defaults to x86-64-v3. See the patch header.
++  # packer-plugin-macosx: assets/firmware/patches/0007-firmware-state-the-cpu-baseline.patch
++  #
++  GCC:*_*_*_CC_FLAGS = -march=x86-64 -mtune=generic
++
+ !include NetworkPkg/NetworkBuildOptions.dsc.inc
+ 
+ ################################################################################

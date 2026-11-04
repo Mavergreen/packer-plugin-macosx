@@ -37,6 +37,12 @@ const (
 	// warnings into build failures in code we do not own. The warnings
 	// are still printed.
 	NoWerror = "-Wno-error"
+	// March and Mtune are the CPU every firmware file is compiled for.
+	// EDK II sets none, and Ubuntu 26.04's gcc defaults to x86-64-v3,
+	// whose AVX a Penryn guest cannot run; x86-64 itself is what every
+	// guest CPU model offers (docs/decisions/0042).
+	March = "-march=x86-64"
+	Mtune = "-mtune=generic"
 
 	OVMFDsc = "OvmfPkg/OvmfPkgX64.dsc"
 
@@ -108,16 +114,17 @@ var Headers = []string{"uuid/uuid.h"}
 // insists on it, and patches are applied with it. zip: efibuild.sh will
 // not start without it. nasm and iasl: it needs both, and where it
 // cannot find them (macOS) it offers to fetch and install them with curl
-// and sudo.
+// and sudo. objdump reads what was built against the CPU baseline.
 func openCoreTools(gcc string) []string {
-	return []string{"bash", "make", gcc, "git", "python3", "nasm", "iasl", "zip"}
+	return []string{"bash", "make", gcc, "git", "python3", "nasm", "iasl", objdumpTool(gcc), "zip"}
 }
 
 // ovmfTools is every external program the OVMF build needs: bash runs
 // edksetup.sh, git applies our OVMF patches, nasm assembles the reset
-// vector and iasl compiles the ACPI tables.
+// vector, iasl compiles the ACPI tables and objdump reads what was built
+// against the CPU baseline.
 func ovmfTools(gcc string) []string {
-	return []string{"bash", "make", gcc, "git", "python3", "nasm", "iasl"}
+	return []string{"bash", "make", gcc, "git", "python3", "nasm", "iasl", objdumpTool(gcc)}
 }
 
 // Tools is every external program the firmware builds run, for doctor:
@@ -136,11 +143,13 @@ func Tools(gcc string) []string {
 // its URL must name.
 type Pin struct{ Source, Commit string }
 
-// BuildOptions is the value of OCPKG_BUILD_OPTIONS: the dialect and
-// -Wno-error as ONE build macro. The separator is a tab because
+// BuildOptions is the value of OCPKG_BUILD_OPTIONS: the dialect,
+// -Wno-error and the CPU baseline as ONE build macro. The separator is a tab because
 // efibuild.sh splits BUILD_ARGUMENTS on spaces and commas; build.py turns
 // the tab back into a space in the generated makefiles.
-func BuildOptions() string { return "-std=" + CStd + "\t" + NoWerror }
+func BuildOptions() string {
+	return strings.Join([]string{"-std=" + CStd, NoWerror, March, Mtune}, "\t")
+}
 
 // OpenCorePins is every pinned EDK II input, each source once, in a fixed
 // order (testdata/golden/opencore-pins.txt).

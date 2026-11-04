@@ -90,6 +90,13 @@ func (b *Builder) OpenCore(ctx context.Context, in Inputs) ([]string, error) {
 	if err := checkFlags(built); err != nil {
 		return nil, err
 	}
+	images, err := shippedDebugImages(built)
+	if err != nil {
+		return nil, err
+	}
+	if err := b.checkBaseline(ctx, images); err != nil {
+		return nil, err
+	}
 	return b.shipArtifacts(built)
 }
 
@@ -251,7 +258,7 @@ func checkFlags(built string) error {
 	if err != nil {
 		return err
 	}
-	for _, flag := range []string{"-std=" + CStd, NoWerror} {
+	for _, flag := range []string{"-std=" + CStd, NoWerror, March, Mtune} {
 		if !strings.Contains(string(data), flag) {
 			return fmt.Errorf("%s never reached the compiler (checked %s) -- did OpenCorePkg %s drop $(OCPKG_BUILD_OPTIONS)?", flag, mk, OCVersion)
 		}

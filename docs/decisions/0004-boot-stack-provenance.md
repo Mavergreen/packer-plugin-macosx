@@ -205,6 +205,15 @@ same two seams as the dialect (patch `0003` for OvmfPkg).
 - **It does not change the artifacts.** MEASURED 2026-09-19: the eight
   checksums above, identical before and after.
 
+### The CPU is stated: `-march=x86-64`
+
+EDK II sets no `-march` either. Ubuntu 26.04's gcc defaults to
+x86-64-v3, and the firmware it built faulted on a Penryn guest at
+OpenCore's first instruction. Both builds now state `-march=x86-64
+-mtune=generic` (the same two seams; patch `0007` for OvmfPkg), and each
+then refuses to ship a module whose compiler-generated code needs more:
+`docs/decisions/0042`.
+
 ### The range: gcc 13 through 16
 
 `internal/firmware/compiler.go` declares the range, and `mavericks-firmware`
@@ -214,7 +223,7 @@ checks the host's compiler against it before it builds:
 |---|---|---|
 | **13.3.0** | **VERIFIED** | the primary host, repeatedly, from cold trees; every checksum above |
 | **14.2.0** | **VERIFIED** | `ap-juicer`, 2026-09-21: the boot stack built, and a guest installed on it and answered SSH |
-| **15.x** | **NOT TESTED** | inside the range by interpolation between two verified neighbours; nobody has built with a GCC 15 |
+| **15.2.0** | **NOT TESTED** | Ubuntu 26.04's, 2026-11-04: it built the boot stack, which faulted at boot until the CPU was stated (`docs/decisions/0042`); a complete install on it since has not yet been seen |
 | **16.2.1** | **VERIFIED** | `squirrel-zapper`, 2026-09-21: with both fixes, a complete build, and a guest installed on it, booted without installer media and answered SSH. Its artifacts differ from gcc 13's (`OVMF_CODE.fd` `e3d0c6f5…` against `195c4dcf…`), which is what an unpinned compiler means, not a defect |
 | below 13 | **NOT TESTED** | never tried, which is not "known to fail" |
 
@@ -263,7 +272,8 @@ ccache, is what would move the default.
 ## What a host needs to build it
 
 `bash`, `make`, `git` (the patches are applied with `git apply`),
-`python3`, `nasm`, `iasl`, `zip` and a gcc inside the range, plus the
+`python3`, `nasm`, `iasl`, `zip`, `objdump` (binutils, which gcc
+brings) and a gcc inside the range, plus the
 `uuid/uuid.h` header that BaseTools includes. `mavericks-firmware` checks
 for each before it builds and names whatever is missing. These are
 build-time tools, not shipped components: nothing in the boot path above
