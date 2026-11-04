@@ -67,7 +67,7 @@ func TestTheOldNameMatcherCatchesThePlants(t *testing.T) {
 		{"an allowlisted doc whose old name is outside its note", "docs/decisions/0019-every-shutdown-through-guest-macosx-shutdown.md", []byte("# 0019\n\n" + note + "\n\nRun " + old + "-shutdown.\n")},
 		{"an allowlisted doc with two notes", "docs/configuration-register.md", []byte("# r\n\n" + note + "\n\n" + note + "\n")},
 		{"an allowlisted doc with no note", "release-notes/v0.20261031.1.md", []byte("Nothing here.\n")},
-		{"a later release note", "release-notes/v0.20261103.1.md", []byte("Use " + old + "-shutdown.\n")},
+		{"a later release note", "release-notes/v0.20261104.1.md", []byte("Use " + old + "-shutdown.\n")},
 		{"gzip'd text carrying the old identifier", "internal/x/testdata/golden/p.gz", gz(t, []byte("identifier com."+old+".firstboot\n"))},
 		{"a gzip'd binary package carrying the old identifier", "internal/payload/testdata/golden/reference.pkg.gz", gz(t, xar)},
 		{"a file named with the old stem", "tests/" + old + "-probe.txt", []byte("nothing\n")},
