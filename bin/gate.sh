@@ -290,7 +290,7 @@ fi
 
 # --- both releases: this script once per release, one after the other ---
 
-# shellcheck disable=SC2317  # a trap
+# shellcheck disable=SC2317,SC2329  # a trap
 both_stop() {
     trap '' INT TERM
     both_interrupted=true
@@ -555,11 +555,11 @@ stop_orphans() {
     done >> "$ev/evidence.log" 2>&1
 }
 
-# shellcheck disable=SC2317  # reached from the traps
+# shellcheck disable=SC2317,SC2329  # reached from the traps
 # pgid_of <pid>
 pgid_of() { ps -o pgid= -p "$1" 2>/dev/null | tr -d ' '; }
 
-# shellcheck disable=SC2317  # reached from the traps
+# shellcheck disable=SC2317,SC2329  # reached from the traps
 # signal_child <sig>: the child, and everything in its process group when it leads one of its own.
 # GNU timeout makes itself a group leader and does not pass a KILL on, so KILLing timeout alone
 # would orphan packer and its plugins. Never a group that is gate.sh's own.
@@ -574,7 +574,7 @@ signal_child() {
     fi
 }
 
-# shellcheck disable=SC2317  # reached from the traps
+# shellcheck disable=SC2317,SC2329  # reached from the traps
 # stop_child: TERM the command a step waits on (packer stops its own QEMU on TERM), bounded;
 # after a KILL, the QEMU it may have left.
 stop_child() {
@@ -696,7 +696,7 @@ step_preflight() {
     return 0
 }
 
-# shellcheck disable=SC2317  # run through run_child
+# shellcheck disable=SC2317,SC2329  # run through run_child
 # install_plugin <source> <version>: run in a subshell (run_child), so the token is exported there
 # alone, and never on a command line where ps shows it.
 install_plugin() {
@@ -1198,7 +1198,7 @@ finish() {
     esac
 }
 
-# shellcheck disable=SC2317  # a trap
+# shellcheck disable=SC2317,SC2329  # a trap
 on_signal() {
     trap '' INT TERM
     interrupted=true
@@ -1208,7 +1208,7 @@ on_signal() {
     exit 3
 }
 
-# shellcheck disable=SC2317  # a trap
+# shellcheck disable=SC2317,SC2329  # a trap
 on_exit() {
     local st=$1 rc=0
     trap '' INT TERM
