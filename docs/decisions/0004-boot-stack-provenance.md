@@ -223,7 +223,7 @@ checks the host's compiler against it before it builds:
 |---|---|---|
 | **13.3.0** | **VERIFIED** | the primary host, repeatedly, from cold trees; every checksum above |
 | **14.2.0** | **VERIFIED** | `ap-juicer`, 2026-09-21: the boot stack built, and a guest installed on it and answered SSH |
-| **15.2.0** | **NOT TESTED** | Ubuntu 26.04's, 2026-11-04: it built the boot stack, which faulted at boot until the CPU was stated (`docs/decisions/0042`); a complete install on it since has not yet been seen |
+| **15.2.0** | **VERIFIED** | Ubuntu 26.04's (15.2.0-16ubuntu1), 2026-11-04: its boot stack faulted at boot until the CPU was stated (`docs/decisions/0042`); since then, with v0.20261104.1, a cold base build on it installed a guest and answered SSH (mavericks-vm Actions run 41917224815), and with v0.20261104.2 the layer built on that guest and every guest job passed (run 41951023978) |
 | **16.2.1** | **VERIFIED** | `squirrel-zapper`, 2026-09-21: with both fixes, a complete build, and a guest installed on it, booted without installer media and answered SSH. Its artifacts differ from gcc 13's (`OVMF_CODE.fd` `e3d0c6f5…` against `195c4dcf…`), which is what an unpinned compiler means, not a defect |
 | below 13 | **NOT TESTED** | never tried, which is not "known to fail" |
 

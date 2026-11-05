@@ -69,7 +69,9 @@ for x86-64 itself, as `rep bsf`, which a CPU without BMI runs as BSF.
   MEASURED 2026-11-04 (mavericks-vm Actions run 41765199515, gcc 15.2.0):
   the stated flag survives the link-time code generation EDK II uses, all
   123 shipped modules pass the check, and Bootstrap's entry point saves its
-  XMM registers with `movaps` again.
+  XMM registers with `movaps` again. And a guest boots on it: MEASURED
+  2026-11-04, a cold base build there with v0.20261104.1 installed a guest
+  that answered SSH (mavericks-vm Actions run 41917224815).
 - On gcc 13.3.0 the eight firmware artifacts are byte-identical with and
   without this change (MEASURED 2026-11-04 on pet-power-plant, the same
   workspace path both times: see the release note).
