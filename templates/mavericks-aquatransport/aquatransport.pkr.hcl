@@ -13,5 +13,5 @@
 locals {
   aquatransport_version = "2026.10.25"
   aquatransport_url     = "https://mavericksforever.com/downloads/AquaTransport.dmg"
-  aquatransport_sha256  = "bee11055fcf0e718b1afcb271f8afb398b29dbb6c3d8c650d93d3ab62be65ab7"
+  aquatransport_sha256  = "9cdfdf7e2f4cc435fc648b2c852098df7c8e2d0a876eea5f42d7732ce52c3d62"
 }
