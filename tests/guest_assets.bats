@@ -588,7 +588,12 @@ run_watch() {
           for c in /proc/[0-9]*/stat; do
               # shellcheck disable=SC2046 # the stat's fields, split
               set -- $(sed 's/^[0-9]* ([^)]*) //' "$c" 2>/dev/null)
-              [ "${2:-}" = "${f#/proc/}" ] && [ "$1" = Z ] && echo "zombie under ${f#/proc/}" >> "$BATS_TEST_TMPDIR/early"
+              # An if, not an && list: the list's false would be this
+              # subshell's status whenever the refusal is the last process
+              # the glob lists, and `wait "$bg"` would fail on PID order.
+              if [ "${2:-}" = "${f#/proc/}" ] && [ "$1" = Z ]; then
+                  echo "zombie under ${f#/proc/}" >> "$BATS_TEST_TMPDIR/early"
+              fi
           done
       done ) &
     bg=$!
