@@ -75,3 +75,15 @@ make_repo() {
     [ "$status" -eq 0 ]
     [[ "$output" == *"nothing to fetch"* ]] || false
 }
+
+@test "verify-changed-sources needs no shipyard when no pin moved, so the gate runs without one" {
+    dir="$(make_repo PLACEHOLDER "first")"
+    base=$(git -C "$dir" rev-parse HEAD)
+    printf 'unrelated\n' > "$dir/README"
+    git -C "$dir" add -A
+    git -C "$dir" -c commit.gpgsign=false commit -qm "something else"
+    # No shipyard anywhere: no SHIPYARD_SCRIPTS, no shipyard-cmake.
+    run env -u SHIPYARD_SCRIPTS PATH=/usr/bin:/bin bash -c "cd '$dir' && ./bin/verify-changed-sources.sh '$base'"
+    [ "$status" -eq 0 ] || { echo "$output"; false; }
+    [[ "$output" == *"nothing to fetch"* ]] || false
+}

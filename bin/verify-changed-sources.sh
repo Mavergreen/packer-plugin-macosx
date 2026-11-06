@@ -35,8 +35,8 @@ GUEST_MACOSX_REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 export GUEST_MACOSX_REPO_ROOT
 # shellcheck source=../lib/common.sh
 . "$GUEST_MACOSX_REPO_ROOT/lib/common.sh"
-# shellcheck source=../lib/vendor.sh
-. "$GUEST_MACOSX_REPO_ROOT/lib/vendor.sh"
+# shellcheck source=../lib/sources.sh
+. "$GUEST_MACOSX_REPO_ROOT/lib/sources.sh"
 
 # shellcheck disable=SC2034  # read by log()/warn()/die() at call time
 GUEST_MACOSX_LOG_PREFIX=verify-changed-sources
@@ -78,6 +78,10 @@ if [ -z "$changed" ]; then
     exit 0
 fi
 
+# Only now, with something to fetch, is shipyard needed (its
+# shipyard_curl): a run where no pin moved, the gate's usual one, needs none.
+# shellcheck source=../lib/vendor.sh
+. "$GUEST_MACOSX_REPO_ROOT/lib/vendor.sh"
 require_cmd curl sha256sum
 
 work=$(mktemp -d "${TMPDIR:-/tmp}/verify-changed-sources.XXXXXX") || die "cannot create a temp directory"
