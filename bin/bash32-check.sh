@@ -4,8 +4,11 @@
 #
 # WHY 3.2, WHICH IS FROM 2006
 #
-# Stock OS X 10.9 Mavericks ships /bin/bash 3.2.57 -- the last GPLv2
-# release, frozen by Apple in 2007 and never updated. The sibling project
+# Stock OS X 10.9 Mavericks ships /bin/bash 3.2 -- the last GPLv2 line,
+# frozen by Apple and never moved to 4 (10.9.5 build 13F1911: 3.2.53,
+# MEASURED 2026-11-06 in a guest, where this script, bats-bang-check.sh,
+# list-shell-files.sh and the heredoc and workflow extractors ran and gave
+# the host's results byte for byte). The sibling project
 # mavericks-vm-host is back-porting Hypervisor.framework to 10.9, with a
 # prepackaged QEMU alongside it, so modern QEMU gets hardware acceleration
 # there. When that lands, the obvious next thing someone will want is to

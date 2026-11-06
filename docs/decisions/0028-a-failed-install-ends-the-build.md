@@ -107,7 +107,10 @@ first refused handshake shows):
 
 The 10.6 failure found one fault, fixed (e027da1) before the other three:
 the installer's line ends in a full stop and the answer added a second
-("assistance.. Nobody").
+("assistance.. Nobody"). MEASURED 2026-11-06, the same planted 10.6
+failure on 103e9dd: the error reads "assistance. Nobody", one full stop,
+and the build errored about 70 s after "Install failed", after 10
+refusals, the log kept.
 
 ## Consequences
 
