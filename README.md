@@ -188,6 +188,17 @@ guest's pointer lands about 1.18 times as far from the centre of the
 screen as the host's, and reaches each edge a little before the host's
 pointer leaves the window (`docs/decisions/0035`).
 
+## Known limits
+
+- About 2% of cold Mavericks builds on GitHub's AMD EPYC 7763 runners
+  stall partway through the install, and the build ends with "Timeout
+  waiting for SSH". The cause is not yet known; `docs/decisions/0040`
+  describes what is read when it happens.
+- If you build in a directory your group can write to, a member of that
+  group could replace the QEMU monitor socket's directory just before QEMU
+  starts and so take control of the guest being built. The plugin allows
+  group-writable directories because a umask of 002 makes them common.
+
 ## Check a change: the boot gate
 
 `bin/gate.sh` builds a box from this checkout, with the plugin built from

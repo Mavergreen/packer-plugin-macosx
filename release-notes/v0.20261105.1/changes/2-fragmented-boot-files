@@ -1,0 +1,1 @@
+A guest whose kernel or boot files get split into more than eight pieces on its disk now still boots, instead of failing to read them.

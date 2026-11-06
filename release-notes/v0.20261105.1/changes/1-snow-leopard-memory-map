@@ -1,0 +1,1 @@
+Snow Leopard guests no longer get a memory map that lists the same memory twice, a fault that could surface later as a panic or corrupted memory.
