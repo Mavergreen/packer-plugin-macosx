@@ -2396,10 +2396,27 @@ elif late:
     say('jobs started during the waits: %s; shutting down anyway' % names(late))
 else:
     say('no new job started during the waits')
+# The DiskArbitration session a shutdown waits for is loginwindow's
+# `ManagedClient -s`'s, and closes when it exits: that one alone is stopped,
+# and only when it runs. launchd's own ManagedClient (the daemon, run with no
+# arguments) holds none, and is left to launchd. Last, just before the
+# shutdown, so loginwindow has no time to start another.
+MC = '/System/Library/CoreServices/ManagedClient.app/Contents/MacOS/ManagedClient'
+ps = subprocess.Popen(['/bin/ps', '-axwwo', 'pid=,args='], stdout=subprocess.PIPE)
+out = ps.communicate()[0]
+mc = []
+for line in out.decode('utf-8', 'replace').splitlines():
+    pid, _, cmd = line.strip().partition(' ')
+    if cmd.strip() == MC + ' -s':
+        mc.append(pid)
+if ps.returncode != 0:
+    say('could not list the processes (ps exited %d): no ManagedClient -s stopped' % ps.returncode)
+elif mc:
+    subprocess.call(['/bin/kill'] + mc)
+    say("stopped loginwindow's ManagedClient -s (%s): its DiskArbitration session would hold the shutdown" % ' '.join(mc))
+else:
+    say('no loginwindow ManagedClient -s running: nothing to stop')
 GUEST_MACOSX_PY_EOF
-# ManagedClient's DiskArbitration session closes when it exits. Last, just
-# before the shutdown, so loginwindow has no time to start another.
-killall ManagedClient 2>/dev/null
 exec /sbin/shutdown "$1" now
 GUEST_MACOSX_SHUTDOWN_EOF
     chown root:wheel /usr/local/sbin/guest-macosx-shutdown 2>/dev/null

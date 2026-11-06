@@ -86,8 +86,9 @@ proof, and defer the unfinished programme, including:
   inertness proof for each intervention across those configurations.
 
 This is not merely deferral of the expensive uptime matrix. In particular,
-the 10.9 helper still uses unconditional `killall ManagedClient` at shutdown;
-the telemetry/statistics quarantine remains an OS-scoped build default, not
+the 10.9 helper used an unconditional `killall ManagedClient` at shutdown
+(since 2026-11-06 it stops loginwindow's `ManagedClient -s` alone, and only
+when it runs, ADR 0019); the telemetry/statistics quarantine remains an OS-scoped build default, not
 a universal runtime hardware/hypervisor need detector. Existing age/dirty
 checks, absence fixtures and targeted causal controls retain their actual
 scope; neither those nor the default gate stand in for the deferred proof.

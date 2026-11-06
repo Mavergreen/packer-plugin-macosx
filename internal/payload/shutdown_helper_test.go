@@ -11,7 +11,7 @@ package payload
 //     to a fake in a fresh directory, and the copy is refused if any other
 //     /bin, /sbin, /usr/bin or /usr/sbin path is left in it (the #!/bin/sh
 //     line aside: the copy is run as `/bin/sh copy`, never by its shebang);
-//   - PATH is that directory alone, so `id` and `killall` are fakes too;
+//   - PATH is that directory alone, so `id`, `ps` and `kill` are fakes too;
 //   - the fakes only record their arguments and print canned output. None of
 //     them calls the command it stands in for;
 //   - libSystem is a .so built here, whose proc_get_dirty reads a pid's
@@ -19,10 +19,11 @@ package payload
 //     monotonic clock (or a frozen one). Its exports have private names;
 //     only this library's lookups use the test loader below, so omitted
 //     symbols cannot resolve to the host's libSystem through dependencies.
-// ps answers two questions: `pid=,command=` (the agents, from ps.txt) and
-// `pid=,ppid=,pgid=,uid=,etime=,stat=,command=` (the jobs and their ages,
-// from jobs.txt, each age counted from the helper's first look, so it grows
-// as a real one does).
+// ps answers three questions: `pid=,command=` (the agents, from ps.txt),
+// `pid=,args=` (the same list, for the ManagedClient look; FAKE_PS_FAIL_ARGS
+// fails it), and `pid=,ppid=,pgid=,uid=,etime=,stat=,command=` (the jobs and
+// their ages, from jobs.txt, each age counted from the helper's first look,
+// so it grows as a real one does).
 // Nothing the rig does is timed from when it was set up: a loaded host can
 // take any time to get the helper to its first look. A dirty agent, a job's
 // age, and a job that appears or goes are timed from the helper's own first
@@ -261,6 +262,8 @@ with open(os.environ['FAKE_CALLS'] + '.times', 'a') as f:
 		"ps": rec + `_q = 'JOBS' if 'ppid=' in ' '.join(sys.argv[1:]) else 'AGENTS'
 if os.environ.get('FAKE_PS_DELAY_' + _q):
     time.sleep(float(os.environ['FAKE_PS_DELAY_' + _q]))
+if 'args=' in ' '.join(sys.argv[1:]) and os.environ.get('FAKE_PS_FAIL_ARGS'):
+    sys.exit(1)
 if 'ppid=' not in ' '.join(sys.argv[1:]):
     sys.stdout.write(open(os.environ['FAKE_PS']).read())
     sys.exit(0)
@@ -348,7 +351,7 @@ sys.stderr.write('launchctl: Error unloading: ' + sys.argv[-1] + '\n')
 sys.exit(1)
 `,
 		"logger":   rec,
-		"killall":  rec + "sys.exit(1)\n", // no ManagedClient running
+		"kill":     rec,
 		"shutdown": rec,
 		"id":       rec + "print(os.environ.get('FAKE_UID', '0'))\n",
 	}
@@ -368,6 +371,7 @@ sys.exit(1)
 		{"'/bin/ps'", "'" + filepath.Join(r.fake, "ps") + "'"},
 		{"'/bin/launchctl'", "'" + filepath.Join(r.fake, "launchctl") + "'"},
 		{"'/usr/bin/logger'", "'" + filepath.Join(r.fake, "logger") + "'"},
+		{"'/bin/kill'", "'" + filepath.Join(r.fake, "kill") + "'"},
 		{"exec /sbin/shutdown ", "exec " + filepath.Join(r.fake, "shutdown") + " "},
 	} {
 		if !strings.Contains(h, rw[0]) {
@@ -555,7 +559,7 @@ for name in ('proc_get_dirty', 'mach_absolute_time', 'mach_timebase_info'):
 			r.agents("   11 "+systemAgent, "  130 "+lwAgent)
 			r.dirtyFor(130, 700*time.Millisecond)
 			h := r.run(nil, "-r")
-			wantOrder(t, h, unloadSystem, killMC, "shutdown -r now")
+			wantOrder(t, h, unloadSystem, "shutdown -r now")
 			for _, name := range tc.missing {
 				wantOneLog(t, h, `^no `+name+` in libSystem:`)
 			}
@@ -1015,7 +1019,6 @@ func wantOrder(t *testing.T, h helperRun, want ...string) {
 
 var (
 	unloadSystem = "launchctl unload " + systemPlist
-	killMC       = "killall ManagedClient"
 	logged       = "logger -t guest-macosx-shutdown " // a message's call, as the fake logger records it
 	jobsQuery    = "ps -axwwo pid=,ppid="             // a look at the jobs launchd started
 	agentsQuery  = "ps -axwwo pid=,command="          // a look at the agents
@@ -1103,7 +1106,7 @@ func TestTheShutdownHelperUnloadsADirtySystemAgentThenShutsDown(t *testing.T) {
 	if h.rc != 0 {
 		t.Fatalf("status %d; stderr %q", h.rc, h.stderr)
 	}
-	wantOrder(t, h, unloadSystem, killMC, "shutdown -r now")
+	wantOrder(t, h, unloadSystem, "shutdown -r now")
 	wantOneLog(t, h, `^UserEventAgent \(System\) stopped in [0-9.]+s, with a write pending$`)
 	if !strings.Contains(h.stderr, "guest-macosx-shutdown: UserEventAgent (System) stopped in") {
 		t.Errorf("the message never reached stderr, so the caller never sees it: %q", h.stderr)
@@ -1119,7 +1122,7 @@ func TestTheShutdownHelperSaysWhenNothingWasPending(t *testing.T) {
 	r := newHelperRig(t, true)
 	r.agents("   11 " + systemAgent)
 	h := r.run(nil, "-h")
-	wantOrder(t, h, unloadSystem, killMC, "shutdown -h now")
+	wantOrder(t, h, unloadSystem, "shutdown -h now")
 	wantOneLog(t, h, `^UserEventAgent \(System\) stopped in [0-9.]+s$`)
 }
 
@@ -1130,7 +1133,7 @@ func TestTheShutdownHelperSaysWhenTheSystemAgentWasNotRunning(t *testing.T) {
 	r := newHelperRig(t, true)
 	r.agents("  130 " + lwAgent)
 	h := r.run([]string{"FAKE_UNLOAD=notloaded"}, "-r")
-	wantOrder(t, h, unloadSystem, killMC, "shutdown -r now")
+	wantOrder(t, h, unloadSystem, "shutdown -r now")
 	wantOneLog(t, h, `^UserEventAgent \(System\) was not running$`)
 	wantOneLog(t, h, `^launchctl unload `+regexp.QuoteMeta(systemPlist)+` exited 1$`)
 	for _, l := range h.logged() {
@@ -1146,7 +1149,7 @@ func TestTheShutdownHelperGivesUpOnAnAgentThatWillNotGo(t *testing.T) {
 	r := newHelperRig(t, true)
 	r.agents("   11 " + systemAgent)
 	h := r.run([]string{"FAKE_UNLOAD=fail", "GUEST_MACOSX_SHUTDOWN_TEST_LIMIT=1"}, "-r")
-	wantOrder(t, h, unloadSystem, killMC, "shutdown -r now")
+	wantOrder(t, h, unloadSystem, "shutdown -r now")
 	wantOneLog(t, h, `^launchctl unload .* exited 1$`)
 	wantOneLog(t, h, `^UserEventAgent \(System\) still running 1s after its unload; shutting down anyway$`)
 	wantGaveUpAt(t, h, 1, 0.05, logged+"could not tell which jobs", logged+"UserEventAgent (System) still running")
@@ -1157,7 +1160,7 @@ func TestTheShutdownHelperWaitsOutADirtyLoginWindowAgent(t *testing.T) {
 	r.agents("   11 "+systemAgent, "  130 "+lwAgent)
 	r.dirtyFor(130, 700*time.Millisecond)
 	h := r.run(nil, "-r")
-	wantOrder(t, h, unloadSystem, killMC, "shutdown -r now")
+	wantOrder(t, h, unloadSystem, "shutdown -r now")
 	wantOneLog(t, h, `^waited [0-9.]+s for UserEventAgent \(LoginWindow\) to settle$`)
 	// The positive control for wantNoWait: a wait the helper really makes
 	// is seen, as the dirty wait's own 0.1 s sleeps, and nothing else.
@@ -1176,7 +1179,7 @@ func TestTheShutdownHelperGivesUpOnALoginWindowAgentThatNeverSettles(t *testing.
 	r.agents("   11 "+systemAgent, "  130 "+lwAgent)
 	r.dirtyFor(130, 0)
 	h := r.run([]string{"GUEST_MACOSX_SHUTDOWN_TEST_LIMIT=1"}, "-h")
-	wantOrder(t, h, unloadSystem, killMC, "shutdown -h now")
+	wantOrder(t, h, unloadSystem, "shutdown -h now")
 	wantOneLog(t, h, `^UserEventAgent \(LoginWindow\) still dirty after 1s; shutting down anyway$`)
 	wantGaveUpAt(t, h, 1, 0.1, logged+"UserEventAgent (System) stopped", logged+"UserEventAgent (LoginWindow) still dirty")
 }
@@ -1188,7 +1191,7 @@ func TestTheShutdownHelperStillUnloadsWithoutProcGetDirty(t *testing.T) {
 	r := newHelperRig(t, false)
 	r.agents("   11 " + systemAgent)
 	h := r.run(nil, "-r")
-	wantOrder(t, h, unloadSystem, killMC, "shutdown -r now")
+	wantOrder(t, h, unloadSystem, "shutdown -r now")
 	wantOneLog(t, h, `^no proc_get_dirty in libSystem: cannot tell what UserEventAgent or AppleIDAuthAgent has pending$`)
 	wantOneLog(t, h, `^no mach_absolute_time in libSystem: timing the waits by the wall clock$`)
 	wantOneLog(t, h, `^UserEventAgent \(System\) stopped in [0-9.]+s$`)
@@ -1209,7 +1212,7 @@ func TestTheShutdownHelperDoesItsJobWithABrokenStderr(t *testing.T) {
 	rd.Close() // nobody reads: every write to wr is EPIPE
 	h := r.runWith(wr, nil, "-r")
 	wr.Close()
-	wantOrder(t, h, unloadSystem, killMC, "shutdown -r now")
+	wantOrder(t, h, unloadSystem, "shutdown -r now")
 	wantOneLog(t, h, `^UserEventAgent \(System\) stopped in [0-9.]+s, with a write pending$`)
 	wantOneLog(t, h, `^waited [0-9.]+s for UserEventAgent \(LoginWindow\) to settle$`)
 }
@@ -1225,7 +1228,7 @@ func TestTheShutdownHelperIgnoresABadTestLimit(t *testing.T) {
 			r.agents("   11 "+systemAgent, "  130 "+lwAgent)
 			r.dirtyFor(130, 700*time.Millisecond)
 			h := r.run([]string{"GUEST_MACOSX_SHUTDOWN_TEST_LIMIT=" + v}, "-r")
-			wantOrder(t, h, unloadSystem, killMC, "shutdown -r now")
+			wantOrder(t, h, unloadSystem, "shutdown -r now")
 			wantOneLog(t, h, `^GUEST_MACOSX_SHUTDOWN_TEST_LIMIT=.* ignored: waiting at most 30s$`)
 			wantOneLog(t, h, `^UserEventAgent \(System\) stopped in [0-9.]+s$`)
 			wantOneLog(t, h, `^waited [0-9.]+s for UserEventAgent \(LoginWindow\) to settle$`)
@@ -1257,7 +1260,7 @@ func TestTheShutdownHelperChecksOnceUnderATinyTestLimit(t *testing.T) {
 	r.agents("   11 "+systemAgent, "  130 "+lwAgent)
 	r.dirtyFor(130, 0)
 	h := r.run([]string{"GUEST_MACOSX_SHUTDOWN_TEST_LIMIT=1e-9"}, "-r")
-	wantOrder(t, h, unloadSystem, killMC, "shutdown -r now")
+	wantOrder(t, h, unloadSystem, "shutdown -r now")
 	wantOneLog(t, h, `^GUEST_MACOSX_SHUTDOWN_TEST_LIMIT='1e-9' in effect: waiting at most 1e-09s$`)
 	wantOneLog(t, h, `^UserEventAgent \(System\) stopped in [0-9.]+s$`)
 	wantOneLog(t, h, `^UserEventAgent \(LoginWindow\) still dirty after 1e-09s; shutting down anyway$`)
@@ -1279,7 +1282,7 @@ func TestTheShutdownHelperWaitsForJobsStillStarting(t *testing.T) {
 	if h.rc != 0 {
 		t.Fatalf("status %d; stderr %q", h.rc, h.stderr)
 	}
-	wantOrder(t, h, unloadSystem, killMC, "shutdown -r now")
+	wantOrder(t, h, unloadSystem, "shutdown -r now")
 	wantOneLog(t, h, `^waited [0-9.]+s for jobs still starting: SleepServicesD$`)
 	// the wait comes first: no unload while a job is still starting
 	jobsAt, unloadAt := -1, -1
@@ -1303,7 +1306,7 @@ func TestTheShutdownHelperGivesUpOnJobsThatKeepStarting(t *testing.T) {
 	r.agents("   11 " + systemAgent)
 	r.jobs(job{77, 1, justStarting, "/usr/sbin/netbiosd"})
 	h := r.run([]string{"GUEST_MACOSX_SHUTDOWN_TEST_LIMIT=1"}, "-h")
-	wantOrder(t, h, unloadSystem, killMC, "shutdown -h now")
+	wantOrder(t, h, unloadSystem, "shutdown -h now")
 	wantOneLog(t, h, `^jobs still starting after 1s: netbiosd; shutting down anyway$`)
 	// the last look does not report again what the wait gave up on
 	wantOneLog(t, h, `^no new job started during the waits$`)
@@ -1322,7 +1325,7 @@ func TestTheShutdownHelperDoesNotWaitForSSHSessions(t *testing.T) {
 		job{412, 410, justStarting, "sudo /usr/local/sbin/guest-macosx-shutdown -r"})
 	r.noWait = true
 	h := r.run(nil, "-r")
-	wantOrder(t, h, unloadSystem, killMC, "shutdown -r now")
+	wantOrder(t, h, unloadSystem, "shutdown -r now")
 	for _, l := range h.logged() {
 		if strings.Contains(l, "still starting") || strings.Contains(l, "waited") {
 			t.Errorf("logged %q; want no wait for SSH sessions", l)
@@ -1341,7 +1344,7 @@ func TestTheShutdownHelperDoesNotWaitForAPerUserLaunchdInParentheses(t *testing.
 		job{406, 1, justStarting, "live:(launchproxy)"})
 	r.noWait = true
 	h := r.run(nil, "-r")
-	wantOrder(t, h, unloadSystem, killMC, "shutdown -r now")
+	wantOrder(t, h, unloadSystem, "shutdown -r now")
 	for _, l := range h.logged() {
 		if strings.Contains(l, "still starting") || strings.Contains(l, "waited") {
 			t.Errorf("logged %q; want no wait for a per-user launchd", l)
@@ -1366,7 +1369,7 @@ func TestTheShutdownHelperSaysWhenNoJobIsStarting(t *testing.T) {
 		job{405, 1, justStarting, "/sbin/launchd"})
 	r.noWait = true
 	h := r.run(nil, "-r")
-	wantOrder(t, h, unloadSystem, killMC, "shutdown -r now")
+	wantOrder(t, h, unloadSystem, "shutdown -r now")
 	wantOneLog(t, h, `^no job launchd started is under 20s old \(4 checked\)$`)
 	wantOneLog(t, h, `^no new job started during the waits$`)
 	for _, l := range h.logged() {
@@ -1388,7 +1391,7 @@ func TestTheShutdownHelperSaysWhenPsFails(t *testing.T) {
 	if h.rc != 0 {
 		t.Fatalf("status %d; stderr %q", h.rc, h.stderr)
 	}
-	wantOrder(t, h, unloadSystem, killMC, "shutdown -r now")
+	wantOrder(t, h, unloadSystem, "shutdown -r now")
 	wantOneLog(t, h, `^could not tell which jobs are still starting \(ps exited 1\); not waiting for any$`)
 	for _, l := range h.logged() {
 		if strings.Contains(l, "no job launchd started") {
@@ -1402,7 +1405,7 @@ func TestTheShutdownHelperSaysWhenPsListsNoJobs(t *testing.T) {
 	r := newHelperRig(t, true)
 	r.agents("   11 " + systemAgent)
 	h := r.run(nil, "-h") // no jobs.txt: ps prints nothing
-	wantOrder(t, h, unloadSystem, killMC, "shutdown -h now")
+	wantOrder(t, h, unloadSystem, "shutdown -h now")
 	wantOneLog(t, h, `^could not tell which jobs are still starting \(ps listed no job launchd started\); not waiting for any$`)
 }
 
@@ -1416,7 +1419,7 @@ func TestTheShutdownHelperSaysWhenItCannotReadAnAge(t *testing.T) {
 		job{14, 1, badAge, "/usr/sbin/warmd"})
 	r.noWait = true
 	h := r.run(nil, "-r")
-	wantOrder(t, h, unloadSystem, killMC, "shutdown -r now")
+	wantOrder(t, h, unloadSystem, "shutdown -r now")
 	wantOneLog(t, h, `^could not read the age of 2 process\(es\) launchd started; not waited for$`)
 	wantOneLog(t, h, `^no job launchd started is under 20s old \(1 checked\)$`)
 	wantNoWait(t, h)
@@ -1436,7 +1439,7 @@ func TestTheShutdownHelperWaitsOutAJobThatKeepsRespawning(t *testing.T) {
 	r.jobs(job{12, 1, 5 * time.Minute, "/usr/libexec/kextd"},
 		job{500, 1, respawning, "/usr/sbin/crashd"})
 	h := r.run([]string{"GUEST_MACOSX_SHUTDOWN_TEST_LIMIT=4"}, "-r")
-	wantOrder(t, h, unloadSystem, killMC, "shutdown -r now")
+	wantOrder(t, h, unloadSystem, "shutdown -r now")
 	wantOneLog(t, h, `^jobs still starting after 4s: crashd; shutting down anyway$`)
 	wantOneLog(t, h, `^jobs started during the waits: crashd; shutting down anyway$`)
 	for _, l := range h.logged() {
@@ -1459,7 +1462,7 @@ func TestTheShutdownHelperDoesNotWaitForItsOwnAncestors(t *testing.T) {
 		job{0, 601, justStarting, "/usr/bin/python -"})
 	r.noWait = true
 	h := r.run(nil, "-r")
-	wantOrder(t, h, unloadSystem, killMC, "shutdown -r now")
+	wantOrder(t, h, unloadSystem, "shutdown -r now")
 	wantOneLog(t, h, `^no job launchd started is under 20s old \(1 checked\)$`)
 	wantNoWait(t, h)
 }
@@ -1532,7 +1535,7 @@ func TestTheShutdownHelperSaysWhenAJobStartedDuringItsWaits(t *testing.T) {
 	r.jobs(job{12, 1, 5 * time.Minute, "/usr/libexec/kextd"})
 	r.noWait = true
 	h := r.run([]string{"FAKE_UNLOAD_STARTS_JOB=1"}, "-r")
-	wantOrder(t, h, unloadSystem, killMC, "shutdown -r now")
+	wantOrder(t, h, unloadSystem, "shutdown -r now")
 	wantOneLog(t, h, `^no job launchd started is under 20s old \(1 checked\)$`)
 	wantOneLog(t, h, `^jobs started during the waits: latecomerd; shutting down anyway$`)
 	wantNoWait(t, h)
@@ -1545,7 +1548,7 @@ func TestTheShutdownHelperBoundsItsJobsWaitWithAFrozenClock(t *testing.T) {
 	r.agents("   11 " + systemAgent)
 	r.jobs(job{77, 1, justStarting, "/usr/sbin/netbiosd"})
 	h := r.run(append(frozenClock(), "GUEST_MACOSX_SHUTDOWN_TEST_LIMIT=1"), "-h")
-	wantOrder(t, h, unloadSystem, killMC, "shutdown -h now")
+	wantOrder(t, h, unloadSystem, "shutdown -h now")
 	wantOneLog(t, h, `^jobs still starting after 1s: netbiosd; shutting down anyway$`)
 }
 
@@ -1555,7 +1558,7 @@ func TestTheShutdownHelperDoesNotWaitForACleanAppleIDAuthAgent(t *testing.T) {
 	r.agents("   11 "+systemAgent, "  140 "+appleIDAgent)
 	r.noWait = true
 	h := r.run(nil, "-r")
-	wantOrder(t, h, unloadSystem, killMC, "shutdown -r now")
+	wantOrder(t, h, unloadSystem, "shutdown -r now")
 	for _, l := range h.logged() {
 		if strings.Contains(l, "AppleIDAuthAgent") || strings.Contains(l, "settle") {
 			t.Errorf("logged %q for a clean agent", l)
@@ -1573,7 +1576,7 @@ func TestTheShutdownHelperWaitsOutADirtyAppleIDAuthAgent(t *testing.T) {
 	r.agents("   11 "+systemAgent, "  130 "+lwAgent, "  140 "+appleIDAgent)
 	r.dirtyFor(140, 700*time.Millisecond)
 	h := r.run(nil, "-r")
-	wantOrder(t, h, unloadSystem, killMC, "shutdown -r now")
+	wantOrder(t, h, unloadSystem, "shutdown -r now")
 	wantOneLog(t, h, `^waited [0-9.]+s for AppleIDAuthAgent to settle$`)
 }
 
@@ -1584,7 +1587,7 @@ func TestTheShutdownHelperNamesEveryAgentItWaitedFor(t *testing.T) {
 	r.dirtyFor(130, 400*time.Millisecond)
 	r.dirtyFor(140, 700*time.Millisecond)
 	h := r.run(nil, "-r")
-	wantOrder(t, h, unloadSystem, killMC, "shutdown -r now")
+	wantOrder(t, h, unloadSystem, "shutdown -r now")
 	wantOneLog(t, h, `^waited [0-9.]+s for AppleIDAuthAgent, UserEventAgent \(LoginWindow\) to settle$`)
 }
 
@@ -1593,7 +1596,7 @@ func TestTheShutdownHelperGivesUpOnAnAppleIDAuthAgentThatNeverSettles(t *testing
 	r.agents("   11 "+systemAgent, "  140 "+appleIDAgent)
 	r.dirtyFor(140, 0)
 	h := r.run([]string{"GUEST_MACOSX_SHUTDOWN_TEST_LIMIT=1"}, "-h")
-	wantOrder(t, h, unloadSystem, killMC, "shutdown -h now")
+	wantOrder(t, h, unloadSystem, "shutdown -h now")
 	wantOneLog(t, h, `^AppleIDAuthAgent still dirty after 1s; shutting down anyway$`)
 }
 
@@ -1610,7 +1613,7 @@ func TestTheShutdownHelperWaitsForTwoLiveJobsOfOneName(t *testing.T) {
 	r.rawJobs("25 1 18 /usr/libexec/xpcd",
 		"144 1 appear:1.5 uid=200:/usr/libexec/xpcd")
 	h := r.run([]string{"GUEST_MACOSX_SHUTDOWN_TEST_LIMIT=4"}, "-r")
-	wantOrder(t, h, unloadSystem, killMC, "shutdown -r now")
+	wantOrder(t, h, unloadSystem, "shutdown -r now")
 	wantOneLog(t, h, `^jobs still starting after 4s: xpcd; shutting down anyway$`)
 	wantGaveUpAt(t, h, 4, 0.5, logged+"GUEST_MACOSX_SHUTDOWN_TEST_LIMIT=", logged+"jobs still starting after")
 }
@@ -1622,7 +1625,7 @@ func TestTheShutdownHelperSaysWhatItWaitedForWhenPsFailsLater(t *testing.T) {
 	r.agents("   11 " + systemAgent)
 	r.rawJobs("700 1 until:5 /usr/sbin/slowd")
 	h := r.run([]string{"FAKE_PS_FAIL_AFTER=0.8"}, "-r")
-	wantOrder(t, h, unloadSystem, killMC, "shutdown -r now")
+	wantOrder(t, h, unloadSystem, "shutdown -r now")
 	wantOneLog(t, h, `^waited [0-9.]+s for jobs still starting: slowd$`)
 	wantOneLog(t, h, `^could not tell which jobs are still starting \(ps exited 1\); not waiting for any$`)
 	for _, l := range h.logged() {
@@ -1652,7 +1655,7 @@ func TestTheShutdownHelperSaysWhenItsLastLookCannotTell(t *testing.T) {
 	r.agents("   11 " + systemAgent)
 	r.jobs(job{12, 1, 5 * time.Minute, "/usr/libexec/kextd"})
 	h := r.run([]string{"FAKE_UNLOAD_BREAKS_PS=1"}, "-r")
-	wantOrder(t, h, unloadSystem, killMC, "shutdown -r now")
+	wantOrder(t, h, unloadSystem, "shutdown -r now")
 	wantOneLog(t, h, `^no job launchd started is under 20s old \(1 checked\)$`)
 	wantOneLog(t, h, `^could not tell whether a job started during the waits \(ps exited 1\)$`)
 }
@@ -1676,7 +1679,7 @@ func TestTheShutdownHelperSaysWhenPsCannotBeRun(t *testing.T) {
 		t.Fatal(err)
 	}
 	run := r.run(nil, "-r")
-	wantOrder(t, run, unloadSystem, killMC, "shutdown -r now")
+	wantOrder(t, run, unloadSystem, "shutdown -r now")
 	wantOneLog(t, run, `^could not tell which jobs are still starting \(ps: .*no-such-ps.*\); not waiting for any$`)
 }
 
@@ -1730,7 +1733,7 @@ func TestTheShutdownHelperBoundsItsOtherWaitsWithAFrozenClock(t *testing.T) {
 	r.agents("   11 "+systemAgent, "  130 "+lwAgent)
 	r.dirtyFor(130, 0)
 	h := r.run(append(frozenClock(), "FAKE_UNLOAD=fail", "GUEST_MACOSX_SHUTDOWN_TEST_LIMIT=1"), "-h")
-	wantOrder(t, h, unloadSystem, killMC, "shutdown -h now")
+	wantOrder(t, h, unloadSystem, "shutdown -h now")
 	wantOneLog(t, h, `^UserEventAgent \(System\) still running 1s after its unload; shutting down anyway$`)
 	wantOneLog(t, h, `^UserEventAgent \(LoginWindow\) still dirty after 1s; shutting down anyway$`)
 }
@@ -1743,7 +1746,7 @@ func TestTheShutdownHelperReportsAFreshCopyOfAJobItGaveUpOn(t *testing.T) {
 	r.agents("   11 " + systemAgent)
 	r.rawJobs("77 1 now /usr/sbin/latecomerd")
 	h := r.run([]string{"FAKE_UNLOAD_STARTS_JOB=1", "GUEST_MACOSX_SHUTDOWN_TEST_LIMIT=1"}, "-r")
-	wantOrder(t, h, unloadSystem, killMC, "shutdown -r now")
+	wantOrder(t, h, unloadSystem, "shutdown -r now")
 	wantOneLog(t, h, `^jobs still starting after 1s: latecomerd; shutting down anyway$`)
 	wantOneLog(t, h, `^jobs started during the waits: latecomerd; shutting down anyway$`)
 }
@@ -1758,7 +1761,7 @@ func TestTheShutdownHelperDoesNotReportAPidWhoseUidChanged(t *testing.T) {
 	r.agents("   11 " + systemAgent)
 	r.rawJobs("166 1 now /usr/libexec/xpcd")
 	h := r.run([]string{"FAKE_UNLOAD_JOBS=166 1 now uid=200:/usr/libexec/xpcd", "GUEST_MACOSX_SHUTDOWN_TEST_LIMIT=1"}, "-r")
-	wantOrder(t, h, unloadSystem, killMC, "shutdown -r now")
+	wantOrder(t, h, unloadSystem, "shutdown -r now")
 	wantOneLog(t, h, `^jobs still starting after 1s: xpcd; shutting down anyway$`)
 	wantOneLog(t, h, `^no new job started during the waits$`)
 }
@@ -1780,7 +1783,7 @@ func TestTheShutdownHelperSaysWhatIsStartingAtTheShutdownWhenItCouldNotTellBefor
 				t.Fatal(err)
 			}
 			h := r.run([]string{"FAKE_UNLOAD_FIXES_PS=1"}, "-r")
-			wantOrder(t, h, unloadSystem, killMC, "shutdown -r now")
+			wantOrder(t, h, unloadSystem, "shutdown -r now")
 			wantOneLog(t, h, `^could not tell which jobs are still starting \(ps exited 1\); not waiting for any$`)
 			wantOneLog(t, h, tc.want)
 			for _, l := range h.logged() {
@@ -1802,7 +1805,7 @@ func TestTheShutdownHelperTimesItsWaitsByAClockThatDoesNotStep(t *testing.T) {
 	r.rawJobs("700 1 until:0.3 /usr/sbin/slowd", "13 1 300 /usr/libexec/kextd")
 	r.dirtyFor(130, 700*time.Millisecond)
 	h := r.run([]string{pyClock("_t - 10 * _n()")}, "-r")
-	wantOrder(t, h, unloadSystem, killMC, "shutdown -r now")
+	wantOrder(t, h, unloadSystem, "shutdown -r now")
 	wantOneLog(t, h, `^waited [0-9.]+s for jobs still starting: slowd$`)
 	wantWaited(t, h, "id ", `^waited (-?[0-9.]+)s for jobs still starting: slowd$`)
 	wantOneLog(t, h, `^UserEventAgent \(System\) stopped in [0-9]+\.[0-9]{2}s$`)
@@ -1850,7 +1853,7 @@ func TestTheShutdownHelperBoundsEachWaitOfSlowLooksByTheClock(t *testing.T) {
 				r.dirtyFor(130, 0)
 			}
 			h := r.run(append([]string{pyClock("_t"), "GUEST_MACOSX_SHUTDOWN_TEST_LIMIT=1"}, tc.env...), "-h")
-			wantOrder(t, h, unloadSystem, killMC, "shutdown -h now")
+			wantOrder(t, h, unloadSystem, "shutdown -h now")
 			d := h.span(t, tc.from, tc.to)
 			n := h.callsBetween(t, tc.from, tc.to, tc.look)
 			t.Logf("the %s wait took %v, in %d looks", tc.name, d, n)
@@ -1875,7 +1878,7 @@ func TestTheShutdownHelperReadsTheMachTimebase(t *testing.T) {
 			r.agents("   11 "+systemAgent, "  130 "+lwAgent)
 			r.dirtyFor(130, 700*time.Millisecond)
 			h := r.run([]string{"FAKE_TIMEBASE=" + tb}, "-r")
-			wantOrder(t, h, unloadSystem, killMC, "shutdown -r now")
+			wantOrder(t, h, unloadSystem, "shutdown -r now")
 			wantOneLog(t, h, `^UserEventAgent \(System\) stopped in [0-9]+\.[0-9]{2}s$`)
 			wantWaited(t, h, logged+"could not tell which jobs", `^UserEventAgent \(System\) stopped in (-?[0-9.]+)s$`)
 			wantOneLog(t, h, `^waited [0-9.]+s for UserEventAgent \(LoginWindow\) to settle$`)
@@ -1905,10 +1908,47 @@ func TestTheShutdownHelperSaysWhyItCannotReadTheMachClock(t *testing.T) {
 			r.agents("   11 "+systemAgent, "  130 "+lwAgent)
 			r.dirtyFor(130, 700*time.Millisecond)
 			h := r.run(tc.env, "-r")
-			wantOrder(t, h, unloadSystem, killMC, "shutdown -r now")
+			wantOrder(t, h, unloadSystem, "shutdown -r now")
 			wantOneLog(t, h, `^`+tc.want+`: timing the waits by the wall clock$`)
 			wantOneLog(t, h, `^waited [0-9.]+s for UserEventAgent \(LoginWindow\) to settle$`)
 			wantWaited(t, h, logged+"UserEventAgent (System) stopped", `^waited (-?[0-9.]+)s for UserEventAgent \(LoginWindow\) to settle$`)
 		})
 	}
+}
+
+// ManagedClient: loginwindow's `ManagedClient -s` holds the DiskArbitration
+// session a shutdown waits for (docs/decisions/0019, cause 1), so it is
+// stopped, last, and the log names it. launchd's ManagedClient daemon, run
+// with no arguments, holds none, and a process whose arguments only start
+// or end the same way is another one: neither is touched.
+const mcPath = "/System/Library/CoreServices/ManagedClient.app/Contents/MacOS/ManagedClient"
+
+func TestTheShutdownHelperStopsLoginwindowsManagedClientAlone(t *testing.T) {
+	r := newHelperRig(t, true)
+	r.agents("   11 "+systemAgent, "  139 "+mcPath+" -s", "  140 "+mcPath,
+		"  141 "+mcPath+" -s -x", "  142 /tmp/x"+mcPath+" -s")
+	h := r.run(nil, "-r")
+	if h.rc != 0 {
+		t.Fatalf("status %d; stderr %q", h.rc, h.stderr)
+	}
+	wantOrder(t, h, unloadSystem, "kill 139", "shutdown -r now")
+	wantOneLog(t, h, `^stopped loginwindow's ManagedClient -s \(139\): its DiskArbitration session would hold the shutdown$`)
+}
+
+func TestTheShutdownHelperLeavesManagedClientAloneWhenOnlyTheDaemonRuns(t *testing.T) {
+	r := newHelperRig(t, true)
+	r.agents("   11 "+systemAgent, "  140 "+mcPath)
+	h := r.run(nil, "-h")
+	wantOrder(t, h, unloadSystem, "shutdown -h now")
+	wantOneLog(t, h, `^no loginwindow ManagedClient -s running: nothing to stop$`)
+}
+
+// A ps that fails on the ManagedClient look stops nothing, says so, and the
+// shutdown still goes ahead.
+func TestTheShutdownHelperSaysWhenItCannotLookForManagedClient(t *testing.T) {
+	r := newHelperRig(t, true)
+	r.agents("   11 "+systemAgent, "  139 "+mcPath+" -s")
+	h := r.run([]string{"FAKE_PS_FAIL_ARGS=1"}, "-r")
+	wantOrder(t, h, unloadSystem, "shutdown -r now")
+	wantOneLog(t, h, `^could not list the processes \(ps exited 1\): no ManagedClient -s stopped$`)
 }

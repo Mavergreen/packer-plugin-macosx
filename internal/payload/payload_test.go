@@ -1890,8 +1890,9 @@ func TestTheShutdownHelperStopsUserEventAgentThenManagedClientThenShutsDown(t *t
 		`subprocess.call(['/bin/launchctl', 'unload', SYSTEM])`,
 		`while running('UserEventAgent (System)'):`,
 		`now = [a for a in agents() if dirty(a[0])]`,
-		"\nGUEST_MACOSX_PY_EOF\n",
-		"\nkillall ManagedClient 2>/dev/null\nexec /sbin/shutdown \"$1\" now",
+		`if cmd.strip() == MC + ' -s':`,
+		`subprocess.call(['/bin/kill'] + mc)`,
+		"\nGUEST_MACOSX_PY_EOF\nexec /sbin/shutdown \"$1\" now",
 	}
 	at := 0
 	for _, s := range steps {

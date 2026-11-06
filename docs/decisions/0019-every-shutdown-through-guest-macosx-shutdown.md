@@ -34,8 +34,15 @@ which `bin/gate-vm.sh` logs, giving the command 105 s):
 4. waits until no other `UserEventAgent` (the LoginWindow one), and no
    `AppleIDAuthAgent`, is dirty (the second is ADR 0021's, from the
    mechanism: it did not fire in any measured shutdown);
-5. stops `ManagedClient` (`killall`), last, so loginwindow has no time to
-   start another;
+5. stops loginwindow's `ManagedClient -s`, the one that holds the
+   DiskArbitration session, last, so loginwindow has no time to start
+   another; only when it runs, and the log says which (2026-11-06; until
+   then `killall ManagedClient`, which also stopped launchd's ManagedClient
+   daemon whenever it ran, with no session to close). MEASURED 2026-11-06:
+   in a 10.9 guest 49 s after boot, the only ManagedClient running was
+   loginwindow's `-s` (launchd's daemon idle); the default 10.9 gate on the
+   change passed every step with 10 restarts, no stall report, each
+   shutdown logging the `-s` it stopped by its pid;
 6. `exec /sbin/shutdown -h|-r now`.
 
 `templates/mavericks/verify.sh` fails a build whose guest has no executable
