@@ -17,6 +17,32 @@ import (
 
 const buildOCPatch = "0001-build_oc-source-pinned-efibuild.patch"
 
+// openCorePatches are the patches the OpenCore build applies to
+// OpenCorePkg's own sources, after 0001, each checked by its marker.
+var openCorePatches = []sourcePatch{
+	// A merged last entry counted twice handed the kernel an overlapping
+	// descriptor, under RebuildAppleMemoryMap (10.6's config); ours, as
+	// upstream has it on 2026-11-03 (docs/decisions/0043).
+	{"0008-opencore-count-a-merged-last-memory-map-entry-once.patch", memoryMapC, "packer-plugin-macosx: assets/firmware/patches/0008",
+		"count a shrunk memory map's merged last entry once",
+		"counts a shrunk memory map's merged last entry twice"},
+}
+
+// memoryMapC is OcMemoryLib's memory map code, whose OcShrinkMemoryMap
+// 0008 patches.
+const memoryMapC = "Library/OcMemoryLib/MemoryMap.c"
+
+// openCoreStampFile, in the OpenCorePkg tree, records which of
+// openCorePatches the tree may hold, as patchStampFile does for the EDK
+// II tree's OVMF patches, and for the same reason: a marker already
+// there skips a patch, so a tree another patch set touched is unpacked
+// afresh rather than trusted.
+const openCoreStampFile = ".guest-macosx-opencore-patches"
+
+// openCorePatchStamp is the stamp of a tree patched with every OpenCore
+// source patch this binary carries.
+func openCorePatchStamp() ([]string, error) { return patchStamp(openCorePatches) }
+
 // OpenCore builds OpenCore from the pinned sources in in and ships its
 // five artifacts to build/artifacts with a SHA256SUMS. It reaches no
 // network. Steps a warm tree has
@@ -56,6 +82,9 @@ func (b *Builder) OpenCore(ctx context.Context, in Inputs) ([]string, error) {
 		return nil, err
 	}
 	if err := b.patchBuildOCTool(ctx); err != nil {
+		return nil, err
+	}
+	if err := b.patchOpenCoreSources(ctx); err != nil {
 		return nil, err
 	}
 	if err := b.assembleUDK(ctx, files); err != nil {
@@ -100,11 +129,30 @@ func (b *Builder) OpenCore(ctx context.Context, in Inputs) ([]string, error) {
 	return b.shipArtifacts(built)
 }
 
-// unpackOpenCorePkg unpacks the OpenCorePkg release once.
+// unpackOpenCorePkg unpacks the OpenCorePkg release once, and again over
+// a tree whose stamp (openCoreStampFile) is not a prefix of this binary's
+// OpenCore patches: one patched with another set, or from before the
+// stamp. The EDK II tree inside it goes too, and is reassembled.
 func (b *Builder) unpackOpenCorePkg(ctx context.Context, tarball string) error {
-	if _, err := os.Stat(b.src()); err != nil {
+	stamp, err := openCorePatchStamp()
+	if err != nil {
+		return err
+	}
+	stampPath := filepath.Join(b.src(), openCoreStampFile)
+	_, err = os.Stat(b.src())
+	if err == nil && stampPrefix(stampPath, stamp) < 0 {
+		b.logf("the OpenCorePkg tree at %s was patched with another set of OpenCore patches (%s): unpacking it afresh", b.src(), openCoreStampFile)
+		if err := os.RemoveAll(b.src()); err != nil {
+			return err
+		}
+		err = fs.ErrNotExist
+	}
+	if err != nil {
 		b.logf("unpacking OpenCorePkg %s to %s", OCVersion, b.src())
 		if err := untarGz(ctx, tarball, b.src(), 1); err != nil {
+			return err
+		}
+		if err := writeFileAtomic(stampPath, nil, 0o644); err != nil {
 			return err
 		}
 	} else {
@@ -140,6 +188,31 @@ func (b *Builder) patchBuildOCTool(ctx context.Context) error {
 	}
 	if yes {
 		return fmt.Errorf("build_oc.tool still fetches shell from the network")
+	}
+	return nil
+}
+
+// patchOpenCoreSources applies openCorePatches, each stamped before it is
+// applied (as the OVMF build does), and checks each one's marker.
+func (b *Builder) patchOpenCoreSources(ctx context.Context) error {
+	stamp, err := openCorePatchStamp()
+	if err != nil {
+		return err
+	}
+	stampPath := filepath.Join(b.src(), openCoreStampFile)
+	recorded := stampPrefix(stampPath, stamp)
+	if recorded < 0 {
+		return fmt.Errorf("the OpenCorePkg tree at %s was patched with another set of OpenCore patches than this plugin's (%s)", b.src(), openCoreStampFile)
+	}
+	for i, p := range openCorePatches {
+		if i >= recorded {
+			if err := writeFileAtomic(stampPath, []byte(strings.Join(stamp[:i+1], "")), 0o644); err != nil {
+				return err
+			}
+		}
+		if err := b.patchOnce(ctx, b.src(), p, "OpenCorePkg "+OCVersion); err != nil {
+			return err
+		}
 	}
 	return nil
 }

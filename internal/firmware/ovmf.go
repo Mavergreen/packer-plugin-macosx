@@ -25,7 +25,7 @@ var ovmfBuild = fmt.Sprintf("set +u; . ./edksetup.sh >/dev/null || exit 1; exec 
 // in order. file is where the patch's marker shows it took; doing is what
 // the log says the patch is for; still is what file still does if it did
 // not take.
-var ovmfPatches = []struct{ patch, file, marker, doing, still string }{
+var ovmfPatches = []sourcePatch{
 	{"0002-ovmf-pin-the-c-dialect.patch", OVMFDsc, "std=gnu17", "state its C dialect", "does not state a C dialect"},
 	{"0003-firmware-drop-werror.patch", OVMFDsc, "Wno-error", "stop treating upstream's warnings as errors", "promotes upstream's warnings to errors"},
 	// A warm restart hung in PEI on the last OS's bytes read as a vCPU
@@ -52,6 +52,12 @@ var ovmfPatches = []struct{ patch, file, marker, doing, still string }{
 	{"0007-firmware-state-the-cpu-baseline.patch", OVMFDsc, March + " " + Mtune, "state the CPU it is compiled for", "does not state a CPU"},
 }
 
+// sourcePatch is one patch a build applies to a tree it unpacked: file is
+// the one it changes (relative to the tree), marker the text whose
+// presence says it is applied, doing what it does (for the log), still
+// what an unpatched file still does (for the error).
+type sourcePatch struct{ patch, file, marker, doing, still string }
+
 // qemuFlashC is OVMF's driver for QEMU's flash device, whose
 // QemuFlashWrite 0006 patches.
 const qemuFlashC = "OvmfPkg/QemuFlashFvbServicesRuntimeDxe/QemuFlash.c"
@@ -69,9 +75,13 @@ func (b *Builder) patchStampPath() string { return filepath.Join(b.udk(), patchS
 
 // ovmfPatchStamp is the stamp of a tree patched with every OVMF patch this
 // binary carries, one line per patch.
-func ovmfPatchStamp() ([]string, error) {
+func ovmfPatchStamp() ([]string, error) { return patchStamp(ovmfPatches) }
+
+// patchStamp is the stamp of a tree patched with every patch of set, one
+// "<patch>\t<sha256>" line each.
+func patchStamp(set []sourcePatch) ([]string, error) {
 	var out []string
-	for _, p := range ovmfPatches {
+	for _, p := range set {
 		data, err := fs.ReadFile(macosx.Files, "assets/firmware/patches/"+p.patch)
 		if err != nil {
 			return nil, err
@@ -92,7 +102,13 @@ func (b *Builder) patchStampFits(stamp []string) bool {
 // patchStampPrefix returns the number of recorded patches, or -1 if the
 // stamp is unreadable or not an exact prefix of this binary's patch set.
 func (b *Builder) patchStampPrefix(stamp []string) int {
-	data, err := os.ReadFile(b.patchStampPath())
+	return stampPrefix(b.patchStampPath(), stamp)
+}
+
+// stampPrefix returns how many of stamp's lines the stamp file at path
+// records, or -1 if it is unreadable or not an exact prefix of them.
+func stampPrefix(path string, stamp []string) int {
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return -1
 	}
@@ -161,7 +177,7 @@ func (b *Builder) OVMF(ctx context.Context) ([]string, error) {
 				return nil, err
 			}
 		}
-		if err := b.patchOnce(ctx, p.file, p.patch, p.marker, p.doing, p.still); err != nil {
+		if err := b.patchOnce(ctx, b.udk(), p, "audk "+AudkCommit); err != nil {
 			return nil, err
 		}
 	}
@@ -226,31 +242,32 @@ func (b *Builder) OVMF(ctx context.Context) ([]string, error) {
 	return out, nil
 }
 
-// patchOnce applies one of our OVMF patches unless file (relative to the
-// tree) already has its marker, then checks that it does. The tree is
-// re-unpacked whenever the audk pin moves, which is why this runs on every
-// build; an audk that has merged a fix upstream already has its marker.
-func (b *Builder) patchOnce(ctx context.Context, file, patch, marker, doing, still string) error {
-	path := filepath.Join(b.udk(), filepath.FromSlash(file))
+// patchOnce applies one of our patches in the tree at dir unless its file
+// already has its marker, then checks that it does; pinned names what the
+// tree was unpacked from, for the error. The tree is re-unpacked whenever
+// its pin moves, which is why this runs on every build; a pin that has
+// merged a fix upstream already has its marker.
+func (b *Builder) patchOnce(ctx context.Context, dir string, p sourcePatch, pinned string) error {
+	path := filepath.Join(dir, filepath.FromSlash(p.file))
 	has := func() (bool, error) {
 		data, err := os.ReadFile(path)
-		return strings.Contains(string(data), marker), err
+		return strings.Contains(string(data), p.marker), err
 	}
 	ok, err := has()
 	if err != nil {
 		return err
 	}
 	if !ok {
-		b.logf("patching %s to %s", file, doing)
-		if err := b.applyPatch(ctx, b.udk(), patch); err != nil {
-			return fmt.Errorf("cannot patch %s -- did audk %s change? %w", file, AudkCommit, err)
+		b.logf("patching %s to %s", p.file, p.doing)
+		if err := b.applyPatch(ctx, dir, p.patch); err != nil {
+			return fmt.Errorf("cannot patch %s -- did %s change? %w", p.file, pinned, err)
 		}
 		if ok, err = has(); err != nil {
 			return err
 		}
 	}
 	if !ok {
-		return fmt.Errorf("%s still %s", file, still)
+		return fmt.Errorf("%s still %s", p.file, p.still)
 	}
 	return nil
 }

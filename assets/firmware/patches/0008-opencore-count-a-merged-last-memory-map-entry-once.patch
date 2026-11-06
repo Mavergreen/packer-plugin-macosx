@@ -1,0 +1,38 @@
+Count a shrunk memory map's merged last entry once.
+
+OcShrinkMemoryMap joins adjacent descriptors into the one before them
+(PrevDesc), counting a descriptor into *MemoryMapSize only when it cannot
+be joined. PrevDesc is always counted already, so when the map's last
+descriptors were merged into it, the closing `+= DescriptorSize` counted
+one descriptor too many: the caller got the first entry that had been
+merged into PrevDesc a second time, its range inside PrevDesc's. It runs
+only under RebuildAppleMemoryMap, which the Snow Leopard config turns on,
+and a 4 GiB q35 guest's sorted map ends in RAM above 4 GiB with firmware
+allocations beside free memory: the shape that merges at the end. The
+kernel is then handed overlapping descriptors.
+
+Applied by internal/firmware's OpenCore build with `git apply`, against
+the tree unpacked from the pinned OpenCorePkg tarball. Present in
+acidanthera/OpenCorePkg master on 2026-11-03; the same fix is
+nfzerox/VirtualIntelMacOnAppleSilicon's
+Source/vendor/patches/opencore-memory-map-tail-count.patch (MIT).
+docs/decisions/0043.
+
+--- a/Library/OcMemoryLib/MemoryMap.c
++++ b/Library/OcMemoryLib/MemoryMap.c
+@@ -425,11 +425,11 @@
+   }
+ 
+   //
+-  // Handle last entries if they were merged.
++  // packer-plugin-macosx: assets/firmware/patches/0008
++  // When the last entries were merged, they were merged into PrevDesc,
++  // which *MemoryMapSize already counts: counting one more handed the
++  // caller the first merged entry again, overlapping PrevDesc.
+   //
+-  if (HasEntriesToRemove) {
+-    *MemoryMapSize += DescriptorSize;
+-  }
+ 
+   return EFI_SUCCESS;
+ }

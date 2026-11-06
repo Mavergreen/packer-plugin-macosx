@@ -105,8 +105,9 @@ func TestOVMFAppliesItsPatchesAndChecksThem(t *testing.T) {
 		}
 		want = append(want, b)
 	}
-	if !reflect.DeepEqual(f.stdins[1:], want) {
-		t.Errorf("%d patches after 0001; want 0002 through 0007", len(f.stdins)-1)
+	// stdins: OpenCore's 0001 and its source patches, then OVMF's.
+	if ovmf := f.stdins[1+len(openCorePatches):]; !reflect.DeepEqual(ovmf, want) {
+		t.Errorf("%d patches after OpenCore's; want 0002 through 0007", len(ovmf))
 	}
 	if n := len(f.applies(f.udk(), "-p1", "-")); n != 6 {
 		t.Errorf("%d `git -C %s apply -p1 -` calls, want 6", n, f.udk())

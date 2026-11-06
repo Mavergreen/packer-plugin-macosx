@@ -71,12 +71,13 @@ func TestOVMFStampsEachPatchBeforeApplyingIt(t *testing.T) {
 		t.Fatal(err)
 	}
 	lines := strings.SplitAfter(wantStamp(t), "\n")
-	// stdins[0] is OpenCore's 0001; the OVMF patches follow.
-	if len(f.stampsAt) != 7 {
-		t.Fatalf("%d applies, want 0001 and six OVMF patches", len(f.stampsAt))
+	// OpenCore's 0001 and its source patches first; the OVMF patches follow.
+	oc := 1 + len(openCorePatches)
+	if len(f.stampsAt) != oc+6 {
+		t.Fatalf("%d applies, want OpenCore's %d and six OVMF patches", len(f.stampsAt), oc)
 	}
 	for i := 0; i < 6; i++ {
-		if got, want := f.stampsAt[i+1], strings.Join(lines[:i+1], ""); got != want {
+		if got, want := f.stampsAt[oc+i], strings.Join(lines[:i+1], ""); got != want {
 			t.Errorf("as patch %d was applied the stamp was\n%s\nwant it to name it already:\n%s", i+2, got, want)
 		}
 	}

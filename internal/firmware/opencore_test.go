@@ -166,16 +166,16 @@ func TestOpenCorePatchesBuildOCToolAndChecksIt(t *testing.T) {
 	if len(f.stdins) == 0 || string(f.stdins[0]) != string(want) {
 		t.Fatalf("the first patch applied is not 0001: %d patches", len(f.stdins))
 	}
-	if n := len(f.applies(src, "-p1", "-")); n != 1 {
-		t.Errorf("%d `git -C %s apply -p1 -` calls, want 1", n, src)
+	if n := len(f.applies(src, "-p1", "-")); n != 1+len(openCorePatches) {
+		t.Errorf("%d `git -C %s apply -p1 -` calls, want 0001 and the OpenCore patches", n, src)
 	}
 	tool, _ := os.ReadFile(filepath.Join(src, "build_oc.tool"))
 	if strings.Contains(string(tool), "raw.githubusercontent.com") {
 		t.Errorf("build_oc.tool still fetches:\n%s", tool)
 	}
 	f.mustOpenCore()
-	if n := len(f.applies(src, "-p1", "-")); n != 1 {
-		t.Errorf("a second build patched build_oc.tool again: %d calls", n)
+	if n := len(f.applies(src, "-p1", "-")); n != 1+len(openCorePatches) {
+		t.Errorf("a second build patched the sources again: %d calls", n)
 	}
 
 	g := newFixture(t)
@@ -186,6 +186,82 @@ func TestOpenCorePatchesBuildOCToolAndChecksIt(t *testing.T) {
 	}
 	if n := len(g.calls("./build_oc.tool")); n != 0 {
 		t.Errorf("build_oc.tool ran %d times on an unpatched tree", n)
+	}
+}
+
+func TestOpenCorePatchesItsOwnSourcesAndChecksThem(t *testing.T) {
+	f := newFixture(t)
+	f.mustOpenCore()
+	src := filepath.Join(f.home, "build", "OpenCorePkg-1.0.7")
+	mm, _ := os.ReadFile(filepath.Join(src, filepath.FromSlash(memoryMapC)))
+	if !strings.Contains(string(mm), "packer-plugin-macosx: assets/firmware/patches/0008") {
+		t.Errorf("%s is not patched:\n%s", memoryMapC, mm)
+	}
+	stamp, err := openCorePatchStamp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(src, openCoreStampFile)); string(b) != strings.Join(stamp, "") {
+		t.Errorf("%s = %q, want %q", openCoreStampFile, b, strings.Join(stamp, ""))
+	}
+
+	g := newFixture(t)
+	g.patchesTake = false
+	_, err = g.openCore()
+	if err == nil || !strings.Contains(err.Error(), "build_oc.tool still fetches") && !strings.Contains(err.Error(), "still counts") {
+		t.Fatalf("err = %v", err)
+	}
+	if n := len(g.calls("./build_oc.tool")); n != 0 {
+		t.Errorf("build_oc.tool ran %d times on an unpatched tree", n)
+	}
+}
+
+func TestOpenCoreRefusesASourcePatchThatDidNotTake(t *testing.T) {
+	f := newFixture(t)
+	f.mustOpenCore()
+	src := filepath.Join(f.home, "build", "OpenCorePkg-1.0.7")
+	// A tree stamped with 0008 whose file lost the change: the marker,
+	// not the stamp, decides whether it is applied, and it is checked.
+	p := filepath.Join(src, filepath.FromSlash(memoryMapC))
+	if err := os.WriteFile(p, []byte("  if (HasEntriesToRemove) {\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f.patchesTake = false
+	_, err := f.openCore()
+	if err == nil || !strings.Contains(err.Error(), memoryMapC+" still counts a shrunk memory map's merged last entry twice") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestOpenCoreUnpacksAfreshASourceTreeAnotherPatchSetTouched(t *testing.T) {
+	for _, tc := range []struct{ name, stamp string }{
+		{"revised", openCorePatches[0].patch + "\t" + strings.Repeat("0", 64) + "\n"},
+		{"from before the stamp", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newFixture(t)
+			f.mustOpenCore()
+			src := filepath.Join(f.home, "build", "OpenCorePkg-1.0.7")
+			stampPath := filepath.Join(src, openCoreStampFile)
+			if tc.stamp == "" {
+				os.Remove(stampPath)
+			} else if err := os.WriteFile(stampPath, []byte(tc.stamp), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			leftover := filepath.Join(src, "leftover")
+			os.WriteFile(leftover, nil, 0o644)
+			before := len(f.applies(src, "-p1", "-"))
+			f.mustOpenCore()
+			if _, err := os.Stat(leftover); err == nil {
+				t.Error("the old tree was kept")
+			}
+			if !strings.Contains(f.log.String(), "unpacking it afresh") {
+				t.Errorf("log:\n%s", f.log.String())
+			}
+			if after := len(f.applies(src, "-p1", "-")); after != before+1+len(openCorePatches) {
+				t.Errorf("%d applies after the fresh unpack, want %d", after-before, 1+len(openCorePatches))
+			}
+		})
 	}
 }
 
