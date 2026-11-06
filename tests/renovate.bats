@@ -52,8 +52,8 @@ print(found[0][field])
 
 @test "the regex captures currentValue and currentDigest, and matches the real pin" {
     # Python's re proves the pattern's captures against the real pin file;
-    # RE2 (Renovate's engine) acceptance is proved by the local Renovate
-    # lookup recorded in .superpowers/sdd/plan-1-plugin/task-6-report.md.
+    # RE2 (Renovate's engine) accepts it in production: Renovate opened
+    # PR #22 (2026-11-04), a digest-only update, from this very match.
     run python3 -I -c '
 import json, re, sys
 c = json.load(open(sys.argv[1]))

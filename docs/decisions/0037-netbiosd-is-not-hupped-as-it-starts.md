@@ -70,8 +70,8 @@ the files. 10.6's older ManagedClient and Samba are not altered.
 
 ## Evidence and limits
 
-Private evidence is under
-`.superpowers/findings/2026-10-13-vm-reliability/f27/`:
+The evidence is the maintainer's, retained locally and not published (the
+F27 findings):
 
 - `controlled-v5`: valid stock BSD-stop/early-HUP death control. The initial
   ignore arm stopped on an unsupported SMB helper flag; not a service pass.

@@ -193,9 +193,9 @@ helper still waited 18.5-19.6 s for other newly started jobs, last to settle
 not that all first-login halts are now quick. Sandboxd was checked at one
 point before each halt, not continuously traced throughout the boot.
 
-Retained local text evidence: `.superpowers/findings/2026-10-13-vm-reliability/`
-`f14/resume-first-login/`, with setup, binary hashes and limits in
-`f14-resume-report.md`. A host launcher permission error occurred before
+The text evidence is the maintainer's, retained locally and not published
+(the F14 first-login resume trials, with their setup, binary hashes and
+limits). A host launcher permission error occurred before
 any VM boot and was corrected; its separate evidence is retained rather
 than counted as a guest trial. No F27/F28/F29 proposal was in these guests.
 This does not replace a final integrated build after those decisions.

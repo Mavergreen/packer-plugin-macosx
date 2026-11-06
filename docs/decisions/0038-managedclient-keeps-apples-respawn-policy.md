@@ -49,9 +49,8 @@ boot gate nor a server's status-zero reply changes that distinction.
 
 ## Evidence and limits
 
-Private evidence is retained under
-`.superpowers/findings/2026-10-13-vm-reliability/f28/` and summarized in
-`f28-checkin-design.md` at that findings root:
+The evidence is the maintainer's, retained locally and not published (the
+F28 findings and their check-in design note):
 
 - In `original-request-v3`, one synthetic early SIGKILL before server startup
   was followed by the replacement handling the original queued profile
