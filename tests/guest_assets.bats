@@ -222,7 +222,12 @@ syslog_port() {
     GUEST_MACOSX_SERIAL_PORTS="$BATS_TEST_TMPDIR/port" GUEST_MACOSX_SYSLOG_PORT=$(syslog_port) \
         GUEST_MACOSX_FOLLOW_FOR=1 run_follower
     run cat "$BATS_TEST_TMPDIR/auto.log"
-    [[ "$output" == *"serial: following $BATS_TEST_TMPDIR/auto.log and syslog on 127.0.0.1:"*" to $BATS_TEST_TMPDIR/port (there after 0s)"* ]] || false
+    [[ "$output" == *"serial: following $BATS_TEST_TMPDIR/auto.log and syslog on 127.0.0.1:"*" to $BATS_TEST_TMPDIR/port (there after "*"s)"* ]] || false
+    # The port was there from the start, so nothing was waited for. The
+    # follower counts whole seconds, and its stty can straddle a second's
+    # tick under load (1s, seen in a full local run): at most 1, then.
+    waited=$(sed -n 's/.*(there after \([0-9]*\)s).*/\1/p' "$BATS_TEST_TMPDIR/auto.log")
+    [ -n "$waited" ] && [ "$waited" -le 1 ]
 }
 
 @test "with no serial port the follower says so" {
