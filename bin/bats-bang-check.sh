@@ -104,7 +104,7 @@ unquoted() {
 chained() {
     local s
     s=$(unquoted "$1")
-    [[ $s =~ $RE_TEST_CHAIN ]]
+    [[ $s =~ $RE_TEST_CHAIN ]] || return 1
 }
 
 # refused <statement>: whether a bang in it is one errexit ignores.
