@@ -63,6 +63,7 @@ Building them from source would need Xcode.
 | `assets/firmware/patches/0006-*` | ours: OVMF's flash driver programs only the bytes that change, so a variable reclaim no longer holds a boot for most of a minute under QEMU's per-byte pflash writes (`docs/decisions/0032`) |
 | `assets/firmware/patches/0007-*` | states OvmfPkg's CPU, `-march=x86-64 -mtune=generic`, as the dialect is stated (`docs/decisions/0042`) |
 | `assets/firmware/patches/0008-*` | OpenCorePkg's `OcShrinkMemoryMap` counts a merged last entry once, so 10.6's kernel is not handed an overlapping descriptor (`docs/decisions/0043`) |
+| `assets/firmware/patches/0009-*` | OpenHfsPlus reads files past their eight inline extents, and its B-tree search stays inside the node (`docs/decisions/0044`) |
 
 Every pin lives in `assets/pins/sources.tsv` with its sha256.
 `internal/firmware/pins.go` declares which commit each audk tarball must
@@ -128,8 +129,8 @@ build made under the same conditions, and nothing more.
 
 These eight predate `assets/firmware/patches/0004-*` and `0005-*`
 (`docs/decisions/0018`) and `0006-*` (`docs/decisions/0032`), which
-change OvmfPkg's sources, and `0008-*` (`docs/decisions/0043`), which
-changes OpenCorePkg's (`OpenCore.efi`). Since then, no
+change OvmfPkg's sources, and `0008-*` and `0009-*` (`docs/decisions/0043`, `0044`), which
+change OpenCorePkg's (`OpenCore.efi`, `OpenHfsPlus.efi`). Since then, no
 build of these pins reproduces the `OVMF_CODE.fd` and `OVMF.fd` rows above,
 on any compiler or in any directory. That includes the `195c4dcf…` that
 `internal/firmware/compiler.go`'s above-range warning cites as an

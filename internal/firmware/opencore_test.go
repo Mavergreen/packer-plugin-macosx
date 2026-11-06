@@ -193,9 +193,14 @@ func TestOpenCorePatchesItsOwnSourcesAndChecksThem(t *testing.T) {
 	f := newFixture(t)
 	f.mustOpenCore()
 	src := filepath.Join(f.home, "build", "OpenCorePkg-1.0.7")
-	mm, _ := os.ReadFile(filepath.Join(src, filepath.FromSlash(memoryMapC)))
-	if !strings.Contains(string(mm), "packer-plugin-macosx: assets/firmware/patches/0008") {
-		t.Errorf("%s is not patched:\n%s", memoryMapC, mm)
+	if len(openCorePatches) != 2 {
+		t.Errorf("%d OpenCore source patches, want 0008 and 0009", len(openCorePatches))
+	}
+	for _, p := range openCorePatches {
+		b, _ := os.ReadFile(filepath.Join(src, filepath.FromSlash(p.file)))
+		if !strings.Contains(string(b), p.marker) {
+			t.Errorf("%s is not patched by %s:\n%s", p.file, p.patch, b)
+		}
 	}
 	stamp, err := openCorePatchStamp()
 	if err != nil {

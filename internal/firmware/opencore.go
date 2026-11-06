@@ -26,11 +26,20 @@ var openCorePatches = []sourcePatch{
 	{"0008-opencore-count-a-merged-last-memory-map-entry-once.patch", memoryMapC, "packer-plugin-macosx: assets/firmware/patches/0008",
 		"count a shrunk memory map's merged last entry once",
 		"counts a shrunk memory map's merged last entry twice"},
+	// A file past its eight inline extents was read short, and a B-tree
+	// search below a node's first key read past the node: ours over
+	// nfzerox's fix, upstream as it is on 2026-11-03 (docs/decisions/0044).
+	{"0009-opencore-read-hfsplus-files-past-eight-extents.patch", hfsPlusC, "packer-plugin-macosx: assets/firmware/patches/0009",
+		"read HFS+ files past their eight inline extents",
+		"reads an HFS+ file only as far as its eighth extent"},
 }
 
 // memoryMapC is OcMemoryLib's memory map code, whose OcShrinkMemoryMap
 // 0008 patches.
 const memoryMapC = "Library/OcMemoryLib/MemoryMap.c"
+
+// hfsPlusC is OpenHfsPlus's HFS+ driver, which 0009 patches.
+const hfsPlusC = "Staging/OpenHfsPlus/fsw_hfsplus.c"
 
 // openCoreStampFile, in the OpenCorePkg tree, records which of
 // openCorePatches the tree may hold, as patchStampFile does for the EDK

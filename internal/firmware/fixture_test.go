@@ -153,6 +153,7 @@ func newFixture(t *testing.T) *fixture {
 		entry{name: "OpenCorePkg-" + OCVersion + "/"},
 		entry{name: "OpenCorePkg-" + OCVersion + "/build_oc.tool", body: buildOCTool(t), mode: 0o755},
 		entry{name: "OpenCorePkg-" + OCVersion + "/" + memoryMapC, body: "  if (HasEntriesToRemove) {\n    *MemoryMapSize += DescriptorSize;\n  }\n"},
+		entry{name: "OpenCorePkg-" + OCVersion + "/" + hfsPlusC, body: "    // FIXME: more than 8 fragments not yet supported!\n"},
 		entry{name: "OpenCorePkg-" + OCVersion + "/Patches/0002-second.patch", body: "second"},
 		entry{name: "OpenCorePkg-" + OCVersion + "/Patches/0001-first.patch", body: "first"},
 	)
@@ -299,6 +300,8 @@ func (f *fixture) applyFake(dir, patch string) {
 		appendTo(filepath.Join(dir, "OvmfPkg", "Library", "PlatformInitLib", "Igvm.c"), "// packer-plugin-macosx: assets/firmware/patches/0005\nSTATIC BOOLEAN  mIgvmParamsInvalid = TRUE;\n")
 	case strings.Contains(patch, "+PlatformIgvmParamReserve ("):
 		appendTo(filepath.Join(dir, "OvmfPkg", "Library", "PlatformInitLib", "Igvm.c"), "PlatformIgvmParamReserve (\n")
+	case strings.Contains(patch, "+    // packer-plugin-macosx: assets/firmware/patches/0009"):
+		appendTo(filepath.Join(dir, filepath.FromSlash(hfsPlusC)), "    // packer-plugin-macosx: assets/firmware/patches/0009\n")
 	case strings.Contains(patch, "+  // packer-plugin-macosx: assets/firmware/patches/0008"):
 		appendTo(filepath.Join(dir, filepath.FromSlash(memoryMapC)), "  // packer-plugin-macosx: assets/firmware/patches/0008\n")
 	case strings.Contains(patch, "build_oc.tool"):
