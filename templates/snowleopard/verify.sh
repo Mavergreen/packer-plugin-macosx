@@ -104,6 +104,9 @@ COMBO_BOOTCACHE=31.1
 RC_SERVER=${GUEST_MACOSX_VERIFY_RC_SERVER:-/private/etc/rc.server}
 RC_SERVER_OURS="# guest-macosx: wait for IPv6 before launchctl binds sockets (docs/decisions/0029)"
 RC_SERVER_LOG=${GUEST_MACOSX_VERIFY_RC_SERVER_LOG:-/private/var/log/guest-macosx-rc.server.log}
+# launchd's overrides, where crsud's own SMJobSetEnabled records it turned
+# itself off (docs/decisions/0045); root's, so read through sudo if need be.
+LAUNCHD_OVERRIDES=${GUEST_MACOSX_VERIFY_LAUNCHD_OVERRIDES:-/private/var/db/launchd.db/com.apple.launchd/overrides.plist}
 
 sw_vers
 echo "hostname=$(hostname)"
@@ -130,6 +133,15 @@ echo "updates-asked=${UPDATES:-(unset)}"
 cf=$(grep -A1 '<key>CFBundleShortVersionString</key>' "$CFVERSION" 2>/dev/null |
     sed -n 's/.*<string>\(.*\)<\/string>.*/\1/p')
 echo "corefoundation=${cf:-unreadable}"
+ovr_xml=$(plutil -convert xml1 -o - "$LAUNCHD_OVERRIDES" 2>/dev/null ||
+    sudo -n plutil -convert xml1 -o - "$LAUNCHD_OVERRIDES" 2>/dev/null)
+crsud_ovr=$(printf '%s\n' "$ovr_xml" | sed -n '/<key>com.apple.crsud<\/key>/,/<\/dict>/p' | tr -d ' \t\n')
+case $crsud_ovr in
+    *'<key>Disabled</key><true/>'*) crsud=disabled ;;
+    *) crsud=enabled ;;
+esac
+[ -n "$ovr_xml" ] || crsud=unreadable
+echo "crsud=$crsud"
 bcv=$(grep -A1 '<key>CFBundleVersion</key>' "$BOOTCACHE_KEXT_PLIST" 2>/dev/null |
     sed -n 's/.*<string>\(.*\)<\/string>.*/\1/p')
 echo "bootcache=${bcv:-unreadable}, BootCacheControl $([ -e "$BOOTCACHE_CONTROL" ] && echo in place || echo set aside)"
@@ -303,6 +315,23 @@ esac
 if [ "${UPDATES:-}" = security ] && [ "$bcv" != "$COMBO_BOOTCACHE" ]; then
     fail "BootCache.kext is ${bcv:-unreadable}, not 10.6.8's $COMBO_BOOTCACHE: the first boot" \
         "judged it by a version nobody measured (F22, docs/decisions/0025; see $FBLOG)"
+fi
+
+# 2013-004's crsud turns itself off for good when it finds XProtect's job
+# unloaded, which XProtectUpdaterInit does on its first run; the first boot
+# gives it that run on the boot that installed the update, before crsud
+# first starts (docs/decisions/0045).
+if [ "${UPDATES:-}" = security ]; then
+    case $crsud in
+        disabled)
+            fail "crsud is off in $LAUNCHD_OVERRIDES: it turned itself off, finding XProtect's" \
+                "job unloaded by XProtectUpdaterInit (docs/decisions/0045; see $FBLOG)"
+            ;;
+        unreadable)
+            fail "cannot read $LAUNCHD_OVERRIDES (plutil -convert xml1): this cannot tell whether" \
+                "crsud turned itself off (docs/decisions/0045)"
+            ;;
+    esac
 fi
 
 # 10.6's launchctl binds ssh's [::] first, and the kernel refuses IPv6 binds

@@ -41,7 +41,7 @@ setup() {
         kext_caches_are_current snow_leopard_updates snow_leopard_updates_after \
         finish_snow_leopard set_bootcache_aside update_installs_kernel hold_kextd_for \
         install_updates remote_login_on restart_into_updates kernelcache_current \
-        kernelcache_is_current; do
+        kernelcache_is_current settle_xprotect_schedule; do
         fn=$(awk "/^$f\\(\\) \\{/,/^\\}/" "$FB")
         [ -n "$fn" ] || { echo "firstboot.sh has no function $f" >&2; return 1; }
         printf '%s\n' "$fn" >> "$FNS"
@@ -77,6 +77,17 @@ case $pkg in
         # 10.6.0's, as the combo installs them (docs/decisions/0025).
         printf '<key>CFBundleVersion</key>\n<string>31.1</string>\n' > "$G/BootCache.plist"
         : > "$G/sbin/BootCacheControl"
+        ;;
+    *SecUpd*)
+        # 2013-004: XProtect's plist with an interval and no daily time, and
+        # XProtectUpdaterInit, which gives it one (docs/decisions/0045).
+        printf '<key>StartInterval</key>\n<integer>86400</integer>\n' > "$G/com.apple.xprotectupdater.plist"
+        cat > "$G/XProtectUpdaterInit" <<'INIT'
+#!/bin/sh
+echo XProtectUpdaterInit >> "$CALLS"
+printf '<key>StartCalendarInterval</key>\n<dict/>\n' > "$G/com.apple.xprotectupdater.plist"
+INIT
+        chmod +x "$G/XProtectUpdaterInit"
         ;;
 esac
 exit 0
@@ -365,6 +376,8 @@ guest() {
             KERNEL_FILE=$G/mach_kernel
             KERNELCACHE=$G/kernelcache
             SHUTDOWN_HELPER=$G/guest-macosx-shutdown
+            XPROTECT_PLIST=$G/com.apple.xprotectupdater.plist
+            XPROTECT_INIT=$G/XProtectUpdaterInit
             GUEST_MACOSX_FB_UPDATES=security
             GUEST_MACOSX_FB_UPDATE_PKGS=$PKGS
             eval "$BODY"
@@ -529,6 +542,11 @@ restart() {
     boot 01-combo.dist 02-SecUpd.pkg
     [ "$status" -eq 0 ]
     [ "$(sed -n 1p "$CALLS")" = "installer 02-SecUpd.pkg" ]
+    # XProtect gets its daily time on this boot, before the restart into
+    # crsud's first start (docs/decisions/0045).
+    [ "$(sed -n 2p "$CALLS")" = XProtectUpdaterInit ]
+    grep -q '<key>StartCalendarInterval</key>' "$G/com.apple.xprotectupdater.plist"
+    grep -q "XProtect: $G/com.apple.xprotectupdater.plist has its daily time" "$G/guest-macosx-firstboot.log"
     # 2013-004 leaves them current: nothing to rebuild, and it says so.
     run grep -q '^kextcache' "$CALLS"
     [ "$status" -ne 0 ]
@@ -570,6 +588,9 @@ restart() {
     [ "$(grep -c 'needs no restart; installing the next one on this boot' "$G/guest-macosx-firstboot.log")" -eq 2 ]
     [ -e "$G/conf/.done" ]
     [ ! -e "$G/daemon.plist" ]
+    # No 2013-004, so no XProtectUpdaterInit: XProtect is left alone.
+    [ "$(grep -c "XProtect: no $G/XProtectUpdaterInit; nothing to settle" "$G/guest-macosx-firstboot.log")" -eq 3 ]
+    [ "$(grep -c XProtectUpdaterInit "$CALLS")" -eq 0 ]
 }
 
 @test "one update: installed, then the one restart, with nothing in between" {

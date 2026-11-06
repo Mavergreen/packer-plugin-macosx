@@ -44,10 +44,22 @@ func environmentCommands(t *testing.T, list string) []string {
 	if err := s.Err(); err != nil {
 		t.Fatal(err)
 	}
-	if len(paths) < 100 {
+	if len(paths) < 100 && list != updatedList {
 		t.Fatalf("%s lists %d commands; it is not the list", list, len(paths))
 	}
 	return paths
+}
+
+// updatedList is the commands 10.6's updates (10.6.8's combo, 2013-004)
+// add to 10.6.0's: firstboot.sh installs them, and runs one of them only
+// after (settle_xprotect_schedule, behind a test that it is there).
+const updatedList = "snowleopard-updated.txt"
+
+// oneReleaseOnly is each command firstboot.sh runs on one release alone,
+// behind a test that it is there, and the list it must be in: the other
+// release's list need not have it.
+var oneReleaseOnly = map[string]string{
+	"/usr/libexec/XProtectUpdaterInit": "snowleopard-installed.txt+" + updatedList,
 }
 
 // onlyThese is a directory holding exactly the commands named in paths:
@@ -387,7 +399,7 @@ func TestThePayloadsScriptsRunOnlyTheirEnvironmentsCommands(t *testing.T) {
 	}{
 		{"assets/guest/autoinstall/autoinstall.sh", []string{"snowleopard-installer.txt", "mavericks-installer.txt"}},
 		{"assets/guest/postinstall", []string{"snowleopard-installer.txt", "mavericks-installer.txt"}},
-		{"assets/guest/firstboot.sh", []string{"snowleopard-installed.txt", "mavericks-installed.txt"}},
+		{"assets/guest/firstboot.sh", []string{"snowleopard-installed.txt+" + updatedList, "mavericks-installed.txt"}},
 	} {
 		b, err := fs.ReadFile(macosx.Files, tc.script)
 		if err != nil {
@@ -401,7 +413,17 @@ func TestThePayloadsScriptsRunOnlyTheirEnvironmentsCommands(t *testing.T) {
 			t.Fatalf("%s: read %d commands; the reader is not reading it", tc.script, len(words))
 		}
 		for _, list := range tc.lists {
-			for _, m := range missingCommands(words, environmentCommands(t, list)) {
+			var have []string
+			for _, l := range strings.Split(list, "+") {
+				have = append(have, environmentCommands(t, l)...)
+			}
+			mine := map[string][]int{}
+			for w, lines := range words {
+				if only, ok := oneReleaseOnly[w]; !ok || only == list {
+					mine[w] = lines
+				}
+			}
+			for _, m := range missingCommands(mine, have) {
 				t.Errorf("%s runs %s, which %s does not have", tc.script, m, list)
 			}
 		}

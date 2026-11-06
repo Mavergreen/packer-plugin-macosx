@@ -559,6 +559,7 @@ verify_sl() {
     [ -e "$BATS_TEST_TMPDIR/cf-version.plist" ] || cf_version 6.6.6
     [ -e "$BATS_TEST_TMPDIR/BootCache.plist" ] || bootcache_version 31.1
     [ -e "$BATS_TEST_TMPDIR/rc.server" ] || [ -n "${SL_NO_RC_SERVER:-}" ] || rc_server_ours
+    [ -e "$BATS_TEST_TMPDIR/overrides.plist.xml" ] || [ -n "${SL_NO_OVERRIDES:-}" ] || overrides
     run env UPDATES="${1:-security}" STUB_VERSION="${STUB_SL_VERSION:-10.6.8}" \
         STUB_PKGS="com.apple.pkg.update.security.10.6.8.10K1136.2013.004" \
         PATH="$STUB:$PATH" GUEST_MACOSX_VERIFY_MARKER="$MARKER" GUEST_MACOSX_VERIFY_KCPASSWORD="$KC" \
@@ -570,7 +571,51 @@ verify_sl() {
         GUEST_MACOSX_VERIFY_BOOTCACHE_PLIST="$BATS_TEST_TMPDIR/BootCache.plist" \
         GUEST_MACOSX_VERIFY_RC_SERVER="$BATS_TEST_TMPDIR/rc.server" \
         GUEST_MACOSX_VERIFY_RC_SERVER_LOG="$BATS_TEST_TMPDIR/guest-macosx-rc.server.log" \
+        GUEST_MACOSX_VERIFY_LAUNCHD_OVERRIDES="$BATS_TEST_TMPDIR/overrides.plist" \
         /bin/sh "$REPO/templates/snowleopard/verify.sh"
+}
+
+# overrides [crsud-disabled]: launchd's overrides, as plutil prints them: sshd on, and crsud
+# with no entry (a good box), or off, as crsud's own SMJobSetEnabled leaves it
+# (docs/decisions/0045). The file itself is root's, so only sudo's plutil reads it.
+overrides() {
+    {
+        printf '<?xml version="1.0" encoding="UTF-8"?>\n<plist version="1.0">\n<dict>\n'
+        if [ "${1:-}" = crsud-disabled ]; then
+            printf '\t<key>com.apple.crsud</key>\n\t<dict>\n\t\t<key>Disabled</key>\n\t\t<true/>\n\t</dict>\n'
+        fi
+        printf '\t<key>com.apple.mrt</key>\n\t<dict>\n\t\t<key>Disabled</key>\n\t\t<true/>\n\t</dict>\n'
+        printf '\t<key>com.openssh.sshd</key>\n\t<dict>\n\t\t<key>Disabled</key>\n\t\t<false/>\n\t</dict>\n'
+        printf '</dict>\n</plist>\n'
+    } > "$BATS_TEST_TMPDIR/overrides.plist.xml"
+}
+
+@test "10.6's verify.sh passes a guest whose crsud is on (another job, MRT, off), and says so" {
+    verify_sl
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"crsud=enabled"* ]] || false
+}
+
+@test "10.6's verify.sh fails a guest whose crsud turned itself off, naming why" {
+    overrides crsud-disabled
+    verify_sl
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"crsud=disabled"* ]] || false
+    [[ "$output" == *"FAILED: crsud is off in $BATS_TEST_TMPDIR/overrides.plist: it turned itself off, finding XProtect's job unloaded by XProtectUpdaterInit (docs/decisions/0045"* ]] || false
+}
+
+@test "10.6's verify.sh fails a guest whose launchd overrides it cannot read" {
+    SL_NO_OVERRIDES=1 verify_sl
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"crsud=unreadable"* ]] || false
+    [[ "$output" == *"FAILED: cannot read $BATS_TEST_TMPDIR/overrides.plist (plutil -convert xml1): this cannot tell whether crsud turned itself off"* ]] || false
+}
+
+@test "inert: 10.6's verify.sh with updates none (no 2013-004, no crsud) does not judge crsud" {
+    overrides crsud-disabled
+    STUB_SL_VERSION=10.6 verify_sl none
+    [[ "$output" == *"crsud=disabled"* ]] || false
+    [[ "$output" != *"FAILED: crsud"* ]] || false
 }
 
 # rc_server_ours: the guest's /etc/rc.server is the first boot's (its second

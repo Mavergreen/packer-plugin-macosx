@@ -108,7 +108,7 @@ type DatasourceOutput struct {
 // The goldens part is the digest of that code's goldens (recipe_test.go's
 // recipeGoldens), and TestRecipePinsTheGoldens fails when they change and
 // this does not.
-const recipe = "7 goldens:ac4be9b75685d5c6"
+const recipe = "7 goldens:3d1596259702ebd2"
 
 // Datasource is mavericks-media.
 type Datasource struct {

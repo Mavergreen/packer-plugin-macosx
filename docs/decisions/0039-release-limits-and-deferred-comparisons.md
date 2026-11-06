@@ -43,6 +43,14 @@ proves its writer. ADR 0034 already records a possible native XProtect/crsud
 policy-sync path in an unrestricted control. No new isolation regression,
 universal disabled runtime state or successful update completion is inferred.
 
+Later (2026-11-06, ADR 0045): the wait and the variation both have a
+cause, READ from crsud's code. A failed scan is retried once after exactly
+20 s, with SIGTERM ignored, so a halt in that window waits for the retry.
+Whether crsud runs at all was a race between two of 2013-004's first-boot
+jobs, XProtectUpdaterInit unloading XProtect's job while crsud asked
+whether XProtect was enabled (MEASURED: the answer is no while unloaded);
+ADR 0045 settles it so every box keeps crsud on, and this wait with it.
+
 ### F10: accept the excluded experimental observation
 
 The historical experimental descendant answered cold SSH about ten seconds

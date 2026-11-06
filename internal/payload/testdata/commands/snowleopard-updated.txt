@@ -1,0 +1,16 @@
+/sbin/fsck_exfat
+/sbin/mount_exfat
+/sbin/newfs_exfat
+/usr/bin/pcastlibrary
+/usr/bin/rackup
+/usr/libexec/MRT
+/usr/libexec/XProtectUpdater
+/usr/libexec/XProtectUpdaterInit
+/usr/libexec/amsdstat
+/usr/libexec/crsud
+/usr/libexec/dpaudiothru
+/usr/libexec/dpd
+/usr/libexec/getPPDVersion
+/usr/libexec/launchproxyls
+/usr/libexec/ptmd
+/usr/sbin/awacsd

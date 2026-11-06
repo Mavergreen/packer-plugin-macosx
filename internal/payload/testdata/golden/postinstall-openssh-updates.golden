@@ -194,6 +194,10 @@ BOOTCACHE_KEXT_PLIST=/System/Library/Extensions/BootCache.kext/Contents/Info.pli
 # The BootCache.kext versions MEASURED to deadlock (docs/decisions/0025);
 # templates/snowleopard/verify.sh holds the same list.
 BOOTCACHE_DEADLOCKS="31.1"
+# XProtect's job, and the program 2013-004 installs to give it a daily time
+# in place of an interval (settle_xprotect_schedule).
+XPROTECT_PLIST=/System/Library/LaunchDaemons/com.apple.xprotectupdater.plist
+XPROTECT_INIT=/usr/libexec/XProtectUpdaterInit
 # What launchctl runs at every boot, before it loads a single job: 10.6's
 # wait for the kernel's first IPv6 address goes there (set_ipv6_wait).
 RC_SERVER=/private/etc/rc.server
@@ -772,6 +776,7 @@ snow_leopard_updates() {
         # 3600s: see install_updates.
         if run_with_timeout --checked 3600 installer -verbose -pkg "$CONF_DIR/updates/$_u" -target /; then
             rm -f "$UPDATES_CURRENT"
+            settle_xprotect_schedule
         else
             _u_rc=$?
             say "updates: STOPPED: $_u installer failed (rc=$_u_rc); installing none of the rest"
@@ -847,6 +852,43 @@ finish_snow_leopard() {
         cp "$LOG" "$LOG_COPY" 2>/dev/null
     }
     exit 0
+}
+
+# --- 10.6: XProtect's daily time, before crsud first starts (docs/decisions/0045)
+#
+# Security Update 2013-004 installs two jobs that first run on the boot
+# after it, both RunAtLoad. XProtectUpdaterInit, finding XProtect's plist
+# with no StartCalendarInterval, unloads com.apple.xprotectupdater, writes
+# the plist with a random daily time, and loads it again. crsud, starting
+# for the first time, asks SMJobIsEnabled whether XProtect is enabled and,
+# told no, turns itself off for good (SMJobSetEnabled, "Disabling crsud
+# service - xprotect was found disabled"). SMJobIsEnabled answers no for an
+# unloaded job (MEASURED 2026-11-06 in a 10.6.8 guest: 1 loaded, 0
+# unloaded, 1 loaded again), so whichever of the two ran first decided, by
+# the second, whether a box runs Apple's critical-update daemon: 3 of 5
+# known builds turned it off. Running XProtectUpdaterInit on the boot that
+# installed the update, while crsud is not yet loaded, leaves the next
+# boot's run nothing to do, so it never unloads XProtect while crsud looks.
+# Any other guest has no XProtectUpdaterInit or a plist with a daily time
+# already, and this does nothing but say so.
+settle_xprotect_schedule() {
+    if [ ! -x "$XPROTECT_INIT" ]; then
+        say "XProtect: no $XPROTECT_INIT; nothing to settle"
+        return 0
+    fi
+    if grep -q '<key>StartCalendarInterval</key>' "$XPROTECT_PLIST" 2>/dev/null; then
+        say "XProtect: $XPROTECT_PLIST already has a daily time; nothing to settle"
+        return 0
+    fi
+    say "XProtect: $XPROTECT_PLIST has no daily time; running $XPROTECT_INIT now, before crsud" \
+        "first starts, so the next boot's run does not unload XProtect while crsud checks it"
+    run_with_timeout 60 "$XPROTECT_INIT"
+    if grep -q '<key>StartCalendarInterval</key>' "$XPROTECT_PLIST" 2>/dev/null; then
+        say "XProtect: $XPROTECT_PLIST has its daily time"
+    else
+        say "XProtect: COULD NOT settle $XPROTECT_PLIST; the next boot's $XPROTECT_INIT unloads" \
+            "XProtect, and crsud can turn itself off if it checks then"
+    fi
 }
 
 # --- BootCache, set aside where it deadlocks (docs/decisions/0025) ----------
