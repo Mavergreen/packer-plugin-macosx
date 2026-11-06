@@ -63,7 +63,7 @@ func TestParseCompilerMatchesItsGolden(t *testing.T) {
 }
 
 func TestTheDeclaredRangeIsGcc13Through16(t *testing.T) {
-	if RangeText() != "gcc 13 through 16, verified at gcc 13.3.0, 14.2.0 and 16.2.1" {
+	if RangeText() != "gcc 13 through 16, verified at gcc 13.3.0, 14.2.0, 15.2.0 and 16.2.1" {
 		t.Fatal(RangeText())
 	}
 	if got := golden(t, "compiler-range-text.txt"); got != RangeText()+"\n" {

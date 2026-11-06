@@ -20,7 +20,7 @@ const (
 	CCFloor        = 13
 	CCCeiling      = 16
 	CCVerified     = "13.3.0"
-	CCVerifiedList = "13.3.0, 14.2.0 and 16.2.1"
+	CCVerifiedList = "13.3.0, 14.2.0, 15.2.0 and 16.2.1"
 )
 
 // RangeText is the declared range as one phrase.
