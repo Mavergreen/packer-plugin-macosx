@@ -17,7 +17,7 @@ make_repo() {
     mkdir -p "$dir/bin" "$dir/lib" "$dir/build" "$dir/assets/pins"
     cp "$REPO/bin/verify-changed-sources.sh" "$dir/bin/"
     cp "$REPO/lib/common.sh" "$dir/lib/"
-    cp "$REPO/lib/vendor.sh" "$dir/lib/"
+    cp "$REPO/lib/vendor.sh" "$REPO/lib/sources.sh" "$dir/lib/"
     cp "$REPO/build/msc.sh" "$dir/build/"
     printf '%s\n' \
         "thing	file://$dir/upstream.zip	$1" \

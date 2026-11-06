@@ -19,8 +19,8 @@ GUEST_MACOSX_LOG_PREFIX=gate-expected
 export GUEST_MACOSX_LOG_PREFIX
 # shellcheck source=../lib/common.sh
 . "$GUEST_MACOSX_REPO_ROOT/lib/common.sh"
-# shellcheck source=../lib/vendor.sh
-. "$GUEST_MACOSX_REPO_ROOT/lib/vendor.sh"
+# shellcheck source=../lib/sources.sh
+. "$GUEST_MACOSX_REPO_ROOT/lib/sources.sh"
 
 if [ "$#" -gt 1 ]; then
     printf 'usage: %s [<repo-root>]\n' "${0##*/}" >&2

@@ -23,6 +23,11 @@ status=0
 # equal).
 export BATS_TEST_TIMEOUT="${BATS_TEST_TIMEOUT-120}"
 
+echo "== shipyard =="
+# Before bats, so a host without shipyard hears it first, by name.
+"$repo_root/bin/shipyard-check.sh"
+
+echo
 echo "== bats =="
 # GUEST_MACOSX_SKIP_BATS=1: CI runs the suite through shipyard's run-repo-tests.sh and
 # wants only the lint half from here.
