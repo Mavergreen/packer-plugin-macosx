@@ -70,6 +70,9 @@ names every patch for both builds).
 
 - A 10.6 kernel no longer gets a descriptor that overlaps another, on any
   boot whose map ends in a join.
+- MEASURED 2026-11-05: the default 10.6 gate (`bin/gate.sh --release
+  10.6`, 10 restarts) on `2927bc6` passed every step that applies, on
+  firmware whose OpenCorePkg tree carried 0008's marker and stamp.
 - Mavericks' firmware bytes change by this patch only in code its config
   never runs.
 - Upstream: a report and the one-line fix, for the owner to file with

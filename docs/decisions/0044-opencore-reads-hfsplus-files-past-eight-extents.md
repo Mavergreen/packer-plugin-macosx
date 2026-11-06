@@ -74,6 +74,11 @@ cold once.
 ## Consequences
 
 - A guest whose boot files fragment past eight extents still boots.
+- MEASURED 2026-11-05: the default both-release gate (10 restarts each)
+  on `70eb2f1` passed every step that applies on 10.9 and 10.6, on
+  firmware whose OpenCorePkg tree carried 0008's and 0009's markers and
+  stamp. Those boots read unfragmented files, so they show the patched
+  driver changed nothing for them, not the overflow path.
 - Nothing in CI builds an HFS+ disk with a fragmented file: the
   measurement above used a built guest's disk, which is Apple's, and is
   not published. The build's patch tests hold that 0009 is applied and
