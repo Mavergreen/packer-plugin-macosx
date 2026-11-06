@@ -596,7 +596,8 @@ restart() {
     [ "$status" -eq 0 ]
     resume=$(echo "$output" | sed -n 1p | cut -d: -f1)
     account=$(echo "$output" | sed -n 2p | cut -d: -f1)
-    [ -n "$resume" ] && [ -n "$account" ]
+    [ -n "$resume" ]
+    [ -n "$account" ]
     [ "$resume" -lt "$account" ]
 }
 
@@ -902,7 +903,9 @@ one_stale() {
     aside=$(grep -n "BootCacheControl set aside to $G/sbin/BootCacheControl-disabled" "$G/guest-macosx-firstboot.log" | cut -d: -f1)
     # On the combo's boot, in the steps before its restart.
     next=$(grep -n "restarting before the next update" "$G/guest-macosx-firstboot.log" | cut -d: -f1)
-    [ -n "$aside" ] && [ -n "$next" ] && [ "$aside" -gt "$next" ]
+    [ -n "$aside" ]
+    [ -n "$next" ]
+    [ "$aside" -gt "$next" ]
     [ "$(tail -1 "$CALLS")" = "shutdown -r now" ]
     # The finish, after 2013-004, finds it already aside and keeps it so.
     restart
@@ -936,7 +939,9 @@ one_stale() {
     [ -e "$G/sbin/BootCacheControl-disabled" ]
     aside=$(grep -n "BootCacheControl set aside to $G/sbin/BootCacheControl-disabled" "$G/guest-macosx-firstboot.log" | cut -d: -f1)
     last=$(grep -n "restarting into the updated system" "$G/guest-macosx-firstboot.log" | cut -d: -f1)
-    [ -n "$aside" ] && [ -n "$last" ] && [ "$aside" -lt "$last" ]
+    [ -n "$aside" ]
+    [ -n "$last" ]
+    [ "$aside" -lt "$last" ]
     [ "$(tail -1 "$CALLS")" = "shutdown -r now" ]
 }
 

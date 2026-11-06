@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # platform: host-agnostic
-# Fail if a test here has a `! cmd` line anywhere but at its end.
+# Fail if a test here has a `! cmd` line, or a chain of tests joined by
+# `&&`, anywhere but at its end.
 #
 # WHY
 #
@@ -22,6 +23,15 @@
 # This repository's tests had 25 bangs that checked nothing, all of them
 # found by reading (2026-10-28).
 #
+# A chain of tests joined by `&&` is the same trap: errexit ignores a
+# failure anywhere in an `&&` list but its last command, so a mid-test
+#
+#     [ -n "$aside" ] && [ -n "$next" ] && [ "$aside" -gt "$next" ]
+#
+# checks only that the last test holds when the first two do, and passes
+# when either is false. Write one test per line. Five such chains checked
+# less than they said (2026-11-05).
+#
 # HOW IT CHECKS
 #
 # Line-oriented, in-process, like bin/bash32-check.sh. In each .bats file,
@@ -33,7 +43,9 @@
 #
 #   - it begins with `! `, or
 #   - a `! ` follows `&&`, `||` or `;` in it (`a && ! b` is ignored by
-#     errexit too),
+#     errexit too), or
+#   - it is nothing but `[ ... ]` or `[[ ... ]]` tests joined by `&&` (a
+#     test guarding an action, `[ -n "$a" ] && echo`, is not refused),
 #
 # unless it begins with `if`, `elif`, `while` or `until` (a condition, where
 # the bang does what it says), or a fallback that fails follows it: `||`
@@ -77,14 +89,28 @@ RE_FALLBACK='\|\|[[:space:]]*(false|return|exit|fail)([[:space:];]|$)'
 RE_SQUOTED="^([^']*)'[^']+'(.*)\$"
 RE_DQUOTED='^([^"]*)"[^"]+"(.*)$'
 RE_FALLBACK_GROUP='\|\|[[:space:]]*\{.*(false|return|exit|fail)'
+RE_TEST_CHAIN='^(\[\[?[[:space:]][^&|;]*\]\]?[[:space:]]*&&[[:space:]]*)+\[\[?[[:space:]][^&|;]*\]\]?[[:space:]]*$'
 
-# refused <statement>: whether a bang in it is one errexit ignores.
-# Quoted text is taken out first: a `&& ! ` or a `|| false` inside a
-# string is not the statement's.
-refused() {
+# unquoted <statement>: it, with quoted text taken out: a `&& ! ` or a
+# `|| false` inside a string is not the statement's.
+unquoted() {
     local s=$1
     while [[ $s =~ $RE_SQUOTED ]]; do s="${BASH_REMATCH[1]}''${BASH_REMATCH[2]}"; done
     while [[ $s =~ $RE_DQUOTED ]]; do s="${BASH_REMATCH[1]}''${BASH_REMATCH[2]}"; done
+    printf '%s' "$s"
+}
+
+# chained <statement>: whether it is only tests joined by &&.
+chained() {
+    local s
+    s=$(unquoted "$1")
+    [[ $s =~ $RE_TEST_CHAIN ]]
+}
+
+# refused <statement>: whether a bang in it is one errexit ignores.
+refused() {
+    local s
+    s=$(unquoted "$1")
     [[ $s =~ $RE_CONDITION ]] && return 1
     [[ $s =~ $RE_LEADING_BANG ]] || [[ $s =~ $RE_LISTED_BANG ]] || return 1
     [[ $s =~ $RE_FALLBACK ]] && return 1
@@ -95,7 +121,7 @@ refused() {
 # check_file <path>: one report line per refused statement.
 check_file() {
     local path=$1 name line lineno=0 trimmed in_body=0 delim="" dash=""
-    local stmt="" stmt_line=0 cand_line=0 cand_text="" pending=0
+    local stmt="" stmt_line=0 cand_line=0 cand_text="" cand_kind="" pending=0
     name=${path#"$SCAN_ROOT/"}
     # A candidate is reported once another statement follows it in the
     # same body; one still pending at the body's end was its last.
@@ -134,13 +160,15 @@ check_file() {
         [[ $line =~ $RE_CONTINUES ]] && continue
         # A whole statement: the one before it, if a candidate, was not last.
         if [ "$pending" -eq 1 ]; then
-            printf 'BANG  %s:%s: %s\n' "$name" "$cand_line" "$cand_text"
+            printf '%s  %s:%s: %s\n' "$cand_kind" "$name" "$cand_line" "$cand_text"
             pending=0
         fi
         case $stmt in
             *bats-bang-allow*) ;;
             *) if refused "$stmt"; then
-                   pending=1 cand_line=$stmt_line cand_text=$stmt
+                   pending=1 cand_line=$stmt_line cand_text=$stmt cand_kind=BANG
+               elif chained "$stmt"; then
+                   pending=1 cand_line=$stmt_line cand_text=$stmt cand_kind=CHAIN
                fi ;;
         esac
         stmt=""
@@ -170,8 +198,8 @@ done
 
 if [ -n "$findings" ]; then
     printf '%s' "$findings"
-    die "the bangs above are not their test's last command, so a test under set -e ignores them: write \`! cmd || false\`, or \`run cmd\` and check \$status (see the comment at the top of ${BASH_SOURCE[0]##*/})"
+    die "the bangs and chains above are not their test's last command, so a test under set -e ignores them: for a bang write \`! cmd || false\`, or \`run cmd\` and check \$status; for a chain, one test per line (see the comment at the top of ${BASH_SOURCE[0]##*/})"
 fi
 
-log "${#files[@]} .bats files have no mid-test bang"
+log "${#files[@]} .bats files have no mid-test bang or test chain"
 exit 0

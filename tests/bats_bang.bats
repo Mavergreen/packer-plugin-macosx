@@ -202,6 +202,37 @@ _check() {
     [[ "$output" == *"b.bats:2:"* ]] || false
 }
 
+@test "the premise: under bats, a mid-test && chain whose first test is false fails nothing" {
+    _line premise.bats '@test "x" {'
+    _line premise.bats '    [ 1 = 2 ] && [ 1 = 1 ]'
+    _line premise.bats '    true'
+    _line premise.bats '}'
+    run bats "$SCAN/premise.bats"
+    [ "$status" -eq 0 ]
+}
+
+@test "a chain of tests joined by && in the middle of a test is refused, naming the line" {
+    _line bad.bats '@test "x" {'
+    _line bad.bats '    true'
+    _line bad.bats '    [ -n "$a" ] && [[ "$a" == x* ]]'
+    _line bad.bats '    true'
+    _line bad.bats '}'
+    _check
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"CHAIN  bad.bats:3:"* ]] || false
+    [[ "$output" == *"one test per line"* ]] || false
+}
+
+@test "a chain of tests as a test's last command, a guarded action, or one with a fallback, is fine" {
+    _line ok.bats '@test "x" {'
+    _line ok.bats '    [ -n "$a" ] && echo "a is set"'
+    _line ok.bats '    [ -n "$a" ] && [ -n "$b" ] || false'
+    _line ok.bats '    [ -n "$a" ] && [ "$a" -le 1 ]'
+    _line ok.bats '}'
+    _check
+    [ "$status" -eq 0 ] || { echo "$output"; false; }
+}
+
 @test "bats-bang-check refuses to pass on nothing" {
     _check
     [ "$status" -ne 0 ]

@@ -318,7 +318,8 @@ sl() {
 }
 
 @test "a 10.6 run: build-layer and reach not applicable, with their reasons, passes and names them" {
-    [ -n "$(sl_note build-layer)" ] && [ -n "$(sl_note reach)" ]
+    [ -n "$(sl_note build-layer)" ]
+    [ -n "$(sl_note reach)" ]
     c=$(sl cand)
     run "$S" "$c"
     [ "$status" -eq 0 ]
