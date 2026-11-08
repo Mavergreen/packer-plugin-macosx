@@ -1,4 +1,4 @@
-component:openssh	10.6p1-mavericks.3
+component:openssh	10.6p1-mavericks.5
 payload:firstboot.sh	7d6a1b2041b1f52d0c456ea5dc916dd65f257f2dd5bae8b07cd777a30352b2eb
 payload:guest-macosx.firstboot.plist	56bde373986ad765a0bc4d990de77ffcfdd9fc662ecc7f74edad5dacba93ef16
 payload:postinstall	1689ed7efb5db0334c0fccf97fac0f201550aefa76c84bfadbbed72dbf7a7d43

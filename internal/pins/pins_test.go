@@ -106,7 +106,7 @@ func TestTheIngredientDigestIsPinned(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	const want = "63448234b0555b0305314b8c75a88f8f301831739753838982e76e321e169c53"
+	const want = "501ba69c46cddb5795c55e20cd7a1158bda7e4f208dc3d6e2f33adbf2f93b6f9"
 	if got := Digest(rows); got != want {
 		t.Fatalf("digest %s, want %s", got, want)
 	}

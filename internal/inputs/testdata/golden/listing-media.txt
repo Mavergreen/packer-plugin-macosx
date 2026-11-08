@@ -1,7 +1,7 @@
 autoinstall:OSInstall.collection	3de0449c9ead13052218485135b43f356d7fd8bdfbe11bcecc62521ec65800d6
 autoinstall:autoinstall.sh	beaac249d8cc179efddff54c828f2145ef9fa43b1a6e9b91fdce2546fbb9b10f
 autoinstall:minstallconfig.xml	c04a467eeda9410b918d1978faddb0be9087ada2581524c6f285685f45dbfeb9
-component:openssh	10.6p1-mavericks.3
+component:openssh	10.6p1-mavericks.5
 openssh-enabled	1
 payload	absent
 privops:assemble.sh	aa8cab320f4b3c6f84d86565a7d3f3c8f5d0c4e47563fd273707354e83bd2249
