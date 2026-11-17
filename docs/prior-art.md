@@ -136,6 +136,59 @@ or `AppleIntelCPUPowerManagement.kext` removed; and that 10.6 panics with
 here** 2026-10-04: `idlehalt=0` did not move the `mig_table_max_displ`
 hang, and this project's machine is q35, not PIIX.
 
+### Three community walkthroughs, read 2026-11-17
+
+Read after 10.6 already shipped, so these are checked against what was
+measured, not followed. Each entry's claims are INHERITED, unverified
+here, except where it says otherwise.
+
+- **MattKC's forum, 2023-03-06**
+  (<https://forum.mattkc.com/viewtopic.php?t=214>, "How I installed Snow
+  Leopard with virsh/virt-manager/QEMU/KVM"): Chameleon 2.1-r2069 on
+  SeaBIOS, q35, SATA disk and CD; Clover "threw an X64 Exception every
+  single time"; OpenCore "coming soon", never added. Media is the 10A432
+  User DVD from Apple's developer downloads, the same build this
+  project's `snowleopard-installer` checks for. It updates to 10.6.8 and
+  then puts back 10.6.7's `IOPCIFamily.kext` and `AppleACPIPlatform.kext`;
+  **not needed here**, where the 10.6.8 combo boots on stock kexts
+  (`docs/decisions/0014`). A 2023-11-12 reply on an i7-4790 host: only
+  10.6.0 boots with host CPU passthrough, and later releases reboot right
+  after Chameleon unless `-cpu core2duo`. This project never passes the
+  host CPU through. It also says virt-manager offers a Snow Leopard
+  template once end-of-life systems are shown.
+- **xadammr.au, 2021-11-28, updated to 2025-01-18**
+  (<https://xadammr.au/blog/snow-leopard-utm>): UTM on an Intel Mac,
+  q35, `Penryn` with `ssse3`, `sse4.1` and `sse4.2` (Kostarelas's set),
+  1 GB, `e1000`, `vmware-svga`, `ich9-intel-hda`, and a prebuilt OpenCore
+  image of unstated version from Mega; no quirks named. Media is a
+  10.6.7 developer build from the Internet Archive (the page gives two
+  build numbers). Its 2022 fix: Apple's `HfsPlus.efi` fails on Apple
+  Silicon, `VBoxHfs.efi` works; this project uses neither
+  (`OpenHfsPlus.efi`, `docs/decisions/0002`). Apple Silicon panicked
+  with `commpage no match for last` until 2025, when a separate guide
+  (<https://xadammr.au/blog/snow-leopard-utm-apple-silicon>, not read
+  here) reported it booting.
+- **startergo on MacRumors, 2024-05-09**
+  (<https://forums.macrumors.com/threads/install-snow-leopard-in-qemu-utm-and-vmware-fusion.2425916/>):
+  royalgraphx/LegacyOSXKVM's scripts (above) with `accel=hvf` on an
+  Intel Mac, and its prebuilt installer and OpenCore images. Page 1 was
+  read; page 2 refuses automated fetches (HTTP 403). One reader's
+  OpenCore reboot loop at `AmiShimTimerBoostExit` went away with
+  `AppleXcpmCfgLock` and `AppleCpuPmCfgLock` on, then Lilu panicked;
+  this project boots with both off and loads no Lilu. Display is fixed
+  at OpenCore's framebuffer without a driver ("You can't change that.
+  Not without a driver"), matching `docs/configuration-register.md` §7;
+  UTM's SPICE display gives 7 MB of VRAM against QEMU's 3 MB. A
+  Mavericks keyboard problem was worked around with an OHCI controller
+  (`-device pci-ohci -device usb-kbd -device usb-tablet`). Networking
+  needed `mDNSResponder_fix.sh` and replaced root certificates, the
+  TLS-era limitation Kostarelas also met.
+
+None of the three mentions the problems measured here: the
+`mig_table_max_displ` hang, `bless` panicking in NVRAM, the RTC's I/O
+length (`docs/decisions/0015`), or panics at two CPUs under host load
+(`docs/decisions/0014` item 8). None says how many CPUs it used.
+
 ### Infinite Mac
 
 infinitemac.org runs classic Mac OS and PowerPC Mac OS X, up to 10.4, in
