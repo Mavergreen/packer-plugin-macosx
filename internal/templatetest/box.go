@@ -394,6 +394,31 @@ func qemuArgs(t *testing.T, qe map[string]any) string {
 // the others not to.
 var everyProvider = []string{"qemu", "virtualbox", "vmware_desktop"}
 
+// CheckGateReadsTheCPUCount: bin/gate-vm.sh boots a box at its own CPU
+// count, read from one line of its Vagrantfile, `qe.smp = "<n>"` (its
+// box_smp). So templates/<osName>'s box Vagrantfile, rendered with
+// overrides, has exactly one such line, and it says what the Vagrantfile
+// itself gives vagrant-qemu.
+func CheckGateReadsTheCPUCount(t *testing.T, osName string, overrides map[string]cty.Value) {
+	t.Helper()
+	text := RenderBoxVagrantfile(t, osName, overrides)
+	m := regexp.MustCompile(`(?m)^ *qe\.smp = .*$`).FindAllString(text, -1)
+	if len(m) != 1 {
+		t.Fatalf("the box Vagrantfile has %d qe.smp lines, want 1: %q", len(m), m)
+	}
+	sub := regexp.MustCompile(`^ *qe\.smp = "([1-9][0-9]*)"$`).FindStringSubmatch(m[0])
+	if sub == nil {
+		t.Fatalf("the box Vagrantfile's %q is not bin/gate-vm.sh's qe.smp = \"<n>\"", m[0])
+	}
+	r := RunBoxVagrantfile(t, text, "linux", nil)
+	if r.Err != nil {
+		t.Fatalf("the Vagrantfile raised: %v\n%s", r.Err, r.Stderr)
+	}
+	if got := r.Provider("qemu")["smp"]; got != sub[1] {
+		t.Errorf("qe.smp line says %q, the Vagrantfile gives vagrant-qemu %v", sub[1], got)
+	}
+}
+
 // CheckGuestEnvironment runs templates/<osName>'s box Vagrantfile, rendered
 // with overrides, through the GUEST_MACOSX_ settings every box reads the
 // same way: GUEST_MACOSX_GUI's values, on and off and refused; the qemu

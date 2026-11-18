@@ -15,20 +15,21 @@
 #   exit: 0 pass, 1 a check ran and failed, 2 usage, 3 could not run (environment)
 #   env:  GATE_ACCEL kvm|hvf|nvmm (kvm), GATE_SSH_PORT (2223), GATE_SSH_TIMEOUT (600),
 #         GATE_RESTART_TIMEOUT (600), GATE_SHUTDOWN_TIMEOUT (180), GATE_CMD_TIMEOUT (300),
-#         GATE_CPU, GATE_MEM (4096), GATE_SMP (2 on 10.9, 1 on 10.6); seams: GATE_KVM (/dev/kvm),
-#         GATE_POLL_INTERVAL (5 seconds between polls), GATE_KILL_WAIT (10 s total cleanup polling)
+#         GATE_CPU, GATE_MEM (4096), GATE_SMP (the box's own, its Vagrantfile's qe.smp); seams:
+#         GATE_KVM (/dev/kvm), GATE_POLL_INTERVAL (5 seconds between polls), GATE_KILL_WAIT (10 s
+#         total cleanup polling)
 #
 # THE RELEASE is the box's own word: its Vagrantfile's `# guest-macosx-release: <release>` line,
 # which its template renders (templates/*/box.Vagrantfile.pkrtpl), read at boot and kept in
 # <state-dir>/release for the commands after it. Everything below is the same for both releases
-# but three things, each what that box's own Vagrantfile does, for the reason it gives
+# but two things, each what that box's own Vagrantfile does, for the reason it gives
 # (docs/decisions/0014, "The boot gate"):
 #   - 10.6's SSH client also accepts ssh-rsa: its sshd is Apple's OpenSSH 5.2, whose host keys and
 #     signatures are ssh-rsa alone, which a current client refuses (MEASURED 2026-10-04);
 #   - 10.6 shuts down with a bare /sbin/shutdown: its images carry no guest-macosx-shutdown, whose
-#     two causes it does not have (assets/guest/firstboot.sh; 0.4 s shutdowns, MEASURED 2026-10-14);
-#   - 10.6 boots one CPU: with two, 10.6 under KVM panics on a busy host, a documented deviation
-#     whose cause is not established (the owner's ruling R49, F26).
+#     two causes it does not have (assets/guest/firstboot.sh; 0.4 s shutdowns, MEASURED 2026-10-14).
+# THE CPU COUNT is the box's own word too, on either release: its Vagrantfile's `qe.smp` line, which
+# its template renders from the build's settings (10.6's: docs/decisions/0014 item 8).
 #
 # The QEMU argv is what the box boots with: templates/mavericks/box.Vagrantfile.pkrtpl (q35,
 # vmport=off; Penryn CPU from variables.pkr.hcl; e1000-82545em; ide-hd target; the pflash pair;
@@ -142,6 +143,24 @@ box_release() {
     printf '%s\n' "$lines"
 }
 
+# box_smp <box>: the CPU count its Vagrantfile boots, its one `qe.smp = "<n>"` line, on stdout;
+# otherwise a warning naming what is wrong, and status 1. The template renders it from the build's
+# settings (templates/*/box.Vagrantfile.pkrtpl; 10.6's count: docs/decisions/0014 item 8).
+box_smp() {
+    local vf=$1/Vagrantfile lines n
+    n=$(grep -c '^ *qe\.smp = ' "$vf" || true)
+    lines=$(sed -n 's/^ *qe\.smp = "\(.*\)"$/\1/p' "$vf")
+    case $n in
+        0) warn "$vf gives no CPU count (no 'qe.smp = \"<n>\"' line): a box built before the gate read it; rebuild it"; return 1 ;;
+        1) ;;
+        *) warn "$vf gives more than one CPU count: $(printf '%s' "$lines" | tr '\n' ' ')"; return 1 ;;
+    esac
+    case $lines in
+        ''|*[!0-9]*|0*) warn "$vf gives a CPU count of '$lines'; want a whole number, 1 or more"; return 1 ;;
+    esac
+    printf '%s\n' "$lines"
+}
+
 # state_release <state>: the release its boot recorded; a usage error without one, since nothing
 # about that guest is known.
 state_release() {
@@ -239,10 +258,8 @@ cmd_boot() {
         [ -f "$box/$f" ] || { warn "the box has no $f ($box)"; exit 3; }
     done
     RELEASE=$(box_release "$box") || exit 3
-    # One CPU on 10.6 (R49), two on 10.9, unless GATE_SMP says otherwise.
-    if [ -z "$smp" ]; then
-        if [ "$RELEASE" = 10.6 ]; then smp=1; else smp=2; fi
-    fi
+    # The box's own CPU count, unless GATE_SMP says otherwise.
+    [ -n "$smp" ] || smp=$(box_smp "$box") || exit 3
     case $accel in
         kvm) [ -w "$kvm" ] || { warn "$kvm is not writable: this host cannot run KVM"; exit 3; } ;;
         hvf|nvmm) ;;

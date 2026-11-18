@@ -61,8 +61,9 @@
 #     which proves the layer's TLS, is n/a;
 #   - its own release: health wants 10.6.8 (10K549), the updates=security build, not 10.9.5
 #     (13F1911).
-# What bin/gate-vm.sh does differently for a 10.6 box (ssh-rsa, a bare shutdown, one CPU) it reads
-# from the box itself; boot fails if the box is not the release the gate built.
+# What bin/gate-vm.sh does differently for a 10.6 box (ssh-rsa, a bare shutdown) it reads from the
+# box itself, as it reads every box's CPU count; boot fails if the box is not the release the gate
+# built.
 #   env:  GATE_BUILD_TIMEOUT (seconds, each build; by default 7200 the base, 2700 the layer),
 #         GATE_FETCH_TIMEOUT (seconds, each of dev-install, a plugin install, the pin check;
 #         1200). GATE_SSH_TIMEOUT, GATE_RESTART_TIMEOUT, GATE_SHUTDOWN_TIMEOUT, GATE_CMD_TIMEOUT

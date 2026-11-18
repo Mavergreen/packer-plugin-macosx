@@ -142,11 +142,14 @@ STUB
     printf 'qemu-system-x86_64 -uuid f33.[literal]* -pidfile %s/qemu.pid\n' "$STATE" > "$STUB_LOG.args"
 }
 
-# box_release <release>: the box's Vagrantfile, as its template renders it, naming <release>
+# box_release <release> [<smp>]: the box's Vagrantfile, as its template renders it, naming
+# <release> and booting <smp> CPUs (2 unless given)
 box_release() {
     printf '%s\n' 'Vagrant.configure("2") do |config|' > "$BOX/Vagrantfile"
     printf '# guest-macosx-release: %s\n' "$1" >> "$BOX/Vagrantfile"
-    printf '%s\n' '  config.vm.guest = :darwin' 'end' >> "$BOX/Vagrantfile"
+    printf '%s\n' '  config.vm.guest = :darwin' '  config.vm.provider "qemu" do |qe|' >> "$BOX/Vagrantfile"
+    printf '    qe.smp = "%s"\n' "${2:-2}" >> "$BOX/Vagrantfile"
+    printf '%s\n' '  end' 'end' >> "$BOX/Vagrantfile"
 }
 
 teardown() {
@@ -633,23 +636,45 @@ STUB
     [ ! -e "$STUB_QEMU_ARGV" ]
 }
 
-@test "boot: 10.9 boots two CPUs, 10.6 one (docs/decisions/0014, R49); GATE_SMP overrides either" {
+@test "boot: the CPU count is the box's own, its Vagrantfile's qe.smp, on either release; GATE_SMP overrides it" {
     export STUB_SSH_UP=1
-    run "$SCRIPT" boot "$STATE" "$BOX"
-    [ "$status" -eq 0 ]
-    [[ "$(cat "$STUB_QEMU_ARGV")" == *$'\n-smp\n2\n'* ]] || false
-    box_release 10.6
-    rm -f "$STATE/qemu.pid"
-    run "$SCRIPT" boot "$STATE" "$BOX"
-    [ "$status" -eq 0 ]
-    [[ "$(cat "$STUB_QEMU_ARGV")" == *$'\n-smp\n1\n'* ]] || false
+    for c in 10.9:2 10.6:2 10.6:1 10.9:4; do
+        box_release "${c%%:*}" "${c#*:}"
+        rm -f "$STATE/qemu.pid"
+        run "$SCRIPT" boot "$STATE" "$BOX"
+        [ "$status" -eq 0 ] || { echo "$c: $output"; false; }
+        [[ "$(cat "$STUB_QEMU_ARGV")" == *$'\n-smp\n'"${c#*:}"$'\n'* ]] || { echo "$c"; false; }
+        [[ "$output" == *"the box is Mac OS X ${c%%:*} ($BOX/Vagrantfile): ${c#*:} CPU(s)"* ]] || { echo "$c: $output"; false; }
+    done
     for r in 10.9 10.6; do
-        box_release "$r"
+        box_release "$r" 1
         rm -f "$STATE/qemu.pid"
         GATE_SMP=3 run "$SCRIPT" boot "$STATE" "$BOX"
         [ "$status" -eq 0 ]
         [[ "$(cat "$STUB_QEMU_ARGV")" == *$'\n-smp\n3\n'* ]] || false
     done
+}
+
+@test "boot: a box whose Vagrantfile gives no single CPU count is refused before QEMU starts" {
+    export STUB_SSH_UP=1
+    printf '%s\n' 'Vagrant.configure("2") do |config|' '# guest-macosx-release: 10.6' 'end' > "$BOX/Vagrantfile"
+    run "$SCRIPT" boot "$STATE" "$BOX"
+    [ "$status" -eq 3 ]
+    [[ "$output" == *"$BOX/Vagrantfile gives no CPU count (no 'qe.smp = \"<n>\"' line): a box built before the gate read it; rebuild it"* ]] || false
+    box_release 10.6 2
+    printf '%s\n' '  config.vm.provider "qemu" do |qe|' '    qe.smp = "1"' '  end' >> "$BOX/Vagrantfile"
+    run "$SCRIPT" boot "$STATE" "$BOX"
+    [ "$status" -eq 3 ]
+    [[ "$output" == *"$BOX/Vagrantfile gives more than one CPU count"* ]] || false
+    for n in 0 two '2 ' -1; do
+        box_release 10.6 "$n"
+        run "$SCRIPT" boot "$STATE" "$BOX"
+        [ "$status" -eq 3 ] || { echo "'$n': $output"; false; }
+        [[ "$output" == *"$BOX/Vagrantfile gives a CPU count of '$n'; want a whole number, 1 or more"* ]] || { echo "'$n': $output"; false; }
+    done
+    GATE_SMP=2 run "$SCRIPT" boot "$STATE" "$BOX"
+    [ "$status" -eq 0 ]
+    [ -e "$STUB_QEMU_ARGV" ]
 }
 
 @test "boot: everything else in the argv is the same for both releases" {

@@ -732,3 +732,9 @@ func TestEachVagrantMachineHasItsOwnHostUUID(t *testing.T) {
 func TestBoxVagrantfileNamesItsRelease(t *testing.T) {
 	templatetest.CheckBoxRelease(t, osName, nil, "10.9")
 }
+
+// TestTheGateReadsTheBoxsCPUCount: bin/gate-vm.sh's one qe.smp line
+// (templatetest.CheckGateReadsTheCPUCount).
+func TestTheGateReadsTheBoxsCPUCount(t *testing.T) {
+	templatetest.CheckGateReadsTheCPUCount(t, osName, nil)
+}
