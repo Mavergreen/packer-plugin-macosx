@@ -489,7 +489,9 @@ file with exactly four differences, held there by
   function) and on 10.9. MEASURED 2026-11-18: at two vCPUs on a loaded
   host, 0 of 65 boots failed with it, against 6 of 70 with the
   stock spinlock panic (`docs/decisions/0046`, which also says why
-  10.6.0 is not covered).
+  10.6.0 is not covered). So a 10.6.8 box boots two CPUs by default,
+  and a 10.6.0 box and every build one (`docs/decisions/0014` item 8,
+  the owner's ruling R75).
   `TestSnowLeopardSuspendsLockTimeoutsUnderAHypervisor` pins the bytes.
 
 **`Booter > Quirks > DevirtualiseMmio` stays `false`**, though the same

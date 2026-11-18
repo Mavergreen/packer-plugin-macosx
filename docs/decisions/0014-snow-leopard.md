@@ -53,17 +53,35 @@ of its own (`templates/snowleopard/`). What differs, and why:
    this is no longer a difference. Until then OpenCore's disk was a
    `usb-storage` device on `qemu-xhci`, which 10.6 has no driver for, and
    the window took no input.
-8. **One CPU by default.** With two, 10.6 under KVM panics when the host
-   is busy (Measurements, and F26: 10.6.0 and 10.6.8 alike, at boot and
-   after warm resets). F26's cause (amended 2026-11-18): the pmap lock's
-   holder does a series of synchronous TLB shootdowns, each a round trip
-   that takes milliseconds when the vCPU threads are time-sliced, and the
-   spinner's single 250 ms deadline runs out across the series. 10.7 and
-   later wait instead when CPUID says a hypervisor is present; since
-   2026-11-18 10.6.8 does too, through one OpenCore kernel patch
-   (`docs/decisions/0046`). 10.6.0 (`updates = none`) is not covered, so
-   its panics stand. 1 CPU stays the default for both until the owner
-   rules on 0046's numbers. `cpus` stays a variable.
+8. **The build at one CPU; the box at two on 10.6.8, one on 10.6.0
+   (amended 2026-11-18, the owner's ruling R75).** With two, 10.6 under
+   KVM panics when the host is busy (Measurements, and F26: 10.6.0 and
+   10.6.8 alike, at boot and after warm resets). F26's cause: the pmap
+   lock's holder does a series of synchronous TLB shootdowns, each a
+   round trip that takes milliseconds when the vCPU threads are
+   time-sliced, and the spinner's single 250 ms deadline runs out across
+   the series. 10.7 and later wait instead when CPUID says a hypervisor
+   is present; 10.6.8 does too, through one OpenCore kernel patch
+   (`docs/decisions/0046`). 10.6.0 has no such wait and no patch. So:
+   - **the build runs one CPU, always.** It boots the disc's 10.6.0
+     kernel, the installer's and then the install's first boot's, before
+     the 10.6.8 combo goes in. The qemu source's `cpus` is a literal 1,
+     not a variable.
+   - **the box's CPU count is `cpus`**, which defaults to none: unset, a
+     10.6.8 box (`updates = security`, the default) gets 2 and a 10.6.0
+     one (`updates = none`) gets 1, rendered into the box's Vagrantfile
+     (`qe.smp`). This was this ADR's first plan, "install at one CPU,
+     then run the 10.6.8 box at two"; 0046 made it safe.
+   - **`cpus`, set, is the box's count on either release**, 2 on 10.6.0
+     included. It is not refused: the panics need a busy host, and with
+     its vCPUs pinned to cores 10.6.0 at two had none (Measurements), so
+     a refusal would forbid a setup measured clean. `cpus` stays `>= 1`.
+     It never reaches the build. One variable, as 10.9 has, with one
+     meaning, the box's; 10.9's also sizes its build, which no 10.9
+     kernel stops.
+
+   A project Vagrantfile still overrides the count (`qe.smp`); the box
+   reads no `GUEST_MACOSX_` setting for it, on either release.
 9. **The boot gate: both releases (added 2026-10-28, G8).** Until then
    `bin/gate.sh` booted 10.9 alone, so a change to the boot stack both
    releases share (OpenCore, Lilu, VirtualSMC, OVMF) was gated on one of
@@ -76,14 +94,17 @@ of its own (`templates/snowleopard/`). What differs, and why:
    silence. This is no longer a difference. A box names its release on a line of
    its own Vagrantfile (`# guest-macosx-release: 10.6`, rendered by the
    template), and `bin/gate-vm.sh` reads it, and nothing else, for the
-   three things it does differently on 10.6, each what the box's own
+   things it does differently on 10.6, each what the box's own
    Vagrantfile does:
    - its SSH client also accepts `ssh-rsa` (item 4);
    - restarts and shutdowns are a bare `sudo /sbin/shutdown -r|-h now`:
      10.6's images carry no `guest-macosx-shutdown`, whose causes 10.6
      does not have (`docs/decisions/0019`; its shutdowns took 0.4 s,
      MEASURED 2026-10-14);
-   - one CPU (item 8).
+   - one CPU (item 8). Amended 2026-11-18 (R75): no longer a 10.6
+     difference. `bin/gate-vm.sh` boots every box, on either release, at
+     the CPU count its own Vagrantfile gives (its one `qe.smp` line),
+     2 on 10.9 and on 10.6.8, 1 on 10.6.0; `GATE_SMP` still overrides.
 
    And the gate itself sets aside what 10.6 has nothing for, each step
    `n/a` in `steps.tsv` with its reason, never a pass:
@@ -166,6 +187,13 @@ disc (sha256 `cbeeb237...`, `docs/test-hosts.md`):
   failing 9 of 50 warm restarts, every one the same spinlock panic; with
   `docs/decisions/0046`'s patch, 0 of 50 against 4 of 50 stock, and 0 of
   65 boots in all against 6 of 70.)
+  (Added 2026-11-18, R75: `bin/gate.sh --release 10.6` on the defaults,
+  host idle, exit 0, every applicable step and 10 restarts; its build ran
+  `-smp 1` (`verify.sh`: `1cpu`) and its box `-smp 2`. Then that box, at
+  its default two CPUs with 16 busy loops on the host (1-minute load
+  14.9 to 18.9): 0 of 30 warm restarts failed (Wilson 95 %: 0 to
+  11.4 %); every boot showed `hw.ncpu` 2, `VMM` and the patched
+  function in guest memory, 33 of 33.)
 - The combo's packages installed one at a time on a running 10.6.0 break
   it: `SUBaseSystemCombo` brings a new `libSystem` while `dyld` stays
   10.6.0's, and every process after it crashes. The catalogue's other
@@ -193,8 +221,9 @@ disc (sha256 `cbeeb237...`, `docs/test-hosts.md`):
   `openssh` as 10.9's has it.
 - `Macmini3,1` measured as the fallback model, or `iMac9,1` failing.
 - The owner's ruling on two CPUs for 10.6.8 with `docs/decisions/0046`'s
-  patch, measured clean on a busy host (F26's cause, found after the
-  release, R49), and on a separate patch for 10.6.0.
+  patch: given 2026-11-18 (R75), the box at two (item 8). A separate
+  patch for 10.6.0, which R75 declined: its box stays at one, and so does
+  every build.
 - A USB keyboard and mouse 10.6.0 can drive without UHCI, for the window:
   done, EHCI alone (`docs/decisions/0035`).
 - A 10.6 Aqua Transport layer, or another TLS route (G5): the gate's

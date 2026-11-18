@@ -74,11 +74,11 @@ variable "memory" {
 
 variable "cpus" {
   type        = number
-  default     = 1
-  description = "Guest CPU count. One by default: with two, 10.6.0 and 10.6.8 under KVM panicked when the host was busy; 10.6.8 now waits those stalls out (docs/decisions/0046), 10.6.0 does not (docs/decisions/0014)."
+  default     = null
+  description = "The box's CPU count. Unset, it follows the box's kernel: 2 for 10.6.8 (updates = security), which waits out the lock stalls two vCPUs meet on a busy host (docs/decisions/0046), and 1 for 10.6.0 (updates = none), which panics on them instead (docs/decisions/0014). Set, the box gets that many, on either release. The build always runs 1, whatever this says: it boots 10.6.0's kernel before the updates go in."
 
   validation {
-    condition     = var.cpus >= 1
+    condition     = var.cpus == null ? true : var.cpus >= 1
     error_message = "Cpus wants at least 1."
   }
 }

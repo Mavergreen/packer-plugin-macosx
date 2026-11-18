@@ -7,9 +7,12 @@
 #
 # RENDERED FROM THE BUILD'S OWN SETTINGS. snowleopard.pkr.hcl renders this
 # file from box.Vagrantfile.pkrtpl, a Packer templatefile(), with the
-# build's user, cpu, memory, cpus, nic and accelerator, so the box logs
-# in and boots the way its image was built. A project Vagrantfile can
-# still override any of it. The rendering is HCL's: in the template, a
+# build's user, cpu, memory, nic and accelerator, so the box logs in and
+# boots the way its image was built, and with the box's own CPU count:
+# cpus when the build set it, otherwise 2 on 10.6.8 and 1 on 10.6.0
+# (docs/decisions/0014 item 8), while the build itself always ran one. A
+# project Vagrantfile can still override any of it (qe.smp for the
+# count). The rendering is HCL's: in the template, a
 # dollar sign or a percent sign directly before an open brace starts an
 # interpolation or a directive.
 #
@@ -185,7 +188,9 @@ Vagrant.configure("2") do |config|
     unless isa.empty?
       $stderr.puts "GUEST_MACOSX_CPU_ISA=#{isa} is ignored on 10.6: no instruction-set level has been measured on Snow Leopard, so the box boots its build's own cpu line, #{qe.cpu}"
     end
-    qe.smp = "1"
+    # The box's CPU count (above), not the build's. bin/gate-vm.sh reads
+    # this line too, so it stays one line with the count in quotes.
+    qe.smp = "2"
     qe.memory = "4G"
     qe.net_device = "e1000-82545em"
     qe.drive_interface = "ide"

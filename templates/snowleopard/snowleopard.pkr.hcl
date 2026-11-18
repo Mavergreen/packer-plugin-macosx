@@ -84,7 +84,12 @@ locals {
   # Each build's QEMU starts it afresh.
   install_log = "${local.output_directory}-install.log"
 
-  # The box's own Vagrantfile, rendered with this build's settings.
+  # The box's own Vagrantfile, rendered with this build's settings, and
+  # its CPU count: cpus when set, otherwise its kernel's (2 for 10.6.8,
+  # whose lock timeouts wait under a hypervisor, docs/decisions/0046; 1
+  # for 10.6.0, which has no such wait: docs/decisions/0014 item 8). It is
+  # worked out here, in the call, not in a local of its own, so that
+  # templatetest.RenderBoxVagrantfile renders exactly what Packer does.
   # templatefile() resolves a relative path against the template's own
   # directory already (Packer's basedir, which is also path.root), so
   # the name goes in bare: "${path.root}/..." would join a relative
@@ -94,7 +99,7 @@ locals {
     user        = var.user
     cpu         = var.cpu
     memory      = var.memory
-    cpus        = var.cpus
+    cpus        = var.cpus != null ? var.cpus : (var.updates == "none" ? 1 : 2)
     nic         = var.nic
     accelerator = var.accelerator
   })
@@ -140,11 +145,16 @@ source "qemu" "snowleopard" {
   machine_type = "q35,vmport=off"
   cpu_model    = var.cpu
   memory       = var.memory
-  cpus         = var.cpus
-  net_device   = var.nic
-  headless     = var.headless
-  display      = local.display
-  boot_wait    = "0s"
+  # One CPU, always, whatever the box gets: the build boots the disc's
+  # 10.6.0 kernel (its installer, then the install's first boot) before
+  # the 10.6.8 combo goes in, and 10.6.0 at two vCPUs panics on a busy
+  # host, with no patch to stop it (docs/decisions/0014 item 8, 0046 "Not
+  # covered"). cpus is the box's alone.
+  cpus       = 1
+  net_device = var.nic
+  headless   = var.headless
+  display    = local.display
+  boot_wait  = "0s"
 
   efi_boot          = true
   efi_firmware_code = data.macosx-snowleopard-firmware.fw.ovmf_code

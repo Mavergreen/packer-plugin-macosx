@@ -8,7 +8,7 @@ Status: accepted (the owner's ruling R74, 2026-11-18), on measurement
 
 F26: 10.6.8 at two vCPUs on a busy host panics, at boot and after warm
 restarts, with `Spinlock acquisition timed out` on the kernel pmap's lock,
-raised from `pmap_enter`. That is why `cpus` defaults to 1 on 10.6
+raised from `pmap_enter`. That is why `cpus` defaulted to 1 on 10.6
 (`docs/decisions/0014`).
 
 The reliability work found the mechanism (MEASURED on `pet-power-plant`,
@@ -109,8 +109,9 @@ OpenCore changes nothing.
 
 So there is no change in Apple's own shape for 10.6.0. Its panics at two
 vCPUs (spinlock, double fault, `thread_invoke: preemption_level`) stay as
-`docs/decisions/0014` records them. 10.6.0 stays at the 1-CPU default,
-pending the owner's ruling on a separate 10.6.0 patch.
+`docs/decisions/0014` records them. 10.6.0 stays at one CPU: the owner
+ruled out a separate 10.6.0 patch (R75, 2026-11-18). So does every
+build, which boots 10.6.0's kernel before the updates go in.
 
 ## Cost
 
@@ -183,9 +184,12 @@ Boots took no longer:
 
 ## Consequences
 
-- `cpus` stays 1 by default for both 10.6 releases, until the owner rules
-  with these numbers. 10.6.0 has no fix. For 10.6.8 at two vCPUs, the
-  panic F26 measured is gone, with the stalls left behind it.
+- The owner's ruling R75 (2026-11-18): a 10.6.8 box (`updates =
+  security`, the default) boots two CPUs by default; a 10.6.0 box
+  (`updates = none`) one; every build one, since it boots 10.6.0's
+  kernel first (`docs/decisions/0014` item 8). `cpus` is now the box's
+  count alone, unset by default. For 10.6.8 at two vCPUs, the panic F26
+  measured is gone, with the stalls left behind it.
 - `docs/decisions/0014` (item 8 and its measurements), the `cpus`
   description in `templates/snowleopard/variables.pkr.hcl`,
   `docs/configuration-register.md` and `assets/firmware/README.md` say so.

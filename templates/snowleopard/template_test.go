@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/hashicorp/hcl/v2"
+	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/zclconf/go-cty/cty"
 
 	macosx "github.com/Mavergreen/packer-plugin-macosx"
@@ -76,6 +78,22 @@ func TestValidate(t *testing.T) {
 		out, err := run("validate", "-var", disc, "-var", "openssh=true")
 		if err == nil {
 			t.Fatalf("packer validate accepted an openssh variable:\n%s", out)
+		}
+	})
+
+	t.Run("cpus=0 is refused", func(t *testing.T) {
+		out, err := run("validate", "-var", disc, "-var", "cpus=0")
+		if err == nil {
+			t.Fatalf("packer validate accepted cpus=0:\n%s", out)
+		}
+		if !strings.Contains(out, "Cpus wants at least 1") {
+			t.Errorf("validate's error doesn't say what cpus wants:\n%s", out)
+		}
+	})
+
+	t.Run("cpus=2 with updates=none is the user's to ask for", func(t *testing.T) {
+		if out, err := run("validate", "-var", disc, "-var", "updates=none", "-var", "cpus=2"); err != nil {
+			t.Fatalf("packer validate: %v\n%s", err, out)
 		}
 	})
 
@@ -156,23 +174,84 @@ func TestTheBoxsMachineIsTheOneShape(t *testing.T) {
 	templatetest.CheckBoxMachine(t, osName, boxOverrides)
 }
 
-// TestOneCPUByDefault: with two vCPUs on a busy host, 10.6.0 under KVM
-// panics (MEASURED 2026-10-04, docs/decisions/0014), so the template asks
-// for one unless told otherwise.
-func TestOneCPUByDefault(t *testing.T) {
-	b, err := os.ReadFile(filepath.Join(templatetest.RepoRoot(t), "templates", osName, "variables.pkr.hcl"))
+// TestTheBuildRunsOneCPU: the build boots the disc's 10.6.0 kernel (the
+// installer, then the install's first boot) before the 10.6.8 combo goes
+// in, and 10.6.0 at two vCPUs panics on a busy host, with no fix
+// (docs/decisions/0014 item 8, 0046 "Not covered"). So the build runs one
+// CPU, whatever the box is given: cpus is the box's, never the build's.
+func TestTheBuildRunsOneCPU(t *testing.T) {
+	path := filepath.Join(templatetest.RepoRoot(t), "templates", osName, osName+".pkr.hcl")
+	src, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	i := bytes.Index(b, []byte(`variable "cpus" {`))
-	if i < 0 {
-		t.Fatal("no cpus variable")
+	f, diags := hclsyntax.ParseConfig(src, path, hcl.InitialPos)
+	if diags.HasErrors() {
+		t.Fatalf("parsing %s: %v", path, diags)
 	}
-	block := b[i:]
-	block = block[:bytes.Index(block, []byte("\n}\n"))]
-	if !bytes.Contains(block, []byte("default     = 1\n")) {
-		t.Fatalf("cpus does not default to 1:\n%s", block)
+	found := false
+	for _, b := range f.Body.(*hclsyntax.Body).Blocks {
+		if b.Type != "source" || len(b.Labels) != 2 || b.Labels[0] != "qemu" {
+			continue
+		}
+		found = true
+		a := b.Body.Attributes["cpus"]
+		if a == nil {
+			t.Fatal("the qemu source sets no cpus")
+		}
+		v, d := a.Expr.Value(nil)
+		if d.HasErrors() || !v.Type().Equals(cty.Number) || !v.Equals(cty.NumberIntVal(1)).True() {
+			r := a.Expr.Range()
+			t.Errorf("the qemu source's cpus is %s, want the literal 1", src[r.Start.Byte:r.End.Byte])
+		}
 	}
+	if !found {
+		t.Fatal("no qemu source")
+	}
+}
+
+// TestTheBoxsCPUsFollowItsKernel: a 10.6.8 box (updates = security, the
+// default) boots two CPUs, made safe by docs/decisions/0046's kernel
+// patch; a 10.6.0 box (updates = none) boots one, its kernel unpatched
+// (the owner's ruling R75). cpus, when set, is the box's count either
+// way.
+func TestTheBoxsCPUsFollowItsKernel(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		vars map[string]cty.Value
+		want string
+	}{
+		{"default (10.6.8)", nil, "2"},
+		{"updates = none (10.6.0)", map[string]cty.Value{"updates": cty.StringVal("none")}, "1"},
+		{"updates = security", map[string]cty.Value{"updates": cty.StringVal("security")}, "2"},
+		{"cpus = 1 on 10.6.8", map[string]cty.Value{"cpus": cty.NumberIntVal(1)}, "1"},
+		{"cpus = 4 on 10.6.8", map[string]cty.Value{"cpus": cty.NumberIntVal(4)}, "4"},
+		{"cpus = 2 on 10.6.0", map[string]cty.Value{"updates": cty.StringVal("none"), "cpus": cty.NumberIntVal(2)}, "2"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			vars := map[string]cty.Value{}
+			for k, v := range boxOverrides {
+				vars[k] = v
+			}
+			for k, v := range c.vars {
+				vars[k] = v
+			}
+			r := templatetest.RunBoxVagrantfile(t, templatetest.RenderBoxVagrantfile(t, osName, vars), "linux", nil)
+			if r.Err != nil {
+				t.Fatalf("the Vagrantfile raised: %v\n%s", r.Err, r.Stderr)
+			}
+			if got := r.Provider("qemu")["smp"]; got != c.want {
+				t.Errorf("qe.smp = %v, want %q", got, c.want)
+			}
+		})
+	}
+}
+
+// TestTheGateReadsTheBoxsCPUCount: bin/gate-vm.sh's one qe.smp line
+// (templatetest.CheckGateReadsTheCPUCount), on either kernel.
+func TestTheGateReadsTheBoxsCPUCount(t *testing.T) {
+	templatetest.CheckGateReadsTheCPUCount(t, osName, boxOverrides)
+	templatetest.CheckGateReadsTheCPUCount(t, osName, map[string]cty.Value{"installer": boxOverrides["installer"], "updates": cty.StringVal("none")})
 }
 
 // TestTheDefaultCPUSaysGenuineIntel: under KVM a guest gets the host's
