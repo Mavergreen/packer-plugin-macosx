@@ -75,7 +75,7 @@ variable "memory" {
 variable "cpus" {
   type        = number
   default     = 1
-  description = "Guest CPU count. One by default: with two, 10.6.0 under KVM panics when the host is busy (docs/decisions/0014)."
+  description = "Guest CPU count. One by default: with two, 10.6.0 and 10.6.8 under KVM panicked when the host was busy; 10.6.8 now waits those stalls out (docs/decisions/0046), 10.6.0 does not (docs/decisions/0014)."
 
   validation {
     condition     = var.cpus >= 1

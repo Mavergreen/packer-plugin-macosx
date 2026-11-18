@@ -466,7 +466,7 @@ are emptied of the sample's examples.
 ## `snowleopard/config.plist`: Mac OS X 10.6
 
 `snowleopard-firmware` ships `snowleopard/config.plist`, which is this
-file with exactly three differences, held there by
+file with exactly four differences, held there by
 `internal/firmware`'s `TestSnowLeopardConfigDiffersOnlyAsDocumented`:
 
 - **`Booter > Quirks > RebuildAppleMemoryMap` = `true`.** MEASURED
@@ -479,6 +479,18 @@ file with exactly three differences, held there by
   older than 10.6.0, whose retail disc therefore has its drivers
   (`internal/firmware`'s `SnowLeopardModels`).
 - **The description** names the OS.
+- **`Kernel > Patch`: one entry, 10.6.8's `machine_timeout_suspended()`
+  gains 10.7's `virtualized` term.** With the CPUID hypervisor bit set,
+  its spinlock, TLB-shootdown and wait-queue timeouts keep waiting
+  instead of panicking, as 10.7 through 10.9 do. Matched by `Base`
+  `_machine_timeout_suspended`, `Arch` `x86_64`, Darwin `10.8.0` only, and
+  the function's own 63 bytes, rewritten in place at the same length. It
+  is inert on real hardware, on 10.6.0 (whose kernel has no such
+  function) and on 10.9. MEASURED 2026-11-18: at two vCPUs on a loaded
+  host, 0 of 65 boots failed with it, against 6 of 70 with the
+  stock spinlock panic (`docs/decisions/0046`, which also says why
+  10.6.0 is not covered).
+  `TestSnowLeopardSuspendsLockTimeoutsUnderAHypervisor` pins the bytes.
 
 **`Booter > Quirks > DevirtualiseMmio` stays `false`**, though the same
 guide sets it. MEASURED 2026-10-04: with it on, the install ran to its

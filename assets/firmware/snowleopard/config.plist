@@ -191,7 +191,46 @@
 		<key>Force</key>
 		<array/>
 		<key>Patch</key>
-		<array/>
+		<array>
+			<dict>
+				<key>Arch</key>
+				<string>x86_64</string>
+				<key>Base</key>
+				<string>_machine_timeout_suspended</string>
+				<key>Comment</key>
+				<string>10.6.8: machine_timeout_suspended() gains 10.7's virtualized (CPUID VMM bit) term (docs/decisions/0046)</string>
+				<key>Count</key>
+				<integer>1</integer>
+				<key>Enabled</key>
+				<true/>
+				<key>Find</key>
+				<data>
+				VUiJ5egNNQAAhcB1K+hHjP3/hcB1IkiNBUeRYQCLAIXA
+				dRVIjQW2Q2UASIsASIXAD5XAD7bA6wW4AQAAAMnD
+				</data>
+				<key>Identifier</key>
+				<string>kernel</string>
+				<key>Limit</key>
+				<integer>0</integer>
+				<key>Mask</key>
+				<data>
+				</data>
+				<key>MaxKernel</key>
+				<string>10.8.0</string>
+				<key>MinKernel</key>
+				<string>10.8.0</string>
+				<key>Replace</key>
+				<data>
+				VUiJ5fYFDPFoAIB1K+gENQAAhcB1Iug+jP3/hcB1GYsF
+				P5FhAIXAdQ8xwEiDPa1DZQAAD5XA6wW4AQAAAMnD
+				</data>
+				<key>ReplaceMask</key>
+				<data>
+				</data>
+				<key>Skip</key>
+				<integer>0</integer>
+			</dict>
+		</array>
 		<key>Quirks</key>
 		<dict>
 			<key>AppleCpuPmCfgLock</key>

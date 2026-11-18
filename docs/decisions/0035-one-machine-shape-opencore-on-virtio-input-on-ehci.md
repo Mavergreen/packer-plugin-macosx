@@ -446,8 +446,9 @@ Assistant.)
 None in the machine's devices, and none in what a desktop session shows
 (Round 2b). The ones that stay, each with its own decision:
 - **CPUs**: 10.6 at one, 10.9 at two. 1 CPU ships as a documented
-  deviation, cause not yet established; F26 is root-caused after the
-  release (R49, ADR 0014).
+  deviation (ADR 0014). F26's cause was found on 2026-11-18, and 10.6.8
+  now waits its stalls out as 10.7 does (ADR 0046). 10.6.0 does not.
+  The default stays at one until the owner rules.
 - **Firmware, SSH, updates, sudo**: ADR 0014's items 1-6, each a property
   of the release.
 
