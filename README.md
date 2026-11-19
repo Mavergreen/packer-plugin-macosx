@@ -251,8 +251,8 @@ other release's gate wipes the work directory. The socket is not a guest
 device (`docs/decisions/0040`).
 
 On GitHub, `.github/workflows/gate.yml` runs `bin/gate.sh --release 10.9`
-on Renovate's boot-stack and Aqua Transport PRs, and is to run before every
-release too (`release.yml` calling it is wired in the change after this
-one); its required check is `gate`, and its first summary
+on Renovate's boot-stack and Aqua Transport PRs, and before every release
+too (`release.yml`'s `release gate` job calls it, and `publish` needs it);
+its required check is `gate`, and its first summary
 line is the verdict. Snow Leopard is gated locally: CI has no 10.6 disc
 (`docs/decisions/0017`).
