@@ -9,11 +9,14 @@ name: ci
 # PACKER_PLUGIN_PATH, so `packer validate` genuinely runs here on every
 # push and PR.
 #
-# What it deliberately does NOT check: that an image builds. GitHub's
-# standard Linux runners do expose /dev/kvm (since April 2024), but a build
-# needs Apple's installer, which a cache here must not become a way to
-# publish, more disk than a standard runner has free, and half an hour.
-# Building an image is exercised on the host it is for.
+# What this file does not check: that an image builds and boots. That is
+# gate.yml, the boot gate (docs/decisions/0017): on Renovate's boot-stack
+# and Aqua Transport PRs (and before every release once release.yml calls
+# it, wired in the change after this one), it builds 10.9 from
+# scratch on a standard runner's /dev/kvm (Apple's installer fetched at run
+# time, as a user's build does), boots it and restarts it, and uploads only
+# text evidence, never an image. It takes about an hour, so it is not run
+# here on every push.
 # `packer validate` never executes a data source (see templates/mavericks/mavericks.pkr.hcl's
 # own comment on ssh_private_key_file), so the `template` job fetches no
 # Apple bytes either -- and must never be changed so that it does.

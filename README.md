@@ -206,11 +206,12 @@ it, boots the box, and checks inside the guest that it runs the checkout's
 boot stack (OpenCore, Lilu, VirtualSMC), that it is healthy, and that it
 comes back from restarts; then it shuts the box down. It does that for
 Mavericks and then for Snow Leopard, because the firmware and boot stack
-are both releases', so it needs your Snow Leopard disc image. It needs KVM
-and 60 GiB free, and takes a while: on a 12-CPU host the
-default run (both releases, 10 restarts each, a fresh Apple download each)
-took 90 minutes (5,425 s: Mavericks 3,304 s, Snow Leopard 2,121 s; MEASURED
-2026-11-01, N 1), and a Mavericks-only run 45 to 54 minutes (2,675 to 3,265
+are both releases', so it needs your Snow Leopard disc image. It needs
+60 GiB free and an accelerator, and only KVM is tested (`--accel hvf` and
+`--accel nvmm` are accepted, and say they are untested). It takes a
+while: on a 12-CPU host the default run (both releases, 10 restarts each,
+a fresh Apple download each) took 90 minutes (5,425 s: Mavericks 3,304 s,
+Snow Leopard 2,121 s; MEASURED 2026-11-01, N 1), and a Mavericks-only run 45 to 54 minutes (2,675 to 3,265
 s, N 5; its base build 1,852 to 2,431 s, the Aqua Transport layer 336 to 348
 s, each restart about 40 s). A busier host takes longer: a Snow Leopard build
 alone took 93 minutes to answer SSH on one (`docs/decisions/0027`):
@@ -219,8 +220,11 @@ alone took 93 minutes to answer SSH on one (`docs/decisions/0027`):
 bin/gate.sh --installer /path/to/your/dvd-image
 ```
 
-Without `--installer` it refuses, and says how to go on. To gate one
-release on purpose:
+Without `--installer` it refuses, and says how to go on. The other options
+are `--work-dir` (default below), `--evidence-dir` (default `evidence/` in
+the work directory), `--restarts` (10), `--packer-cache` (default a fresh
+one in the work directory) and `--ssh-port` (2223, which must be free). To
+gate one release on purpose:
 
 ```sh
 bin/gate.sh --release 10.9                                       # Mavericks: the base and Aqua Transport
@@ -245,3 +249,10 @@ and what moved between the reads), the guest's screen, and its logs read from
 its disk (`bin/gate-build-evidence.sh`), taken before the next build or the
 other release's gate wipes the work directory. The socket is not a guest
 device (`docs/decisions/0040`).
+
+On GitHub, `.github/workflows/gate.yml` runs `bin/gate.sh --release 10.9`
+on Renovate's boot-stack and Aqua Transport PRs, and is to run before every
+release too (`release.yml` calling it is wired in the change after this
+one); its required check is `gate`, and its first summary
+line is the verdict. Snow Leopard is gated locally: CI has no 10.6 disc
+(`docs/decisions/0017`).
