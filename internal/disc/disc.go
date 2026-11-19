@@ -15,6 +15,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -221,7 +222,10 @@ func KnownDiscs() ([]Known, error) {
 // Verify reads the volume's build and package sums in the microVM --
 // volume attached read-only, never as the target, which is scratch, an
 // HFS+ image the caller made for the backend to mount -- and holds them
-// to the known disc of that build. It returns the build.
+// to the known discs of that build: a build may have more than one (the
+// 10.6.0 retail DVD and Upgrade DVD are both 10A432), and the volume
+// passes when it is any one of them as it shipped. When it is none, the
+// error names what differs from the nearest. It returns the build.
 func Verify(ctx context.Context, vm VM, scratch, volume string) (string, error) {
 	payload, err := fs.ReadFile(macosx.Files, "assets/privops/disc/verify-disc.sh")
 	if err != nil {
@@ -239,40 +243,53 @@ func Verify(ctx context.Context, vm VM, scratch, volume string) (string, error) 
 	if err != nil {
 		return "", err
 	}
-	var k *Known
-	var builds []string
-	for i := range known {
-		builds = append(builds, known[i].Build)
-		if known[i].Build == build {
-			k = &known[i]
-		}
-	}
-	if k == nil {
-		return "", fmt.Errorf("build %s is not a disc this plugin knows (it knows %s)", build, strings.Join(builds, ", "))
-	}
 	got := map[string]string{}
 	for _, m := range privops.Markers(console, "GUEST-MACOSX-SUM-DISC") {
 		if sum, name, ok := strings.Cut(m, "  "); ok {
 			got[name] = sum
 		}
 	}
+	var builds, nearest []string
+	found := false
+	for _, k := range known {
+		if !slices.Contains(builds, k.Build) {
+			builds = append(builds, k.Build)
+		}
+		if k.Build != build {
+			continue
+		}
+		problems := mismatches(k.Sums, got)
+		if len(problems) == 0 {
+			return build, nil
+		}
+		if !found || len(problems) < len(nearest) {
+			nearest = problems
+		}
+		found = true
+	}
+	if !found {
+		return "", fmt.Errorf("build %s is not a disc this plugin knows (it knows %s)", build, strings.Join(builds, ", "))
+	}
+	return "", fmt.Errorf("the disc is not build %s as it shipped: %s", build, strings.Join(nearest, "; "))
+}
+
+// mismatches is every way got, a disc's package sums, differs from want,
+// a known disc's, sorted.
+func mismatches(want, got map[string]string) []string {
 	var problems []string
-	for name, want := range k.Sums {
+	for name, w := range want {
 		switch g, ok := got[name]; {
 		case !ok:
 			problems = append(problems, name+": missing from the disc")
-		case g != want:
-			problems = append(problems, fmt.Sprintf("%s: sha256 %s is not the pinned %s", name, g, want))
+		case g != w:
+			problems = append(problems, fmt.Sprintf("%s: sha256 %s is not the pinned %s", name, g, w))
 		}
 	}
 	for name := range got {
-		if _, ok := k.Sums[name]; !ok {
+		if _, ok := want[name]; !ok {
 			problems = append(problems, name+": on the disc but not pinned")
 		}
 	}
-	if len(problems) > 0 {
-		sort.Strings(problems)
-		return "", fmt.Errorf("the disc is not build %s as it shipped: %s", build, strings.Join(problems, "; "))
-	}
-	return build, nil
+	sort.Strings(problems)
+	return problems
 }

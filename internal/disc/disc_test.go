@@ -213,11 +213,17 @@ func (f *fakeVM) Missing() []string { return nil }
 // first known disc: its build, then every pinned package's sum.
 func knownConsole(t *testing.T, mutate func(sums map[string]string)) (string, Known) {
 	t.Helper()
+	return knownConsoleOf(t, 0, mutate)
+}
+
+// knownConsoleOf is knownConsole for the i'th known disc.
+func knownConsoleOf(t *testing.T, i int, mutate func(sums map[string]string)) (string, Known) {
+	t.Helper()
 	known, err := KnownDiscs()
-	if err != nil || len(known) == 0 {
-		t.Fatalf("KnownDiscs = %v, %v", known, err)
+	if err != nil || len(known) <= i {
+		t.Fatalf("KnownDiscs = %d discs, %v; want a disc %d", len(known), err, i)
 	}
-	k := known[0]
+	k := known[i]
 	sums := map[string]string{}
 	for n, s := range k.Sums {
 		sums[n] = s
@@ -234,13 +240,22 @@ func knownConsole(t *testing.T, mutate func(sums map[string]string)) (string, Kn
 	return b.String(), k
 }
 
-func TestKnownDiscsIs10A432(t *testing.T) {
+// The two 10.6.0 retail discs: the full DVD, whose Packages directory
+// holds UserDVDMask.bom, and the Upgrade DVD, whose holds
+// UpgradeDVDMask.bom in its place.
+func TestKnownDiscsAreThe10A432UserAndUpgradeDVDs(t *testing.T) {
 	known, err := KnownDiscs()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(known) != 1 || known[0].Build != "10A432" || len(known[0].Sums) < 50 {
-		t.Fatalf("KnownDiscs = %d discs, first %q with %d sums; want 10A432 alone, with its packages", len(known), known[0].Build, len(known[0].Sums))
+	if len(known) != 2 {
+		t.Fatalf("KnownDiscs = %d discs; want two", len(known))
+	}
+	for i, mask := range []string{"UserDVDMask.bom", "UpgradeDVDMask.bom"} {
+		k := known[i]
+		if k.Build != "10A432" || len(k.Sums) < 50 || k.Sums[mask] == "" {
+			t.Errorf("disc %d is %q with %d sums, %s %q; want 10A432 with its packages and %s", i, k.Build, len(k.Sums), mask, k.Sums[mask], mask)
+		}
 	}
 }
 
@@ -249,6 +264,20 @@ func TestVerifyAcceptsTheKnownDisc(t *testing.T) {
 	build, err := Verify(context.Background(), &fakeVM{console: console}, "/s.img", "/v.hfs")
 	if err != nil || build != k.Build {
 		t.Fatalf("Verify = %q, %v; want %q", build, err, k.Build)
+	}
+}
+
+func TestVerifyAcceptsEveryKnownDiscOfABuild(t *testing.T) {
+	known, err := KnownDiscs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range known {
+		console, k := knownConsoleOf(t, i, nil)
+		build, err := Verify(context.Background(), &fakeVM{console: console}, "/s.img", "/v.hfs")
+		if err != nil || build != k.Build {
+			t.Errorf("disc %d: Verify = %q, %v; want %q", i, build, err, k.Build)
+		}
 	}
 }
 
@@ -269,6 +298,19 @@ func TestVerifyNamesTheFirstMismatch(t *testing.T) {
 	want := "BSD.pkg: sha256 " + bad + " is not the pinned " + k.Sums["BSD.pkg"]
 	if err == nil || !strings.Contains(err.Error(), want) {
 		t.Fatalf("err = %v; want it to contain %q", err, want)
+	}
+}
+
+// A disc that matches none of its build's discs is held to the nearest
+// one, so that the error names what differs from it and not every
+// package of a disc it never was.
+func TestVerifyNamesTheMismatchWithTheNearestDisc(t *testing.T) {
+	const bad = "0000000000000000000000000000000000000000000000000000000000000000"
+	console, k := knownConsoleOf(t, 1, func(s map[string]string) { s["BSD.pkg"] = bad })
+	_, err := Verify(context.Background(), &fakeVM{console: console}, "/s.img", "/v.hfs")
+	want := "the disc is not build 10A432 as it shipped: BSD.pkg: sha256 " + bad + " is not the pinned " + k.Sums["BSD.pkg"]
+	if err == nil || err.Error() != want {
+		t.Fatalf("err = %v; want %q", err, want)
 	}
 }
 

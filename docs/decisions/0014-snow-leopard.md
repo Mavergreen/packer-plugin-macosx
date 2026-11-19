@@ -18,9 +18,17 @@ of its own (`templates/snowleopard/`). What differs, and why:
    copy of a retail disc -- an ISO, a Disk Utility master, a `.dmg`, the
    volume alone -- passes, because `internal/disc` reads the HFS+ volume
    out of whatever made the image and holds every installer package on it
-   to `assets/pins/snowleopard-packages.sha256`. One disc is known:
-   **10A432**, the 10.6.0 retail DVD. Any other build is refused by name
-   until one is read and pinned the same way.
+   to `assets/pins/snowleopard-packages.sha256`. Two discs are known,
+   both **10A432**, 10.6.0: the retail DVD, and the retail Upgrade DVD,
+   whose tell is `UpgradeDVDMask.bom` where the retail DVD has
+   `UserDVDMask.bom` (the two share no package sum). Each is its own
+   section of the pins file under the same build; a volume of that build
+   passes when it is either one as it shipped, and one that is neither is
+   held to the nearest, so the error names what differs from it. Any
+   other build is refused by name until one is read and pinned the same
+   way. (The Upgrade DVD was added 2026-11-19, read in the privops
+   microVM by `verify-disc.sh` and again with host 7-Zip, all 281 sums
+   agreeing, and gated through to a 10.6.8 box.)
 3. **The boot stack differs by one quirk and one model**
    (`assets/firmware/README.md`): `RebuildAppleMemoryMap` on, which 10.6.0's
    kernel needs under KVM, and `iMac9,1`, a Mac older than 10.6.0.
