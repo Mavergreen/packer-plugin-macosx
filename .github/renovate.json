@@ -51,8 +51,8 @@
     },
     {
       "customType": "regex",
-      "description": "The Packer that CI's `template` job sets up (hashicorp/setup-packer) and validates templates/mavericks/mavericks.pkr.hcl against. A CI tool, not an ingredient: nothing a user builds depends on it. That job is its own test, so a bump that breaks the template shows up red on the PR.",
-      "managerFilePatterns": ["/^\\.github/workflows/ci\\.yml$/"],
+      "description": "The Packer that CI's `template` job sets up (hashicorp/setup-packer) and validates templates/mavericks/mavericks.pkr.hcl against, and that gate.yml's boot gate builds with: one version, so the gate builds with the Packer the templates were validated against. A CI tool, not an ingredient: nothing a user builds depends on it. That job is its own test, so a bump that breaks the template shows up red on the PR.",
+      "managerFilePatterns": ["/^\\.github/workflows/(ci|gate)\\.yml$/"],
       "matchStrings": [
         "hashicorp/setup-packer@[^\\s]+\\s*\\n\\s*with:\\s*\\n\\s*version:\\s*\"(?<currentValue>[0-9][^\"]*)\""
       ],
