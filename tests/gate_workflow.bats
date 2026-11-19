@@ -246,6 +246,52 @@ for j, v in release["jobs"].items():
 '
 }
 
+@test "release.yml: release-gate calls gate.yml after build, when publishing or on gate_only" {
+    py '
+j = release["jobs"]["release-gate"]
+assert j["name"] == "release gate", j
+assert j["needs"] == ["build"], j
+want = "needs.build.outputs.publish == '"'"'yes'"'"' || (github.event_name == '"'"'workflow_dispatch'"'"' && inputs.gate_only)"
+assert j["if"] == want, j["if"]
+assert j["uses"] == "./.github/workflows/gate.yml", j
+assert j["with"] == {"caller": "release"}, j
+'
+}
+
+@test "release.yml: nothing publishes unless the release gate passed" {
+    py '
+p = release["jobs"]["publish"]
+assert p["needs"] == ["build", "release-gate"], p["needs"]
+assert p["if"] == "needs.build.outputs.publish == '"'"'yes'"'"'", p["if"]
+'
+}
+
+@test "release.yml: gate_only runs the gate on any ref and never asks to publish" {
+    py '
+ron = release.get("on", release.get(True))
+g = ron["workflow_dispatch"]["inputs"]["gate_only"]
+assert g == {"description": "Run the boot gate on this ref without publishing", "type": "boolean", "default": False}, g
+ver = [s for s in release["jobs"]["build"]["steps"] if s.get("id") == "ver"][0]
+w = ver["env"]["WANT_RELEASE"]
+want = "${{ github.event_name == '"'"'workflow_dispatch'"'"' && inputs.local_release && !inputs.gate_only && github.ref == '"'"'refs/heads/main'"'"' }}"
+assert w == want, w
+'
+}
+
+@test "release.yml's header tells its in-job checks from the boot gate, and why the gate runs only to publish" {
+    head -40 "$REPO/.github/workflows/release.yml" > "$BATS_TEST_TMPDIR/header"
+    grep -q "gate.yml" "$BATS_TEST_TMPDIR/header"
+    grep -q "gate_only" "$BATS_TEST_TMPDIR/header"
+    grep -q "docs/decisions/0012" "$BATS_TEST_TMPDIR/header"
+    grep -q "docs/decisions/0017" "$BATS_TEST_TMPDIR/header"
+    grep -q "deviation" "$BATS_TEST_TMPDIR/header"
+}
+
+@test "no doc still says the release wiring is to come" {
+    run grep -rn "wired in the change after this" "$REPO/README.md" "$REPO/.github/workflows" "$REPO/docs"
+    [ "$status" -eq 1 ]
+}
+
 @test "the scope rows are exactly repackage-on-ingredient-bump.yml's paths" {
     py '
 want = sorted(repackage[True]["push"]["paths"] if True in repackage else repackage["on"]["push"]["paths"])

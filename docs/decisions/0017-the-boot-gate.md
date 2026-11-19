@@ -109,9 +109,23 @@ the packer cache, and CI uploads only the evidence dir, kept 30 days.
     (`assets/pins/sources.tsv`, `assets/firmware/config.plist`, Aqua
     Transport's pin); its paths are exactly
     `repackage-on-ingredient-bump.yml`'s, each `skip` row saying why;
-  - before every release, a person's and the repackage's alike
-    (`release.yml` calls `gate.yml`; wired in the change after this one);
-  - by dispatch, with `force` to gate whatever changed.
+  - before every release, a person's and the repackage's alike:
+    `release.yml`'s job `release gate` calls `gate.yml` between `build`
+    and `publish`, and `publish` needs it, so nothing publishes unless the
+    exact commit being released passes. It is not named `gate`: it is
+    skipped on every run that does not publish, and a skipped check would
+    satisfy the required one. Not on a push to main that is not a
+    release: a deviation from the family's run-the-build-on-every-push,
+    because this repo publishes only on request or on an ingredient move
+    (`docs/decisions/0012`), so gating the publish already means nothing
+    ships ungated;
+  - by a `release.yml` dispatch with `gate_only`, on any ref: the gate
+    without publishing (`gate_only` wins over `local_release`), which is
+    how a branch proves it on GitHub's runners before `gate.yml` is on
+    main (GitHub dispatches a workflow only from the default branch's
+    file);
+  - by dispatching `gate.yml` itself, with `force` to gate whatever
+    changed.
   Its one required check is named `gate`, and runs whatever happened before
   it: a skipped check would count as passing a required one of its name.
 

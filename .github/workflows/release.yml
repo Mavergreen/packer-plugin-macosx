@@ -1,17 +1,33 @@
 name: release
 
-# Builds the plugin for every host it names, with its templates, gates what it built, and --
-# only when asked -- publishes it. Entry points:
-#   - push to main / PR to main: build + gate, never publish (the PR build is a status check
-#     Renovate automerge waits on)
-#   - workflow_dispatch with local_release=true, on main: build, gate, then publish the next
-#     release on this version line, v0.<UPSTREAM_VERSION>.<N>, through shipyard's
+# Builds the plugin for every host it names, with its templates, checks what it built, and --
+# only when asked -- boots it and publishes it. Two kinds of check, told apart here:
+#   - the build job's in-job checks (the tree stays clean, no Apple bytes in the tree or the
+#     archives, the notes generate): on every run, cheap;
+#   - the boot gate (`release gate`, which calls gate.yml; docs/decisions/0017): builds 10.9 from
+#     scratch, boots it and restarts it 10 times, about an hour. publish needs it, so nothing
+#     publishes unless the exact commit being released passes.
+#
+# Entry points:
+#   - push to main / PR to main: build + in-job checks, never the boot gate, never publish (the PR
+#     build is a status check Renovate automerge waits on)
+#   - workflow_dispatch with local_release=true, on main: build, the boot gate, then publish the
+#     next release on this version line, v0.<UPSTREAM_VERSION>.<N>, through shipyard's
 #     publish-release.yml, which mints the tag. Nothing pushes a tag by hand.
+#   - workflow_dispatch with gate_only=true, on any ref: build and the boot gate, never publish
+#     (gate_only wins over local_release): how a branch proves the gate on GitHub's runners
+#     before it is on main.
+#
+# The boot gate runs only to publish, not on every push to main: a documented deviation from the
+# family's run-the-build-on-every-push (docs/decisions/0017). This repo publishes only on request
+# or on an ingredient move (docs/decisions/0012), so gating the publish already means nothing
+# ships ungated, and an hour of KVM on every docs push would buy nothing.
 #
 # Deliberate publish, because this repo is its own upstream (docs/decisions/0012): there is no
 # external bump to auto-cut on, so a person decides when a version line ships -- drydock's reason.
 # An ingredient bump (INGREDIENTS.md's "Declared state") still cuts N+1 unattended:
-# repackage-on-ingredient-bump.yml dispatches this workflow with local_release=true.
+# repackage-on-ingredient-bump.yml dispatches this workflow with local_release=true, and that
+# release is gated like any other.
 #
 # The ingredients themselves are tested by ci.yml on the same pushes and pull requests; this
 # workflow gates what it ships, not the code again.
@@ -25,6 +41,10 @@ on:
     inputs:
       local_release:
         description: Publish the next release on this version line (main only)
+        type: boolean
+        default: false
+      gate_only:
+        description: Run the boot gate on this ref without publishing
         type: boolean
         default: false
 
@@ -70,7 +90,7 @@ jobs:
       - name: Version (v0.YYYYMMDD.N) + publish decision
         id: ver
         env:
-          WANT_RELEASE: ${{ github.event_name == 'workflow_dispatch' && inputs.local_release && github.ref == 'refs/heads/main' }}
+          WANT_RELEASE: ${{ github.event_name == 'workflow_dispatch' && inputs.local_release && !inputs.gate_only && github.ref == 'refs/heads/main' }}
         run: |
           set -eu
           mode=auto
@@ -150,12 +170,25 @@ jobs:
           name: packer-plugin-macosx
           path: release/*
 
-  # The only writer to Releases, and only a dispatch on main reaches it: nothing else sets
-  # release=yes. The shared workflow mints the tag, checks the notes and the first-release README,
-  # and adds a plain SHA256SUMS beside goreleaser's packer-plugin-macosx_v<ver>_SHA256SUMS, which is
-  # the file `packer init` fetches. Nothing here is Sparkle-signed, so no scan-for-key.yml.
-  publish:
+  # The boot gate (docs/decisions/0017), on the same commit build built: when this run is to
+  # publish, or on a gate_only dispatch. Not named `gate`: on every other run this job is skipped,
+  # and a skipped check would satisfy main's required check `gate`, which is gate.yml's own.
+  # caller: release makes gate.yml gate always, with the newest v0.* release as its control.
+  release-gate:
+    name: release gate
     needs: [build]
+    if: needs.build.outputs.publish == 'yes' || (github.event_name == 'workflow_dispatch' && inputs.gate_only)
+    uses: ./.github/workflows/gate.yml
+    with:
+      caller: release
+
+  # The only writer to Releases, and only a dispatch on main reaches it: nothing else sets
+  # release=yes. It needs the release gate's success, so a failed, cancelled or skipped gate
+  # publishes nothing. The shared workflow mints the tag, checks the notes and the first-release
+  # README, and adds a plain SHA256SUMS beside goreleaser's packer-plugin-macosx_v<ver>_SHA256SUMS,
+  # which is the file `packer init` fetches. Nothing here is Sparkle-signed, so no scan-for-key.yml.
+  publish:
+    needs: [build, release-gate]
     if: needs.build.outputs.publish == 'yes'
     permissions:
       contents: write
