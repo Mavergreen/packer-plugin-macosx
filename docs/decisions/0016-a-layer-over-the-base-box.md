@@ -1,7 +1,8 @@
 # 0016 — A layer over the base box, Aqua Transport first
 
 Date: 2026-10-11
-Status: accepted, on measurement
+Status: accepted, on measurement; amended 2026-11-20 (the download is
+mirrored, with its source)
 
 ## Decision
 
@@ -45,7 +46,11 @@ content is Wowfunhappy's Aqua Transport with its ModernRootCertificates.
    `aquatransport.pkr.hcl` holds the URL, version and SHA-256. The data
    source `macosx-download` fetches the DMG into the builder's Packer
    cache and refuses any other bytes before anything reaches the guest.
-   The DMG is never committed, mirrored or put in a release.
+   The DMG is never committed or put in a release of this repo. *Amended
+   2026-11-20:* the URL is not upstream's but
+   `Mavergreen/aquatransport-mirror`'s release for the pinned version and
+   SHA-256, derived from them in the same locals block (see "The mirror"
+   below).
 4. **The download is the source of truth, and Renovate moves the pin.**
    `aquatransport-observer.yml` records the live download's version and
    digest on the `aquatransport-observed` branch. A Renovate regex manager
@@ -57,6 +62,8 @@ content is Wowfunhappy's Aqua Transport with its ModernRootCertificates.
    the base recipe as it was, so a cache of the base image keyed on it
    stays good.
 6. **An old release stops building the layer once the download moves.**
+   *Amended 2026-11-20:* true only of releases from before the mirror;
+   from then on every pinned version stays fetchable.
    The URL is overwritten in place. Once it serves a newer Aqua Transport,
    the data source fails, naming the pinned and the served SHA-256. There
    is no fallback to an older layer or to the bare base. The README says
@@ -104,7 +111,9 @@ own job. Other choices were the user's and the owner's:
   Transport does not reach. (User.)
 - **Pin to the live download, and let Renovate bump it.** Nothing is
   mirrored, and it must keep working when GitHub lags the DMG. (User,
-  2026-10-11.)
+  2026-10-11.) *Reversed 2026-11-20 by the owner* for the mirror below:
+  every pin except the newest had stopped building, the plugin's own main
+  and every mavericks-vm build included.
 
 Aqua Transport is the first of what may become several things that make a
 10.9 guest useful and safe. The template is named for it, and its
@@ -115,7 +124,46 @@ overwritten in place, with no versioned URLs, releases or appcast. On
 2026-10-11 it is 10,698,314 bytes, SHA-256 `7b91d3e4…85bc36`. It holds
 AquaTransport 2026.10.09, ModernRootCertificates 2026.09.03 and tap
 20150118. The OWL binaries it bundles are GPLv3, which is one more reason
-never to redistribute it.
+never to redistribute it. (*Amended 2026-11-20:* the mirror redistributes
+it with the source; see "The mirror".)
+
+## The mirror (amended 2026-11-20)
+
+Upstream overwrites its one URL, so a cold build of any pin but the newest
+was refused. `aquatransport-observer.yml` now has a `mirror` job between
+`observe` and `publish`. It files each (version, SHA-256) it sees as a
+release of `Mavergreen/aquatransport-mirror`, tagged
+`<version>-<SHA-256[:12]>`, before `publish` records it, so Renovate never
+proposes a pin with no copy. Nothing there is ever deleted or replaced:
+a tag with other bytes fails the job for a person to look at. The pin's
+URL is derived from that tag, and the pinned SHA-256 stays the only check.
+
+The DMG bundles OWL, which is GPLv3, and upstream ships no license text or
+source offer with it. Each mirror release therefore also carries
+`AquaTransport-source-<commit>.tar.gz`, GitHub's tarball of
+`Wowfunhappy/AquaTransport` at the tip of `main` when the download was
+first seen; the repo vendors OWL with its COPYING, libev, OpenSSL and the
+build scripts. Upstream tags no builds and the binaries carry no stamp,
+so that commit is the best match, not a proof, and the release notes say
+so. If this does not hold up, we ask upstream for tagged builds and
+versioned downloads instead. (Owner, 2026-11-20.)
+
+`mirror` is the one place upstream's bytes sit beside a token that can
+write: a pins-bot App token minted for the mirror repo alone. That is a
+narrow, deliberate exception to the family's rule. The script never
+deletes or replaces anything there, the mirror's immutable releases and
+its tag ruleset forbid it, and every consumer checks what it fetches by
+SHA-256. The App's key, which could mint tokens for other repos, is seen
+only by the step that mints this one, and nothing from upstream ever runs:
+the job hashes the DMG and lists the tarball, and opens neither.
+`publish`, whose token can write this repo, never downloads the DMG.
+
+Four downloads were backfilled from build caches on 2026-11-20, each with
+`main`'s tip when the observer first saw it: 2026.10.09, both 2026.10.25
+downloads (upstream replaced its bytes on 2026-11-04 without a new
+version; the first is kept for completeness, since the plugin releases
+that pinned it fetch from upstream's URL and cannot use the mirror), and
+2026.11.17.
 
 ## Measurements
 
@@ -198,7 +246,8 @@ unknown: an unexplained one-off, not shown to be harmless.
   but a Vagrant box must stand alone. A consumer that wants a thin delta,
   such as `mavericks-vm`'s cache, can make one from the two disks.
 - **Mirroring the DMG**, so that old releases keep building. It is
-  redistribution, with a GPLv3 source offer to go with it.
+  redistribution, with a GPLv3 source offer to go with it. *Taken
+  2026-11-20,* with the source beside each copy: see "The mirror".
 - **Watching the TLSFix repository** instead of the download. Its version
   can lag or lead the uploaded DMG, and most of its commits do not change
   the download.
@@ -206,7 +255,8 @@ unknown: an unexplained one-off, not shown to be harmless.
 ## What would change this
 
 - **Versioned download URLs upstream.** A pin could name one, and an older
-  release would keep building its layer.
+  release would keep building its layer. With tagged builds too, the
+  mirror could retire, or at least name the exact source.
 - **A second item in the layer**, such as another Mavericks Forever
   recommendation or ca-certs once it ships. It joins this template, which
   might then want a name for the layer rather than for Aqua Transport.

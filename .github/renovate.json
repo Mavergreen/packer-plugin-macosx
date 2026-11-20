@@ -74,7 +74,7 @@
     },
     {
       "customType": "regex",
-      "description": "Aqua Transport (Mavericks Forever), the guest's outbound TLS. Its one download URL is overwritten in place, so no feed names a release: aquatransport-observer.yml watches the live download and records each version and digest on the aquatransport-observed branch, and this reads that branch. The version and the SHA-256 are captured in one match, so they move together; a bump that changes only the bytes arrives as a digest-only update.",
+      "description": "Aqua Transport (Mavericks Forever), the guest's outbound TLS. Its one download URL is overwritten in place, so no feed names a release: aquatransport-observer.yml watches the live download, files each new one as a release of Mavergreen/aquatransport-mirror, then records its version and digest on the aquatransport-observed branch, and this reads that branch. The pin's URL is derived from the version and digest, so it follows them to that mirror release. The version and the SHA-256 are captured in one match, so they move together; a bump that changes only the bytes arrives as a digest-only update.",
       "managerFilePatterns": ["/^templates/mavericks-aquatransport/aquatransport\\.pkr\\.hcl$/"],
       "matchStrings": [
         "aquatransport_version\\s*=\\s*\"(?<currentValue>[^\"]+)\"[\\s\\S]*?aquatransport_sha256\\s*=\\s*\"(?<currentDigest>[0-9a-f]{64})\""
