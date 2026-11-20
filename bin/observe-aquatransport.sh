@@ -6,10 +6,11 @@
 # the version out of the package's Distribution file and records the DMG's SHA-256. Renovate
 # reads the recorded JSON from the aquatransport-observed branch as a custom datasource.
 #
-#   observe-aquatransport.sh OUT.json
-#       Write {"releases":[{"version":"<v>","digest":"<sha256>"}]} for the current download.
+#   observe-aquatransport.sh OUT.json [DMG_OUT]
+#       Write {"releases":[{"version":"<v>","digest":"<sha256>"}]} for the current download, and
+#       with DMG_OUT the downloaded DMG itself, the bytes that were hashed, for the mirror job.
 #       A download is real only if it is at least 1 MiB, `7z l` lists AquaTransport.pkg and the
-#       version matches YYYY.MM.DD. Otherwise exit non-zero and write nothing.
+#       version matches YYYY.MM.DD. Otherwise exit non-zero and write neither file.
 #   observe-aquatransport.sh --merge EXISTING.json NEW.json OUT.json
 #       Write the union: EXISTING's releases, with NEW's version replaced by NEW's entry or
 #       added, sorted by version ascending. A missing or empty EXISTING means just NEW.
@@ -30,7 +31,7 @@ observe_fail() {
 }
 
 observe() {
-    out=$1
+    out=$1 dmg_out=${2:-}
     url=${AQUATRANSPORT_URL:-https://mavericksforever.com/downloads/AquaTransport.dmg}
     work=$(mktemp -d "${TMPDIR:-/tmp}/observe-aquatransport.XXXXXX") || exit 1
     trap 'rm -rf "$work"' EXIT
@@ -53,6 +54,9 @@ observe() {
     digest=$(sha256sum "$work/AquaTransport.dmg" | cut -d' ' -f1)
 
     printf '{"releases":[{"version":"%s","digest":"%s"}]}\n' "$version" "$digest" > "$work/out.json" || exit 1
+    if [ -n "$dmg_out" ]; then
+        mv "$work/AquaTransport.dmg" "$dmg_out" 2>/dev/null || cp "$work/AquaTransport.dmg" "$dmg_out" || exit 1
+    fi
     mv "$work/out.json" "$out" 2>/dev/null || cp "$work/out.json" "$out" || exit 1
 }
 
@@ -95,8 +99,8 @@ if [ -z "${OBSERVE_AQUATRANSPORT_LIB:-}" ]; then
     --merge)
         [ $# -eq 4 ] || observe_fail "usage: $0 --merge EXISTING.json NEW.json OUT.json"
         merge "$2" "$3" "$4" ;;
-    -*|"") observe_fail "usage: $0 OUT.json | --merge EXISTING.json NEW.json OUT.json" ;;
-    *) [ $# -eq 1 ] || observe_fail "usage: $0 OUT.json"
-       observe "$1" ;;
+    -*|"") observe_fail "usage: $0 OUT.json [DMG_OUT] | --merge EXISTING.json NEW.json OUT.json" ;;
+    *) [ $# -le 2 ] || observe_fail "usage: $0 OUT.json [DMG_OUT]"
+       observe "$1" "${2:-}" ;;
     esac
 fi

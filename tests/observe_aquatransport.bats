@@ -91,10 +91,35 @@ STUB
     [ ! -e "$BATS_TEST_TMPDIR/out.json" ]
 }
 
-@test "observe mode rejects extra arguments" {
-    run "$SCRIPT" "$BATS_TEST_TMPDIR/out.json" extra
+@test "observe mode rejects a third argument" {
+    run "$SCRIPT" "$BATS_TEST_TMPDIR/out.json" "$BATS_TEST_TMPDIR/out.dmg" extra
     [ "$status" -ne 0 ]
     [ ! -e "$BATS_TEST_TMPDIR/out.json" ]
+    [ ! -e "$BATS_TEST_TMPDIR/out.dmg" ]
+}
+
+@test "with DMG_OUT, a good download also writes the DMG, byte-identical to what was hashed" {
+    run "$SCRIPT" "$BATS_TEST_TMPDIR/out.json" "$BATS_TEST_TMPDIR/out.dmg"
+    [ "$status" -eq 0 ]
+    cmp "$STUB_BODY" "$BATS_TEST_TMPDIR/out.dmg"
+    grep -q "$(sha_of_body)" "$BATS_TEST_TMPDIR/out.json"
+}
+
+@test "with DMG_OUT, every bad download leaves neither file" {
+    for case in html short nopkg; do
+        rm -f "$BATS_TEST_TMPDIR/out.json" "$BATS_TEST_TMPDIR/out.dmg"
+        head -c 2097152 /dev/zero > "$STUB_BODY"
+        pkg=yes
+        case $case in
+        html) { echo '<html>'; head -c 2097152 /dev/zero | tr '\0' 'x'; } > "$STUB_BODY" ;;
+        short) printf '0123456789' > "$STUB_BODY" ;;
+        nopkg) pkg=no ;;
+        esac
+        STUB_DMG_PKG=$pkg run "$SCRIPT" "$BATS_TEST_TMPDIR/out.json" "$BATS_TEST_TMPDIR/out.dmg"
+        [ "$status" -ne 0 ]
+        [ ! -e "$BATS_TEST_TMPDIR/out.json" ]
+        [ ! -e "$BATS_TEST_TMPDIR/out.dmg" ]
+    done
 }
 
 @test "a 10-byte body writes nothing and fails" {
