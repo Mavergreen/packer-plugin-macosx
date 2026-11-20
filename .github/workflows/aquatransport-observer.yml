@@ -3,12 +3,18 @@ name: aquatransport-observer
 # https://mavericksforever.com/downloads/AquaTransport.dmg is overwritten in place: no versioned releases. This
 # records what it is, daily, for Renovate (a custom datasource reading aquatransport.json from the
 # aquatransport-observed branch) to propose bumps of templates/mavericks-aquatransport's pinned version and
-# SHA-256. Two jobs, so upstream's bytes are never beside a token that can write (the family's rule; see
-# mavergreen-swift's pins-bot.yml header):
-# - observe (contents: read) downloads the DMG and reads it with 7z -- read, never run -- and uploads only a small
-#   JSON.
-# - publish (contents: write) touches no upstream byte and runs only code checked out at github.sha, never anything from
-#   the artifact: it merges that JSON into the branch's aquatransport.json
+# SHA-256. Every version it sees is also kept, byte for byte, as a release of Mavergreen/aquatransport-mirror,
+# which the layer's pin fetches from, because upstream's URL serves only the newest. Three jobs:
+# - observe (contents: read) downloads the DMG and reads it with 7z -- read, never run -- and uploads the small
+#   JSON and, as a separate artifact, the DMG.
+# - mirror holds no GITHUB_TOKEN permission. It mints a mavergreen-pins-bot App token that can write to
+#   aquatransport-mirror and nothing else, and runs bin/mirror-aquatransport.sh, which hashes the DMG and uploads
+#   it, never opening it. This is the one place upstream's bytes sit beside a token that can write: a narrow,
+#   deliberate exception to the family's rule (mavergreen-swift's pins-bot.yml header), because the mirror can
+#   only add releases, and every consumer checks what it fetches by SHA-256.
+# - publish (contents: write) runs only once mirror has succeeded, so Renovate never sees a version it cannot
+#   fetch. It downloads only the JSON, touches no upstream byte, and runs only code checked out at github.sha:
+#   it merges that JSON into the branch's aquatransport.json
 #   (bin/observe-aquatransport.sh --merge keeps every version seen, each with its last-seen digest), and commits
 #   and pushes only if the file changed. The token is in the environment of that last step alone; the merge
 #   step has none. It never checks out or pushes main; the first run creates the branch as
@@ -39,8 +45,8 @@ jobs:
       - name: Observe the live download
         run: |
           set -eu
-          mkdir out
-          sh bin/observe-aquatransport.sh out/observed.json
+          mkdir out dmg
+          sh bin/observe-aquatransport.sh out/observed.json dmg/AquaTransport.dmg
 
       - uses: actions/upload-artifact@v7
         with:
@@ -48,8 +54,55 @@ jobs:
           path: out/
           if-no-files-found: error
 
-  publish:
+      - uses: actions/upload-artifact@v7
+        with:
+          name: observed-dmg
+          path: dmg/
+          if-no-files-found: error
+          retention-days: 7
+
+  mirror:
     needs: observe
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions: {}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: observed
+          path: observed
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: observed-dmg
+          path: dmg
+
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          path: src
+          persist-credentials: false
+          sparse-checkout: bin/mirror-aquatransport.sh
+
+      - name: A pins-bot App token, contents write on aquatransport-mirror alone
+        id: app
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.PINS_BOT_CLIENT_ID }}
+          private-key: ${{ secrets.PINS_BOT_PRIVATE_KEY }}
+          owner: Mavergreen
+          repositories: aquatransport-mirror
+          permission-contents: write
+
+      - name: Mirror the download
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        run: |
+          set -eu
+          sh src/bin/mirror-aquatransport.sh observed/observed.json dmg/AquaTransport.dmg
+
+  publish:
+    needs: mirror
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

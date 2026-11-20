@@ -216,13 +216,86 @@ exec(sys.argv[2])
 ' "$WORKFLOW" "$1"
 }
 
-@test "workflow: top-level permissions are empty, observe reads only, publish alone writes" {
+@test "workflow: permissions are {} at the top, observe reads, mirror has none, publish alone writes; publish needs mirror needs observe" {
     run wf '
 assert w["permissions"] == {}, w["permissions"]
-assert w["jobs"]["observe"]["permissions"] == {"contents": "read"}
-assert w["jobs"]["publish"]["permissions"] == {"contents": "write"}
-assert w["jobs"]["publish"]["needs"] == "observe"
-assert [j for j, v in w["jobs"].items() if "write" in v.get("permissions", {}).values()] == ["publish"]
+j = w["jobs"]
+assert j["observe"]["permissions"] == {"contents": "read"}
+assert j["mirror"]["permissions"] == {}, j["mirror"].get("permissions")
+assert j["publish"]["permissions"] == {"contents": "write"}
+assert j["mirror"]["needs"] == "observe", j["mirror"].get("needs")
+assert j["publish"]["needs"] == "mirror", j["publish"].get("needs")
+assert [n for n, v in j.items() if "write" in v.get("permissions", {}).values()] == ["publish"]
+print("ok")'
+    [ "$status" -eq 0 ]
+    [ "$output" = ok ]
+}
+
+@test "workflow: mirror mints the pins-bot App token for aquatransport-mirror alone, contents write" {
+    run wf '
+steps = w["jobs"]["mirror"]["steps"]
+app = [s for s in steps if s.get("uses", "").startswith("actions/create-github-app-token@")]
+assert len(app) == 1 and app[0]["uses"] == "actions/create-github-app-token@v3", app
+assert app[0]["with"] == {
+    "client-id": "${{ vars.PINS_BOT_CLIENT_ID }}",
+    "private-key": "${{ secrets.PINS_BOT_PRIVATE_KEY }}",
+    "owner": "Mavergreen",
+    "repositories": "aquatransport-mirror",
+    "permission-contents": "write",
+}, app[0]["with"]
+assert app[0]["id"] == "app"
+print("ok")'
+    [ "$status" -eq 0 ]
+    [ "$output" = ok ]
+}
+
+@test "workflow: the App token is only in the mirror step, as GH_TOKEN, and nothing else holds a secret" {
+    run wf '
+steps = w["jobs"]["mirror"]["steps"]
+holders = [s for s in steps if "steps.app.outputs.token" in str(s)]
+assert len(holders) == 1, holders
+h = holders[0]
+assert h["env"]["GH_TOKEN"] == "${{ steps.app.outputs.token }}", h
+assert "mirror-aquatransport.sh" in h["run"], h
+assert steps.index(h) == len(steps) - 1, "the token step is last"
+for s in w["jobs"]["observe"]["steps"]:
+    assert "secrets." not in str(s) and "token" not in str(s.get("env", {})).lower(), s
+print("ok")'
+    [ "$status" -eq 0 ]
+    [ "$output" = ok ]
+}
+
+@test "workflow: mirror checks out only github.sha, without credentials, sparse to the mirror script, and runs nothing from the artifacts" {
+    run wf '
+import re
+steps = w["jobs"]["mirror"]["steps"]
+co = [s for s in steps if s.get("uses", "").startswith("actions/checkout@")]
+assert len(co) == 1, co
+c = co[0]["with"]
+assert c["ref"] == "${{ github.sha }}" and c["persist-credentials"] is False, c
+assert c["sparse-checkout"] == "bin/mirror-aquatransport.sh", c
+run = [s for s in steps if "run" in s]
+assert len(run) == 1, run
+r = run[0]["run"]
+assert "sh src/bin/mirror-aquatransport.sh observed/observed.json dmg/AquaTransport.dmg" in r, r
+for line in r.splitlines():
+    assert not re.search(r"(^\s*|[;&|]\s*)(sh|bash|python3?|\.)\s+\S*(observed|dmg)/|(^|\s)\./(observed|dmg)/", line), line
+assert not re.search(r"\b(7z|hdiutil|open|mount|chmod)\b", r), r
+print("ok")'
+    [ "$status" -eq 0 ]
+    [ "$output" = ok ]
+}
+
+@test "workflow: the DMG travels only to mirror: observe uploads it apart from the JSON, and publish never downloads it" {
+    run wf '
+o = w["jobs"]["observe"]["steps"]
+assert any("observe-aquatransport.sh out/observed.json dmg/AquaTransport.dmg" in s.get("run", "") for s in o), o
+ups = {s["with"]["name"]: s["with"]["path"] for s in o if s.get("uses", "").startswith("actions/upload-artifact@")}
+assert ups == {"observed": "out/", "observed-dmg": "dmg/"}, ups
+def downloads(job):
+    return {s["with"]["name"]: s["with"]["path"] for s in w["jobs"][job]["steps"] if s.get("uses", "").startswith("actions/download-artifact@")}
+assert downloads("mirror") == {"observed": "observed", "observed-dmg": "dmg"}, downloads("mirror")
+assert downloads("publish") == {"observed": "observed"}, downloads("publish")
 print("ok")'
     [ "$status" -eq 0 ]
     [ "$output" = ok ]
@@ -270,9 +343,10 @@ print("ok")'
     [ "$output" = ok ]
 }
 
-@test "workflow: both jobs have a timeout, and the download's curl has a --max-time" {
+@test "workflow: every job has a timeout, and the download's curl has a --max-time" {
     run wf '
-for j in ("observe", "publish"):
+assert sorted(w["jobs"]) == ["mirror", "observe", "publish"], sorted(w["jobs"])
+for j in ("observe", "mirror", "publish"):
     t = w["jobs"][j].get("timeout-minutes")
     assert isinstance(t, int) and 0 < t <= 30, (j, t)
 print("ok")'
