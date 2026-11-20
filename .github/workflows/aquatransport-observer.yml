@@ -9,9 +9,12 @@ name: aquatransport-observer
 #   JSON and, as a separate artifact, the DMG.
 # - mirror holds no GITHUB_TOKEN permission. It mints a mavergreen-pins-bot App token that can write to
 #   aquatransport-mirror and nothing else, and runs bin/mirror-aquatransport.sh, which hashes the DMG and uploads
-#   it, never opening it. This is the one place upstream's bytes sit beside a token that can write: a narrow,
-#   deliberate exception to the family's rule (mavergreen-swift's pins-bot.yml header), because the mirror can
-#   only add releases, and every consumer checks what it fetches by SHA-256.
+#   it, never opening it. The DMG bundles GPLv3 OWL, so a new release also gets the source of upstream's main tip
+#   as GitHub's tarball, only listed to check it holds deps/owl/COPYING, never unpacked. This is the one place
+#   upstream's bytes sit beside a token that can write: a narrow, deliberate exception to the family's rule
+#   (mavergreen-swift's pins-bot.yml header). The token reaches the mirror alone; there the script never deletes
+#   or replaces, and the repo's immutable releases and tag ruleset forbid it; every consumer checks by SHA-256.
+#   The App's key, which could mint wider tokens, is seen only by the minting step, and nothing upstream runs.
 # - publish (contents: write) runs only once mirror has succeeded, so Renovate never sees a version it cannot
 #   fetch. It downloads only the JSON, touches no upstream byte, and runs only code checked out at github.sha:
 #   it merges that JSON into the branch's aquatransport.json
