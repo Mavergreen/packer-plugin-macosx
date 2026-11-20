@@ -3,9 +3,10 @@
 Date: 2026-11-19
 
 Status: accepted (the design, approved by the owner 2026-10-12; its
-local half has run since 2026-10-13). The CI half, `gate.yml`, lands with
-this decision and is proven on GitHub's runners before it is required
-("Measured on GitHub", below, is filled in then).
+local half has run since 2026-10-13). The CI half, `gate.yml`, landed with
+this decision and was proven on GitHub's runners on 2026-11-20 ("Measured
+on GitHub", below). `gate` becomes a required check once a real Renovate
+PR has run it.
 
 ## Context
 
@@ -173,5 +174,24 @@ the packer cache, and CI uploads only the evidence dir, kept 30 days.
 
 ### Measured on GitHub
 
-Not yet: the first CI runs fill in wall time, each step's seconds, the
-runner's peak disk use, and a deliberately broken bump's verdict.
+On `ubuntu-latest` with KVM, through release.yml's `gate_only`, before
+this ADR's PR merged:
+
+- 2026-11-20, 10.9, run 44690297252 on the merged commits: Passed, every
+  step, 10 restarts. The candidate job took 49 min 27 s: plugin 22 s, base
+  1,903, layer 478, varstore 3, boot 32, host-uuid 25, restarts 33 to 46,
+  shutdown 26.
+- 2026-11-19, run 44601148068, an earlier build of the same commits: the
+  same steps passed (base 2,195 s, layer 516, job 54 min 55 s). But the
+  verdict read "no steps.tsv": `download-artifact` given a pattern that
+  matches one artifact extracts it flat into `path`, not into
+  `path/<name>`. The final job now downloads each artifact by name into
+  its own directory.
+- 2026-11-19, the broken bump: run 44601275729 had VirtualSMC set to
+  `Enabled=false`. Its candidate never answered SSH and packer gave up
+  after an hour. The control, built from the last release, passed.
+  `gate` went red with `Regression: build-base -- packer failed after QEMU
+  started: Timeout waiting for SSH.`
+- Disk: preflight saw 89 GiB free in `/mnt/gate`. The gate does not
+  record the runner's peak use, so it is not measured here. The local
+  cold peak is 44 to 49 GiB (see the 60 GiB floor in `bin/gate.sh`).
