@@ -22,6 +22,8 @@ import (
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/zclconf/go-cty/cty"
+	"github.com/zclconf/go-cty/cty/function"
+	"github.com/zclconf/go-cty/cty/function/stdlib"
 
 	macosx "github.com/Mavergreen/packer-plugin-macosx"
 	"github.com/Mavergreen/packer-plugin-macosx/internal/payload"
@@ -554,8 +556,9 @@ func mustRead(t *testing.T, elem ...string) []byte {
 // else, because Renovate rewrites it. Its regex manager captures
 // aquatransport_version, then aquatransport_sha256 further on, in one
 // match: so one locals block, those three names and no others, the
-// version before the SHA-256, and each a plain string. The URL is the
-// one download there is (it is overwritten in place, never versioned).
+// version before the SHA-256, the version and SHA-256 plain strings, and
+// the URL derived from both: upstream overwrites its one URL in place, so
+// the pin fetches the copy Mavergreen/aquatransport-mirror kept of it.
 func TestThePinIsWellFormed(t *testing.T) {
 	src, body := parseHCL(t, "templates", osName, "aquatransport.pkr.hcl")
 	if len(body.Attributes) != 0 || len(body.Blocks) != 1 || body.Blocks[0].Type != "locals" {
@@ -585,8 +588,24 @@ func TestThePinIsWellFormed(t *testing.T) {
 		}
 		return v.AsString()
 	}
-	if got := value("aquatransport_url"); got != "https://mavericksforever.com/downloads/AquaTransport.dmg" {
-		t.Errorf("aquatransport_url = %q", got)
+	// The URL is derived from the other two, so Renovate moves it with them:
+	// each (version, digest) is its own release of the mirror (bin/mirror-aquatransport.sh).
+	const urlSrc = `"https://github.com/Mavergreen/aquatransport-mirror/releases/download/${local.aquatransport_version}-${substr(local.aquatransport_sha256, 0, 12)}/AquaTransport.dmg"`
+	if got := string(attrs["aquatransport_url"].Expr.Range().SliceBytes(src)); got != urlSrc {
+		t.Errorf("aquatransport_url = %s, want %s", got, urlSrc)
+	}
+	ctx := &hcl.EvalContext{
+		Variables: map[string]cty.Value{"local": cty.ObjectVal(map[string]cty.Value{
+			"aquatransport_version": cty.StringVal(value("aquatransport_version")),
+			"aquatransport_sha256":  cty.StringVal(value("aquatransport_sha256")),
+		})},
+		Functions: map[string]function.Function{"substr": stdlib.SubstrFunc},
+	}
+	url, diags := attrs["aquatransport_url"].Expr.Value(ctx)
+	wantURL := "https://github.com/Mavergreen/aquatransport-mirror/releases/download/" +
+		value("aquatransport_version") + "-" + value("aquatransport_sha256")[:12] + "/AquaTransport.dmg"
+	if diags.HasErrors() || !url.Type().Equals(cty.String) || url.AsString() != wantURL {
+		t.Errorf("aquatransport_url evaluates to %#v (%v), want %q", url, diags, wantURL)
 	}
 	if got := value("aquatransport_sha256"); !regexp.MustCompile(`^[0-9a-f]{64}$`).MatchString(got) {
 		t.Errorf("aquatransport_sha256 = %q, want 64 lowercase hex characters", got)

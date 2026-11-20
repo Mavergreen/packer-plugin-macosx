@@ -75,10 +75,14 @@ box's `/usr/bin/curl` itself: the boot gate (`bin/gate.sh`) and
 mavericks-vm's self-test show it reaching github.com, GitHub's release
 downloads and downloads.claude.ai.
 
-Aqua Transport is downloaded at build time from its one URL, which each new
-version replaces, and the build accepts only the version its template pins.
-So once Aqua Transport moves on, an older plugin release can no longer build
-the layer: the build fails, naming both checksums. Use the latest release.
+Aqua Transport is downloaded at build time, and the build accepts only the
+version its template pins. Upstream's one URL is replaced by each new version,
+so the template fetches the pinned version from
+[Mavergreen/aquatransport-mirror](https://github.com/Mavergreen/aquatransport-mirror),
+which keeps every version seen since 2026.10.09. Plugin releases from before
+the mirror fetch from upstream, so they can build the layer only while their
+version is still the newest; once it moves on, the build fails, naming both
+checksums.
 
 ### Snow Leopard
 
