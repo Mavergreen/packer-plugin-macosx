@@ -4,8 +4,8 @@
 # .github/renovate.json's Aqua Transport pin. The download's URL is
 # overwritten in place, so Renovate reads the observer's branch
 # (aquatransport-observer.yml) and moves the version and SHA-256 together.
-# A drifted pattern or datasource silently stops the pin from moving, and a
-# lost automerge: false lands an unbooted Security.framework patch unseen.
+# A drifted pattern or datasource silently stops the pin from moving. A bump
+# automerges only behind the required `gate` check, which boots the layer.
 
 setup() {
     REPO="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
@@ -69,9 +69,9 @@ assert re.fullmatch(r"[0-9a-f]{64}", g["currentDigest"]), g
     [ "$status" -eq 0 ]
 }
 
-@test "Aqua Transport does not automerge, and says why" {
-    [ "$(pyget rule.automerge)" = "False" ]
-    [ -n "$(pyget rule.description)" ]
+@test "Aqua Transport automerges, and says the gate is what lets it" {
+    [ "$(pyget rule.automerge)" = "True" ]
+    [[ "$(pyget rule.description)" == *"gate"*"required"* ]] || false
 }
 
 @test "the manager says why it exists" {
