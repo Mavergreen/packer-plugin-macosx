@@ -96,9 +96,9 @@
       "automerge": false
     },
     {
-      "description": "Aqua Transport patches Security.framework on the guest. gate boots the Aqua Transport layer on a bump, but it is not yet a required check, so a green PR does not prove it ran. This lands by hand until it is.",
+      "description": "Aqua Transport patches Security.framework on the guest, so a bump that downloads and hashes correctly can still leave a guest that cannot make an outbound TLS connection. gate boots the Aqua Transport layer on every bump and checks it, and gate is a required check on main (2026-11-22), so a green PR has booted it. It automerges on that, as the shared preset would; the rule stays to say why that is safe.",
       "matchDepNames": ["Wowfunhappy/AquaTransport"],
-      "automerge": false
+      "automerge": true
     }
   ]
 }

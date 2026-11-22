@@ -5,8 +5,9 @@ Date: 2026-11-19
 Status: accepted (the design, approved by the owner 2026-10-12; its
 local half has run since 2026-10-13). The CI half, `gate.yml`, landed with
 this decision and was proven on GitHub's runners on 2026-11-20 ("Measured
-on GitHub", below). `gate` becomes a required check once a real Renovate
-PR has run it.
+on GitHub", below). A real Renovate PR (#10, VirtualSMC) ran it on
+2026-11-22, and `gate` became a required check on main the same day; Aqua
+Transport bumps automerge behind it from then on.
 
 ## Context
 
@@ -134,7 +135,8 @@ the packer cache, and CI uploads only the evidence dir, kept 30 days.
 
 - **10.6 in CI**: CI has no 10.6 disc. A boot-stack change gets a local
   `bin/gate.sh --release 10.6 --installer <disc>` before it merges (the
-  owner's ruling R59), so those PRs do not automerge.
+  owner's ruling R59), so those PRs do not automerge. Aqua Transport has
+  no 10.6 half (ADR 0016), so its bumps do.
 - **HVF and NVMM**: accepted, untested.
 - **PRs that are not Renovate's**: whoever lands one runs the gate locally
   first; so does a push to main that touches an ingredient path, since it

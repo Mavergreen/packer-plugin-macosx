@@ -264,6 +264,8 @@ unknown: an unexplained one-off, not shown to be harmless.
   `verify.sh` would then fail the build on a tap receipt or kext, rather
   than ship it.
 - **A CI job that builds, boots and verifies the layer** when its pin
-  moves. That is what would let the Renovate bump automerge.
+  moves. That is what would let the Renovate bump automerge. Done:
+  `gate.yml` (ADR 0017) is a required check on main since 2026-11-22, and
+  the bump automerges behind it.
 - **10.6.** It needs another way to its `curl`'s OpenSSL 0.9.8, which is
   tracked in ca-certs' and openssl-35's backlogs.
