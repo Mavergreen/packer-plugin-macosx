@@ -1,0 +1,105 @@
+name: pins-bot
+
+# Renovate moves a URL in assets/pins/sources.tsv, or a components/*/version, and nothing else. It cannot
+# compute the sha256 beside a URL, and it does not know that the goldens and the ingredient digest repeat
+# every pin, so its PR arrives red: `tests` and `gate` refuse the stale checksum, `go` the stale goldens.
+# This finishes the bump on Renovate's own branch, in mavergreen-swift's two-job shape (bin/pins-bot.sh
+# says what each command does):
+# - pins (contents: read) runs `fill`, which downloads each moved boot-stack source and only hashes it,
+#   then `apply` and `sync` in its own checkout to learn whether anything would change. Upstream's bytes
+#   are read there, never run, and never beside a token that can write. A failed download, or a moved row
+#   outside the boot stack, fails the job, and nothing is written or pushed.
+# - push touches no upstream byte: it runs `apply` with the checked values and `sync`, commits, and pushes
+#   to the branch with a token of the Mavergreen pins-bot GitHub App (org variable PINS_BOT_CLIENT_ID, org
+#   secret PINS_BOT_PRIVATE_KEY; minted for this repository with contents: write alone). A push made with
+#   GITHUB_TOKEN starts no workflow; the App's push starts ci.yml, gate.yml and conventions.yml on the new
+#   head like any push, so the PR's checks are the real ones. The job's own GITHUB_TOKEN reads only.
+#   Its checkout keeps the App's credentials (actions/checkout's default) because its `git push`
+#   authenticates with them.
+# renovate.json's gitIgnoredAuthors keeps this bot's commit from marking the branch as edited by someone
+# else, so Renovate still rebases it. Merging stays as renovate.json says: the boot stack by hand until 10.6
+# is gated in CI.
+
+on:
+  push:
+    branches: ['renovate/**']
+
+permissions: {}
+
+# A newer push to the branch cancels a run still working on an older one. The run the bot's own push
+# starts gets a group of its own, and its jobs are skipped: that push is the finished pins, so there is
+# nothing to do, and it must not cancel the run that made it.
+concurrency:
+  group: pins-bot-${{ github.ref }}${{ github.actor == 'mavergreen-pins-bot[bot]' && format('-{0}', github.run_id) || '' }}
+  cancel-in-progress: true
+
+jobs:
+  pins:
+    if: github.actor != 'mavergreen-pins-bot[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      pins: ${{ steps.pin.outputs.pins }}
+      needed: ${{ steps.pin.outputs.needed }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false   # this job pushes nothing; its token stays out of .git/config
+
+      - name: Install mavericks-shipyard
+        uses: Mavergreen/shipyard/.github/actions/install@v1
+
+      - name: The moved sources' checksums, and whether the branch needs anything written
+        id: pin
+        run: |
+          set -eu
+          pins="$(bin/pins-bot.sh fill origin/main | tr '\n' ' ')"
+          # shellcheck disable=SC2086  # name=sha256 words; apply refuses anything else
+          if [ -n "$pins" ]; then bin/pins-bot.sh apply $pins; fi
+          bin/pins-bot.sh sync origin/main
+          needed=false
+          [ -z "$(git status --porcelain)" ] || needed=true
+          git diff --stat
+          echo "pins=$pins" >> "$GITHUB_OUTPUT"
+          echo "needed=$needed" >> "$GITHUB_OUTPUT"
+
+  push:
+    needs: pins
+    if: needs.pins.outputs.needed == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: A pins-bot App token, contents write on this repository alone
+        id: app
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.PINS_BOT_CLIENT_ID }}
+          private-key: ${{ secrets.PINS_BOT_PRIVATE_KEY }}
+          permission-contents: write
+
+      - uses: actions/checkout@v7
+        with:
+          token: ${{ steps.app.outputs.token }}
+          fetch-depth: 0
+
+      - name: Commit the pins to the branch, as the App, which starts the PR's checks on its new head
+        env:
+          PINS: ${{ needs.pins.outputs.pins }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          set -eu
+          # shellcheck disable=SC2086  # name=sha256 words; apply refuses anything else
+          if [ -n "$PINS" ]; then bin/pins-bot.sh apply $PINS; fi
+          bin/pins-bot.sh sync origin/main
+          [ -n "$(git status --porcelain)" ] || { echo "the branch already holds them"; exit 0; }
+          git add assets/pins/sources.tsv internal/pins internal/inputs/testdata/golden
+          if git status --porcelain --untracked-files=no | grep -qv '^M '; then
+            git status --short; echo "pins-bot wrote outside what it owns"; exit 1
+          fi
+          git -c user.name='mavergreen-pins-bot[bot]' -c user.email='342268518+mavergreen-pins-bot[bot]@users.noreply.github.com' \
+            commit -q -m 'pins: fill what the bump moved' \
+            -m 'Written by .github/workflows/pins-bot.yml: the checksums of the moved boot-stack sources (its pins job downloaded and hashed them), and the goldens and ingredient digest that repeat every pin.'
+          git push origin "HEAD:refs/heads/$BRANCH"
