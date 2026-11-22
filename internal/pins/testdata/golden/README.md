@@ -14,4 +14,7 @@ Both change whenever a pin does -- a row of `assets/pins/sources.tsv`, a
 `components/*/version`, or `assets/firmware/config.plist` -- and never
 otherwise. Update `ingredients.txt`, `ingredients-digest.txt` and the
 constant in `TestTheIngredientDigestIsPinned` in the same commit as the
-pin, and say which pin moved in its message.
+pin, and say which pin moved in its message. `bin/pins-bot.sh sync
+<base-ref>` does that for every pin moved since `<base-ref>`, and the
+listing goldens in `internal/inputs/testdata/golden` with it; on a
+Renovate branch `.github/workflows/pins-bot.yml` runs it for you.

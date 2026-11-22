@@ -126,22 +126,25 @@ untouched by any of this: they were never an argument about publishing.
 The shared Renovate policy is "if it builds and passes, it ships", and asks
 a repo to state a reason wherever it restricts that. Ours:
 
-- **A bad bump here builds fine and is wrong.** A green suite here means
-  the Go tests and the repository's tooling pass — it does not mean the
-  guest boots. Nothing in CI boots a guest; nothing can, without nested
-  virtualization and Apple's media.
+- **A bad bump here builds fine and is wrong.** A green suite means the
+  Go tests and the repository's tooling pass, not that a guest boots.
+  `gate` boots a 10.9 guest built from the bump (`docs/decisions/0017`),
+  but 10.6 is still gated by hand: CI has no 10.6 disc yet.
 - **The checksum arrives stale.** Renovate can move a URL in
-  `assets/pins/sources.tsv`; it cannot compute the `sha256` beside it. The
-  bump PR is therefore internally inconsistent by construction, and
-  `bin/verify-changed-sources.sh` is what turns that from a half-hour
-  failure in someone's build into a red PR.
+  `assets/pins/sources.tsv`; it cannot compute the `sha256` beside it, and
+  it does not know the goldens and the ingredient digest repeat every pin.
+  `.github/workflows/pins-bot.yml` fills all of them on Renovate's branch
+  (`bin/pins-bot.sh`); `bin/verify-changed-sources.sh` still re-verifies
+  every changed row, so a bump the bot could not finish stays red rather
+  than failing half an hour into someone's build.
 - **It changes what every future guest boots**, per the section above — a
   human should see that happen.
 - **Aqua Transport is the same shape.** It patches `Security.framework`
   on the guest, so a bump that downloads and hashes correctly can still
-  leave a guest that cannot make an outbound TLS connection, and nothing in
-  CI boots one. Its digest does arrive with the bump, because the observer
-  records it, but a correct digest is not a working guest. It lands by hand.
+  leave a guest that cannot make an outbound TLS connection. Its digest
+  arrives with the bump, because the observer records it, and `gate` boots
+  the Aqua Transport layer, but `gate` is not yet a required check. It
+  lands by hand until it is.
 
 ## Conformance deviations
 

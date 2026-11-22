@@ -1,6 +1,7 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["github>Mavergreen/shipyard"],
+  "gitIgnoredAuthors": ["342268518+mavergreen-pins-bot[bot]@users.noreply.github.com"],
   "customDatasources": {
     "aquatransport": {
       "defaultRegistryUrlTemplate": "https://raw.githubusercontent.com/Mavergreen/packer-plugin-macosx/aquatransport-observed/aquatransport.json",
@@ -19,7 +20,7 @@
     },
     {
       "customType": "regex",
-      "description": "OpenCore, built from pinned source (Tier 0). The version appears once in the URL, so no autoReplaceStringTemplate is needed. The sha256 in the next column is NOT something Renovate can compute -- .github/workflows/ci.yml re-verifies every changed assets/pins/sources.tsv line, so the bump PR stays red until the checksum is pinned with it. See INGREDIENTS.md.",
+      "description": "OpenCore, built from pinned source (Tier 0). The version appears once in the URL, so no autoReplaceStringTemplate is needed. The sha256 in the next column is NOT something Renovate can compute: .github/workflows/pins-bot.yml fills it on the branch, with the goldens and ingredient digest that repeat it, and .github/workflows/ci.yml re-verifies every changed assets/pins/sources.tsv line, so a bump the bot could not finish stays red. See INGREDIENTS.md.",
       "managerFilePatterns": ["/^assets/pins/sources\\.tsv$/"],
       "matchStrings": [
         "https://github\\.com/acidanthera/OpenCorePkg/archive/refs/tags/(?<currentValue>[^/\\s]+)\\.tar\\.gz"
@@ -86,7 +87,7 @@
   ],
   "packageRules": [
     {
-      "description": "A boot-stack bump changes what every future guest boots, and every guest and box already built stops being what the repository would build, with nothing going red. It also arrives with a sha256 nobody has recomputed. So these land by hand, with a read of the upstream release notes and a re-pinned checksum. This is the 'builds fine and is wrong' exception the shared preset asks for a reason for.",
+      "description": "A boot-stack bump changes what every future guest boots, and every guest and box already built stops being what the repository would build, with nothing going red. pins-bot.yml fills its checksum and gate boots a 10.9 guest on it, but 10.6 is still gated by hand (CI has no 10.6 disc yet). So these land by hand, with a read of the upstream release notes and a local 10.6 gate, until 10.6 is gated in CI. This is the 'builds fine and is wrong' exception the shared preset asks for a reason for.",
       "matchDepNames": [
         "acidanthera/OpenCorePkg",
         "acidanthera/Lilu",
@@ -95,7 +96,7 @@
       "automerge": false
     },
     {
-      "description": "Aqua Transport patches Security.framework on the guest. Nothing in CI boots a guest yet, so a green bump proves only that the pin parses. This lands by hand, after a person reads what changed and boots a guest on it, until CI can.",
+      "description": "Aqua Transport patches Security.framework on the guest. gate boots the Aqua Transport layer on a bump, but it is not yet a required check, so a green PR does not prove it ran. This lands by hand until it is.",
       "matchDepNames": ["Wowfunhappy/AquaTransport"],
       "automerge": false
     }
