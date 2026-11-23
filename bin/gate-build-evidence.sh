@@ -28,14 +28,15 @@
 #               overrides.plist) and firstboot-state.txt (what the first boot's state directory
 #               holds). Never the image, nor any part of it. The image must not be in use: stop the
 #               guest first. The daemon is stopped by the pid it wrote.
-#   env:  GATE_BUILD_EVIDENCE_TOOLS (the commands disk needs: qemu-img qemu-storage-daemon 7z python3)
+#   env:  GATE_BUILD_EVIDENCE_TOOLS (the commands disk needs: qemu-img qemu-storage-daemon fusermount3 7z python3)
 #         GATE_BUILD_EVIDENCE_QMP_TIMEOUT (seconds QMP waits for one answer, default 20)
 set -euo pipefail
 
 # standalone: this file also ships inside each template zip, where nothing else of this repository is
 warn() { printf 'gate-build-evidence: warning: %s\n' "$*" >&2; }
 
-TOOLS=${GATE_BUILD_EVIDENCE_TOOLS:-qemu-img qemu-storage-daemon 7z python3}
+# fusermount3: the export mounts through it when, as in the gate, it runs unprivileged
+TOOLS=${GATE_BUILD_EVIDENCE_TOOLS:-qemu-img qemu-storage-daemon fusermount3 7z python3}
 # a log can be big (a first boot that spins fills it): the end is what shows how it stopped
 KEEP_BYTES=$((8 * 1024 * 1024))
 

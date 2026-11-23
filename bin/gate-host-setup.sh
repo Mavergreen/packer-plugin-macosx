@@ -27,7 +27,10 @@ export GUEST_MACOSX_LOG_PREFIX
 # mavericks-vm's list: nasm, iasl and uuid.h for OpenCore and OVMF, dmg2img and mkfs.hfsplus for the
 # media, busybox for the plugin's microVM, zstd and rsync, which the gate's builds use as
 # mavericks-vm's do.
-pkgs=(qemu-system-x86 qemu-utils zstd rsync unzip nasm acpica-tools uuid-dev dmg2img hfsprogs busybox-static)
+# and, the gate's own, fuse3: the fusermount3 that bin/gate-build-evidence.sh disk mounts a failed
+# build's disk through, unprivileged. GitHub's Ubuntu image lacks it, and qemu-utils' libfuse3 only
+# suggests it, so --no-install-recommends never brought it: gate run 45188397763 lost the guest's logs.
+pkgs=(qemu-system-x86 qemu-utils zstd rsync unzip nasm acpica-tools uuid-dev dmg2img hfsprogs busybox-static fuse3)
 
 case $#:${1:-} in
     1:--packages) printf '%s\n' "${pkgs[@]}"; exit 0 ;;

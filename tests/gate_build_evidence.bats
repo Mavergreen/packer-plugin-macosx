@@ -553,6 +553,23 @@ STUB
     [[ "$output" == *"warning"*"could not export"*"Failed to take the lock"* ]] || { echo "$output"; false; }
 }
 
+@test "disk: no fusermount3 is a warning naming it, before any export" {
+    # qemu-storage-daemon's FUSE export, run unprivileged as the gate is,
+    # mounts through the setuid fusermount3, which GitHub's Ubuntu image
+    # does not have: without it the export fails, and the warning must say
+    # what is missing rather than that the export failed.
+    disk_stubs
+    rm "$STUBS/fusermount3"
+    mkdir "$BATS_TEST_TMPDIR/sys"
+    for f in /usr/bin/* /bin/*; do
+        case ${f##*/} in fusermount*) continue ;; esac
+        [ -e "$BATS_TEST_TMPDIR/sys/${f##*/}" ] || [ -L "$BATS_TEST_TMPDIR/sys/${f##*/}" ] || ln -s "$f" "$BATS_TEST_TMPDIR/sys/${f##*/}"
+    done
+    PATH="$STUBS:$BATS_TEST_TMPDIR/sys" run -0 "$SCRIPT" disk "$BATS_TEST_TMPDIR/disk.qcow2" "$OUT"
+    [[ "$output" == *"warning"*"fusermount3 not found"* ]] || { echo "$output"; false; }
+    [ "$(grep -c '^qemu-storage-daemon' "$STUB_LOG")" -eq 0 ]
+}
+
 @test "disk: an image that is not there is a warning, not a failure" {
     disk_stubs
     run -0 "$SCRIPT" disk "$BATS_TEST_TMPDIR/nope.qcow2" "$OUT"

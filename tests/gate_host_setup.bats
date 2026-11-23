@@ -57,7 +57,7 @@ STUB
     [ "$(sed -n 2p "$S")" = "# platform: host-agnostic -- GitHub's Linux runners only (apt, sudo)" ]
 }
 
-@test "--packages prints mavericks-vm's install-tools list, one a line" {
+@test "--packages prints mavericks-vm's install-tools list and fuse3, one a line" {
     run "$S" --packages
     [ "$status" -eq 0 ]
     [ "$output" = "qemu-system-x86
@@ -70,7 +70,8 @@ acpica-tools
 uuid-dev
 dmg2img
 hfsprogs
-busybox-static" ]
+busybox-static
+fuse3" ]
 }
 
 @test "anything else on the command line is a usage error" {
