@@ -37,6 +37,15 @@ type Getter struct {
 	// bytes for this long: a captive portal or a stuck connection can hold
 	// a socket open without ever failing it outright. 0 means 2 minutes.
 	StallTimeout time.Duration
+
+	// PieceSize and Parallel shape a ranged download: a server that
+	// answers a ranged GET with 206 gets the file asked for in pieces of
+	// PieceSize bytes, Parallel at a time. One stream from archive.org
+	// moves 10.6's install disc in about 13 minutes; eight 64 MiB pieces
+	// at a time move it in about one. PieceSize 0 (or negative) means
+	// 64 MiB; Parallel 0 (or negative) means 8.
+	PieceSize int64
+	Parallel  int
 }
 
 type Item struct {
@@ -323,7 +332,10 @@ func (g *Getter) retryPolicy() retryPolicy { return newRetryPolicy(g.Retries, g.
 // written, verified and renamed into place on success. It removes its own
 // temp file on every failure (network error, stall, or checksum mismatch)
 // -- nothing is kept "for inspection": a unique name is never reused, so
-// there is nothing a next attempt could confuse for its own.
+// there is nothing a next attempt could confuse for its own. A file
+// larger than one piece, from a server that honours Range, is written
+// piece by piece instead (rangedRest) and hashed once it is all in; it
+// is verified and renamed exactly as a streamed one is.
 func (g *Getter) attempt(ctx context.Context, it Item, cd *cacheDir, name, dest string) (retry bool, err error) {
 	f, err := inCacheDir(cd, func() (*os.File, error) { return os.CreateTemp(cd.path, "."+name+".*.part") })
 	if err != nil {
@@ -346,30 +358,74 @@ func (g *Getter) attempt(ctx context.Context, it Item, cd *cacheDir, name, dest 
 		return classifyAttemptErr(ctx, watch, stall, it.URL, err)
 	}
 
-	req, err := http.NewRequestWithContext(attemptCtx, http.MethodGet, it.URL, nil)
-	if err != nil {
-		return false, err
-	}
-	for k, vs := range it.Header {
-		for _, v := range vs {
-			req.Header.Add(k, v)
-		}
-	}
-	c := g.Client
-	if c == nil {
-		c = http.DefaultClient
-	}
-	resp, err := c.Do(req)
+	// Asking for the first piece only costs nothing when the server
+	// ignores Range (it answers 200 with everything, streamed below as
+	// ever) and tells us, when it does not, whether the rest can come in
+	// parallel pieces.
+	piece := g.pieceSize()
+	resp, err := g.send(attemptCtx, it, fmt.Sprintf("bytes=0-%d", piece-1))
 	if err != nil {
 		return classify(err)
 	}
 	defer resp.Body.Close()
+
+	// A server that honours Range has no first byte to give of an empty
+	// file, and says so with a 416 for "bytes */0". That is an empty
+	// body, verified like any other.
+	if resp.StatusCode == http.StatusRequestedRangeNotSatisfiable && resp.Header.Get("Content-Range") == "bytes */0" {
+		if err := seal(it, f, tmp, dest, hex.EncodeToString(sha256.New().Sum(nil))); err != nil {
+			return false, err
+		}
+		ok = true
+		return false, nil
+	}
 	if resp.StatusCode/100 != 2 {
 		return resp.StatusCode >= 500, fmt.Errorf("%s: HTTP %s", it.URL, resp.Status)
 	}
 
+	if resp.StatusCode == http.StatusPartialContent {
+		total, err := firstPieceTotal(it.URL, resp, piece)
+		switch {
+		case err != nil:
+			// A 206 that does not say plainly which bytes it holds
+			// cannot be assembled into anything; the whole file,
+			// asked for without Range, still can.
+			g.logf("%s: %v; fetching it whole instead", it.Name, err)
+			resp.Body.Close()
+			if resp, err = g.send(attemptCtx, it, ""); err != nil {
+				return classify(err)
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode != http.StatusOK {
+				return resp.StatusCode >= 500, fmt.Errorf("%s: HTTP %s", it.URL, resp.Status)
+			}
+		case total > piece:
+			first := struct {
+				io.Reader
+				io.Closer
+			}{watch.Reader(resp.Body), resp.Body}
+			if err := g.rangedRest(ctx, it, f, total, resp.Header.Get("ETag"), first, classify); err != nil {
+				// A source that changed under us may hold still for a
+				// fresh attempt from the first byte, and one whose later
+				// piece ignored Range may be reached at one that honours
+				// it, or streamed whole.
+				fresh := errors.Is(err, errUpstreamChanged) || errors.Is(err, errRangeIgnored)
+				return fresh && ctx.Err() == nil, err
+			}
+			got, err := sha256File(ctx, tmp)
+			if err != nil {
+				return false, err
+			}
+			if err := seal(it, f, tmp, dest, got); err != nil {
+				return false, err
+			}
+			ok = true
+			return false, nil
+		}
+	}
+
 	var src io.Reader = watch.Reader(resp.Body)
-	if resp.ContentLength > 64<<20 {
+	if resp.ContentLength > progressThreshold {
 		src = &progress{r: src, total: resp.ContentLength, name: it.Name, log: g.logf, next: time.Now().Add(10 * time.Second)}
 	}
 	h := sha256.New()
@@ -377,26 +433,66 @@ func (g *Getter) attempt(ctx context.Context, it Item, cd *cacheDir, name, dest 
 	if err != nil {
 		return classify(err)
 	}
-	if err := f.Sync(); err != nil {
-		return false, err
-	}
-	// CreateTemp made it 0600; a cache file is 0644 (see Get). This is
-	// this attempt's own fresh file, never a link to anyone else's.
-	if err := f.Chmod(0o644); err != nil {
-		return false, err
-	}
-	if err := f.Close(); err != nil {
-		return false, err
-	}
-	got := hex.EncodeToString(h.Sum(nil))
-	if got != it.SHA256 {
-		return false, &DownloadMismatchError{msg: fmt.Sprintf("checksum mismatch for %s: want %s, got %s; nothing was renamed into place", it.URL, it.SHA256, got)}
-	}
-	if err := os.Rename(tmp, dest); err != nil {
+	if err := seal(it, f, tmp, dest, hex.EncodeToString(h.Sum(nil))); err != nil {
 		return false, err
 	}
 	ok = true
 	return false, nil
+}
+
+// seal finishes a download whose bytes are all in f (at tmp) and hash to
+// got: it syncs and closes f, makes it 0644, and renames it to dest only
+// if got is the pinned checksum. On failure the caller still owns tmp.
+func seal(it Item, f *os.File, tmp, dest, got string) error {
+	if err := f.Sync(); err != nil {
+		return err
+	}
+	// CreateTemp made it 0600; a cache file is 0644 (see Get). This is
+	// this attempt's own fresh file, never a link to anyone else's.
+	if err := f.Chmod(0o644); err != nil {
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	if got != it.SHA256 {
+		return &DownloadMismatchError{msg: fmt.Sprintf("checksum mismatch for %s: want %s, got %s; nothing was renamed into place", it.URL, it.SHA256, got)}
+	}
+	return os.Rename(tmp, dest)
+}
+
+// progressThreshold is the size past which a download logs its progress.
+const progressThreshold = 64 << 20
+
+// send GETs it.URL under ctx with it.Header, and with rng as its Range
+// header unless rng is empty.
+func (g *Getter) send(ctx context.Context, it Item, rng string) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, it.URL, nil)
+	if err != nil {
+		return nil, err
+	}
+	addHeaders(req, it.Header)
+	if rng != "" {
+		req.Header.Set("Range", rng)
+	}
+	return g.client().Do(req)
+}
+
+// client is g's Client, defaulted.
+func (g *Getter) client() *http.Client {
+	if g.Client == nil {
+		return http.DefaultClient
+	}
+	return g.Client
+}
+
+// addHeaders adds every value of h to req's headers.
+func addHeaders(req *http.Request, h http.Header) {
+	for k, vs := range h {
+		for _, v := range vs {
+			req.Header.Add(k, v)
+		}
+	}
 }
 
 // classifyErr reports whether a network-level failure is worth retrying.
