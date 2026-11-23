@@ -87,6 +87,22 @@ make_repo() {
     run bash -c "cd '$dir' && ./bin/no-apple-bytes.sh"
     [ "$status" -ne 0 ]
     [[ "$output" == *"docs-appendix"* ]] || false
+    [[ "$output" == *"that large; if it is genuinely ours, raise GUEST_MACOSX_MAX_TRACKED_BYTES with a reason"* ]] || false
+}
+
+@test "install media registered as a path, not a URL, is caught, saying it must be fetched at runtime" {
+    for name in apple-InstallESD snowleopard-disc-10A432; do
+        dir="$(make_repo)"
+        [ -n "$dir" ]
+        printf '%s\tmedia/disc.dmg\tTOFU\n' "$name" >> "$dir/assets/pins/sources.tsv"
+        git -C "$dir" add -A
+        git -C "$dir" -c commit.gpgsign=false commit -qm planted
+        run bash -c "cd '$dir' && ./bin/no-apple-bytes.sh"
+        [ "$status" -ne 0 ]
+        [[ "$output" == *"assets/pins/sources.tsv:$name"* ]] || false
+        [[ "$output" == *"points at media/disc.dmg, not at a URL -- install media must be fetched at runtime, never carried"* ]] || false
+        rm -rf "$dir"
+    done
 }
 
 @test "Apple's media is registered as a URL, never as a path in the tree" {
@@ -387,6 +403,22 @@ make_repo() {
     [[ "$output" == *"apple-bogus"* ]] || false
     run bash -c "cd '$dir' && ./bin/no-apple-bytes.sh"
     [ "$status" -eq 0 ]
+}
+
+@test "the registry check holds the 10.6 disc row to a URL too: a repo path is flagged, its https URL passes" {
+    dir="$(make_repo)"
+    [ -n "$dir" ]
+    printf 'snowleopard-disc-10A432\thttps://example.invalid/disc.dmg\tdeadbeef\n' >> "$dir/assets/pins/sources.tsv"
+    git -C "$dir" add -A
+    git -C "$dir" -c commit.gpgsign=false commit -qm "a disc URL"
+    run bash -c "cd '$dir' && ./bin/no-apple-bytes.sh"
+    [ "$status" -eq 0 ] || { echo "$output"; false; }
+    sed -i 's|https://example.invalid/disc.dmg|assets/disc.dmg|' "$dir/assets/pins/sources.tsv"
+    git -C "$dir" add -A
+    git -C "$dir" -c commit.gpgsign=false commit -qm "a disc path"
+    run bash -c "cd '$dir' && ./bin/no-apple-bytes.sh"
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"snowleopard-disc-10A432"* ]] || false
 }
 
 # --- what a release archive carries ------------------------------------------

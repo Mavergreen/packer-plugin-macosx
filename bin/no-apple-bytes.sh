@@ -312,9 +312,12 @@ nfiles=$(tr -cd '\0' < "$GUEST_MACOSX_NAB_LIST" | wc -c | tr -d ' ')
            "never a pass"
 
 status=0
+# flag <what> <why>...: the why's words are joined by spaces, as arch_flag joins them, so a reason
+# wrapped across two arguments is printed whole rather than cut at its first
 flag() {
     printf 'APPLE-DERIVED  %s\n' "$1" >&2
-    printf '               %s\n' "$2" >&2
+    shift
+    printf '               %s\n' "$*" >&2
     status=1
 }
 
@@ -406,21 +409,22 @@ while IFS= read -r -d '' f; do
 done < "$GUEST_MACOSX_NAB_LIST"
 
 # 4. The registry's own statement. assets/pins/sources.tsv names Apple's
-#    InstallESD as a URL fetched at runtime. If it ever named a path
-#    inside the repository instead, the rule would be broken by the
+#    InstallESD (apple-*) and CI's copy of 10.6's install disc
+#    (snowleopard-disc-*) as URLs fetched at runtime. If either ever named
+#    a path inside the repository instead, the rule would be broken by the
 #    registry rather than by a file.
 #
 #    Read via `blob_show`, not off disk -- the registry AT THE REF being
 #    checked is what matters, not whatever the working tree happens to
 #    hold right now.
 registry_content=$(blob_show assets/pins/sources.tsv) || registry_content=""
-if printf '%s\n' "$registry_content" | grep -q '^apple-'; then
+if printf '%s\n' "$registry_content" | grep -Eq '^(apple-|snowleopard-disc-)'; then
     while IFS=$'\t' read -r name url _; do
-        case $name in apple-*) : ;; *) continue ;; esac
+        case $name in apple-*|snowleopard-disc-*) : ;; *) continue ;; esac
         case $url in
             http://*|https://*) : ;;
             *) flag "assets/pins/sources.tsv:$name" \
-                    "points at $url, not at a URL -- Apple's media must be" \
+                    "points at $url, not at a URL -- install media must be" \
                     "fetched at runtime, never carried" ;;
         esac
     done <<EOF
