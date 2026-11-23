@@ -87,3 +87,28 @@ make_repo() {
     [ "$status" -eq 0 ] || { echo "$output"; false; }
     [[ "$output" == *"nothing to fetch"* ]] || false
 }
+
+# A planted repo whose fetch_source is a stub that leaves a marker, so a
+# test can prove the script skipped a row without fetching it. The row's
+# checksum is wrong and its URL does not exist: any fetch would fail too.
+skipped_without_fetch() {
+    dir="$(make_repo PLACEHOLDER "first")"
+    base=$(git -C "$dir" rev-parse HEAD)
+    printf '%s\n' "fetch_source() { : > '$dir/fetched'; return 1; }" >> "$dir/lib/vendor.sh"
+    printf '%s\n' "$1	file://$dir/does-not-exist.dmg	$(printf '0%.0s' $(seq 64))" \
+        > "$dir/assets/pins/sources.tsv"
+    git -C "$dir" add -A
+    git -C "$dir" -c commit.gpgsign=false commit -qm "a moved row"
+    run bash -c "cd '$dir' && ./bin/verify-changed-sources.sh '$base'"
+    [ "$status" -eq 0 ] || { echo "$output"; false; }
+    [[ "$output" == *"$1: skipped"* ]] || false
+    [ ! -e "$dir/fetched" ]
+}
+
+@test "verify-changed-sources skips the 10.6 disc row without fetching it" {
+    skipped_without_fetch snowleopard-disc-10A432
+}
+
+@test "verify-changed-sources still skips an apple- row without fetching it" {
+    skipped_without_fetch apple-installesd-10.9.5
+}

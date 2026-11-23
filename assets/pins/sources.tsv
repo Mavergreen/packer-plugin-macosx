@@ -130,3 +130,11 @@ apple-combo-10.6.8-dist	https://swdist.apple.com/content/downloads/49/43/041-981
 # Security Update 2013-004 for 10.6.8, the client product (041-91751); the
 # catalogue's other one (041-91749) adds the server package.
 apple-secupd-2013-004-snowleopard	http://swcdn.apple.com/content/downloads/59/44/041-91751-A_6E8UPFATJA/pzuccll6v4vpgcdddnpjn9jq5mhkcvt6j6/SecUpd2013-004.pkg	9c96256de017278a894e04920e85956c55dd331931d6a194d931ac2ab97add60
+
+# CI's copy of Mac OS X 10.6's install disc: the 10A432 Upgrade DVD, the
+# second 10A432 section of snowleopard-packages.sha256. The CI boot gate
+# fetches it with cmd/fetch-pinned, from archive.org, and pins it in this
+# repository like shipyard's 10.9 SDK from phracker/MacOSX-SDKs (the
+# owner's ruling, 2026-11-23). The plugin itself never downloads a disc
+# for anyone: it still takes the user's own (docs/decisions/0014).
+snowleopard-disc-10A432	https://archive.org/download/macosx-snowleopard-archive/Mac%20OS%20X%20Install%20DVD%2010.6.0.dmg	4f1ae6edd30eabbd8becc1227414d45098741d6b477a6d44cff3d1b244c4a346

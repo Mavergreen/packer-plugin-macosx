@@ -100,6 +100,17 @@ for name in $changed; do
                 "internal/fetch/esd.go)"
             continue ;;
     esac
+    case $name in
+        snowleopard-disc-*)
+            # Install media is verified where it is used, not here: it is
+            # 5.6 GB, which one curl stream cannot move inside the gate's
+            # fetch timeout (a timeout would read as pins-unfilled). The CI
+            # gate fetches it with cmd/fetch-pinned (parallel ranged pieces,
+            # pinned sha256), and internal/disc.Verify checks its content.
+            log "$name: skipped (install media; verified by cmd/fetch-pinned" \
+                "at the CI gate and by internal/disc.Verify on its content)"
+            continue ;;
+    esac
     if [ "$sha" = "TOFU" ]; then
         warn "$name: still TOFU -- fetch it once and commit the checksum"
         status=1
