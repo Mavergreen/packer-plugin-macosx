@@ -765,10 +765,17 @@ signals_on() {
 4 0 4 3-02:01:05 d
 5 0 5 13-21:18:49 e
 6 0 6 - f"
+    # No row is this shell's, so now is $SECONDS when snapshot reads it,
+    # which a second boundary may have moved past 1000000 since: born is
+    # judged against the now snapshot used ($clock), and that against
+    # $SECONDS on each side of the call.
     SECONDS=1000000
     snapshot
+    after=$SECONDS
+    [ "$clock" -ge 1000000 ] && [ "$clock" -le "$after" ] || { echo "clock $clock, after $after"; false; }
     born=$(awk '{ printf "%s ", $4 }' <<< "$table")
-    [ "$born" = "999995 999935 992735 733535 -199929 1000000 " ] || { echo "$born"; false; }
+    want=$(for e in 5 65 7265 266465 1199929 0; do printf '%s ' $((clock - e)); done)
+    [ "$born" = "$want" ] || { echo "born $born, want $want"; false; }
 }
 
 @test "a group that looks empty in one listing is looked at again: ps's listing is not one instant" {
