@@ -211,10 +211,44 @@ jobs:
       - name: go test ./templates/... (TestValidate, not skipped)
         run: go test -race ./templates/...
 
-  # The go job cross-builds for darwin; this one RUNS the tests there.
-  # flock semantics, sun_path's 104-byte limit and signal delivery are
-  # host behaviour a cross-build cannot check.
+  # Whether go-macos runs (bin/go-macos-scope.sh): decided on Linux, so a
+  # change no Go test reads (docs, release notes, renovate.json) spends no
+  # macOS runner. When it says skip, go-macos is skipped, and a skipped job
+  # passes the required check of its name.
+  go-macos-scope:
+    runs-on: ubuntu-latest
+    outputs:
+      decision: ${{ steps.scope.outputs.decision }}
+    steps:
+      # fetch-depth: 0 so there is a base to diff against
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Does this change need a Mac (bin/go-macos-scope.sh)
+        id: scope
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          line=$(bin/go-macos-scope.sh "$BASE" "$HEAD_SHA")
+          echo "decision=${line%% *}" >> "$GITHUB_OUTPUT"
+          echo "$line"
+
+  # The go job cross-builds for darwin; this one RUNS the tests whose
+  # behaviour is the host's, on the one host family where it differs
+  # (INGREDIENTS.md's macos-runner deviation says why, and its exit):
+  # internal/lock (flock), internal/proc (process groups, signal
+  # delivery), datasource/qmpdir (sun_path's 104 bytes, /tmp under
+  # /private), and internal/payload, whose tests run the guest's scripts
+  # with the host's sh: bash 3.2 and BSD tools here, as on a 10.9 guest.
+  # The rest is portable Go that the go job runs on Linux.
   go-macos:
+    needs: go-macos-scope
+    # Skipped only on the scope job's own "skip": a scope job that failed
+    # would otherwise skip this too, and pass its required check unrun.
+    if: ${{ !cancelled() && !(needs.go-macos-scope.result == 'success' && needs.go-macos-scope.outputs.decision == 'skip') }}
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v7
@@ -224,4 +258,4 @@ jobs:
           go-version-file: go.mod
 
       - name: Test
-        run: go test -race ./...
+        run: go test -race ./internal/lock/... ./internal/proc/... ./datasource/qmpdir/... ./internal/payload/...

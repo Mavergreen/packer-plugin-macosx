@@ -617,7 +617,8 @@ print('ok')
 
 @test "INGREDIENTS.md exists and every declared deviation has a reason" {
     [ -f "$REPO/INGREDIENTS.md" ]
-    # The family's own grammar: "- <check>[:<glob>]: <reason>". An entry
+    # The family's own grammar: "- <check>[:<glob>]: <reason>", where
+    # macos-runner's glob is "<workflow file>:<job>". An entry
     # with no reason fails deviations.sh; reproduce enough of the parse to
     # catch that here, where shipyard is not checked out.
     run bash -c "sed -n '/^## Conformance deviations/,/^## /p' '$REPO/INGREDIENTS.md' | grep -c '^- '"
@@ -625,7 +626,7 @@ print('ok')
     run bash -c "
         sed -n '/^## Conformance deviations/,/^## /p' '$REPO/INGREDIENTS.md' \
         | grep '^- ' \
-        | grep -cvE '^- [a-z][a-z0-9_-]*(:[^ :]+)?: +\\S'"
+        | grep -cvE '^- [a-z][a-z0-9_-]*(:[^ :]+)?(:[^ :]+)?: +\\S'"
     [ "$output" = "0" ]
 }
 
@@ -699,7 +700,7 @@ print('ok')
     run bash -c "
         sed -n '/^## Conformance deviations/,/^## /p' '$REPO/INGREDIENTS.md' \
         | grep '^- ' \
-        | grep -cvE '^- [a-z][a-z0-9_-]*(:[^ :]+)?: +\\S'"
+        | grep -cvE '^- [a-z][a-z0-9_-]*(:[^ :]+)?(:[^ :]+)?: +\\S'"
     [ "$output" = "0" ]
 }
 
