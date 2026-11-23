@@ -403,6 +403,10 @@ if [ "$1" = --serve ]; then
     while :; do sleep 0.2; done
 fi
 printf 'qemu-storage-daemon %s\n' "$*" >> "$STUB_LOG"
+if [ -n "${STUB_QSD_FAIL:-}" ]; then
+    printf '%s\n' "$STUB_QSD_FAIL" >&2
+    exit 1
+fi
 for a; do
     case $a in
     --pidfile) next=pid ;;
@@ -538,6 +542,15 @@ STUB
         run -0 "$SCRIPT" disk "$BATS_TEST_TMPDIR/disk.qcow2" "$OUT"
     [[ "$output" == *"warning"*"guest-macosx-no-such-7z"* ]] || false
     [ "$(grep -c '^qemu-' "$STUB_LOG")" -eq 0 ]
+}
+
+@test "disk: an export qemu-storage-daemon refuses is a warning that carries its reason" {
+    # Its reason is the only evidence of why a failed build's guest logs
+    # are missing: gate run 45188397763 warned with none.
+    disk_stubs
+    STUB_QSD_FAIL="qemu-storage-daemon: --export type=fuse: Failed to take the lock" \
+        run -0 "$SCRIPT" disk "$BATS_TEST_TMPDIR/disk.qcow2" "$OUT"
+    [[ "$output" == *"warning"*"could not export"*"Failed to take the lock"* ]] || { echo "$output"; false; }
 }
 
 @test "disk: an image that is not there is a warning, not a failure" {

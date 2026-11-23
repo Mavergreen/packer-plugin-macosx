@@ -407,8 +407,8 @@ EOF
         --blockdev "driver=qcow2,node-name=q,file=f,read-only=on" \
         --blockdev "driver=raw,node-name=p,file=q,offset=$off,size=$size,read-only=on" \
         --export "type=fuse,id=e,node-name=p,mountpoint=$(qopt "$disk_mnt"),writable=off" \
-        --pidfile "$disk_mnt.pid" --daemonize >/dev/null 2>&1 \
-        || { warn "disk: qemu-storage-daemon could not export the partition of $img"; return 0; }
+        --pidfile "$disk_mnt.pid" --daemonize >/dev/null 2> "$disk_tmp/qsd.err" \
+        || { warn "disk: qemu-storage-daemon could not export the partition of $img: $(tr '\n' ' ' < "$disk_tmp/qsd.err")"; return 0; }
     mkdir -p "$out"
     x=$disk_tmp/x
     for n in system.log install.log kernel.log guest-macosx-rc.server.log guest-macosx-firstboot.log; do
