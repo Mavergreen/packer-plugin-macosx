@@ -327,9 +327,12 @@ PY
 
 disk_tmp=
 disk_mnt=
+extract_pid=
 
 disk_cleanup() {
     local p
+    # a read still running (a TERM to this script alone) goes first: never 7z on a mount that is gone
+    if [ -n "$extract_pid" ]; then kill "$extract_pid" 2>/dev/null || true; fi
     if [ -n "$disk_mnt" ]; then
         { fusermount3 -u "$disk_mnt" || fusermount -u "$disk_mnt"; } 2>/dev/null || true
         p=$(cat "$disk_mnt.pid" 2>/dev/null || true)
@@ -368,7 +371,11 @@ PY
 # extract <pattern> <dir>: the files 7z finds under the volume's top directory, flattened into <dir>
 extract() {
     mkdir -p "$2"
-    7z e -y -aou "-o$2" "$disk_mnt" "$1" >/dev/null 2>&1 || true
+    # in the background, waited for, so that disk_cleanup can stop it
+    7z e -y -aou "-o$2" "$disk_mnt" "$1" >/dev/null 2>&1 &
+    extract_pid=$!
+    wait "$extract_pid" || true
+    extract_pid=
 }
 
 # keep_end <file>: at most KEEP_BYTES of it, the end

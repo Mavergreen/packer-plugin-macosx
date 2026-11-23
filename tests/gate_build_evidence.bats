@@ -427,7 +427,12 @@ STUB
 printf '7z %s\n' "$*" >> "$STUB_LOG"
 cmd=$1
 for a; do case $a in -o*) out=${a#-o} ;; esac; last=$a; done
-[ -z "${STUB_7Z_SLEEP:-}" ] || sleep "$STUB_7Z_SLEEP"
+# a real 7z leaves no child behind when it is ended, so neither does this one
+if [ -n "${STUB_7Z_SLEEP:-}" ]; then
+    sleep "$STUB_7Z_SLEEP" &
+    trap 'kill $! 2>/dev/null; exit 143' TERM
+    wait $!
+fi
 case $cmd:$last in
 e:*private/var/log/system.log) echo "Oct 12 10:00:00 host kernel[0]: the install's own line" > "$out/system.log"
     echo "0083;0;Safari;" > "$out/system.log:com.apple.quarantine" ;;
@@ -515,6 +520,13 @@ STUB
     done
     [ -z "$(ps -eo comm= | grep -x 'qemu-storage-da')" ]
     [ -z "$(ls -A "$TMPDIR")" ]
+    # and the read it was in: a TERM to the script alone (timeout signals its whole group; another
+    # caller may not) must not leave 7z running against a mount that is gone
+    for _ in $(seq 50); do
+        [ -z "$(ps -eo args= | grep -F "$STUBS/7z" | grep -v grep)" ] && break
+        sleep 0.1
+    done
+    [ -z "$(ps -eo args= | grep -F "$STUBS/7z" | grep -v grep)" ] || { echo "7z left running"; false; }
 }
 
 # spec: QEMU's option syntax: a comma in a value is written as two; one comma ends the value and starts
