@@ -13,7 +13,7 @@
 # version and SHA-256 plain strings (TestThePinIsWellFormed).
 
 locals {
-  aquatransport_version = "2026.11.17"
+  aquatransport_version = "2026.11.21"
   aquatransport_url     = "https://github.com/Mavergreen/aquatransport-mirror/releases/download/${local.aquatransport_version}-${substr(local.aquatransport_sha256, 0, 12)}/AquaTransport.dmg"
-  aquatransport_sha256  = "933d5d34d3026b945f7c7df0485eca8abee16cb3022a463b90d9498705bb5568"
+  aquatransport_sha256  = "9e6624a30d3913f5427df302317f49a1f52a7a675b1a3a0d417e319299b709a7"
 }
