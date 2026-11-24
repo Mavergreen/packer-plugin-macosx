@@ -1,27 +1,28 @@
 #!/usr/bin/env bash
 # platform: host-agnostic -- tested on Linux with KVM only
-# What .github/workflows/gate.yml runs around bin/gate.sh, so the workflow holds no logic of its own
-# (decision 0017: CI runs the local command; it does not reimplement it in YAML).
+# What .github/workflows/gate.yml and gate-release.yml (its legs, one call per release) run around
+# bin/gate.sh, so the workflows hold no logic of their own (decision 0017: CI runs the local
+# command; it does not reimplement it in YAML).
 #
 #   bin/gate-ci.sh run --release R --checkout DIR --work-dir DIR --evidence-dir DIR --media-dir DIR
 #                      --setup OUTCOME
 #       One gate run on this runner: DIR/bin/gate.sh --release R, with the given work and evidence
-#       dirs. R is a release lib/common.sh knows (GUEST_MACOSX_RELEASES). For 10.6 this script
-#       first fetches CI's pinned copy of the install disc (snowleopard-disc-10A432) into the media
-#       dir with `go run ./cmd/fetch-pinned`, and gives its path to gate.sh as --installer. A media
-#       dir that is, or is inside, the work or evidence dir is a usage error for any release (exit
-#       2, nothing run): the evidence dir is uploaded, and gate.sh refuses one in its work dir.
-#       10.9 takes the media dir and leaves it unused: its gate.sh fetches its own InstallESD. The
+#       dirs. R is a release lib/common.sh knows (GUEST_MACOSX_RELEASES). For 10.6 this script first
+#       fetches CI's pinned copy of the install disc (snowleopard-disc-10A432) into the media dir
+#       with `go run ./cmd/fetch-pinned`, and gives its path to gate.sh as --installer. A media dir
+#       that is, or is inside, the work or evidence dir is a usage error for any release (exit 2,
+#       nothing run): the evidence dir is uploaded, and gate.sh refuses one in its work dir. 10.9
+#       takes the media dir and leaves it unused: its gate.sh fetches its own InstallESD. The
 #       fetcher is always this checkout's, run from this checkout's root, even when DIR is a control
 #       ref's older checkout: that ref may have no fetcher, or pin another disc, and the control
-#       must boot the disc the candidate booted. Writes exit=<gate.sh's exit> to $GITHUB_OUTPUT and itself exits 0: the
-#       next job, not this one, decides (a failed job in a called workflow would fail a release
-#       whose retry passed). OUTCOME is the host-setup step's (steps.host.outcome); a DIR with no
-#       bin/gate.sh (a ref from before the gate, or no ref at all), or else an OUTCOME but success,
-#       or else a 10.6 media dir that could not be made or a disc that could not be fetched (named
-#       by the fetcher's last fetch-pinned: line), is exit=3 with a whole steps.tsv (and
-#       release.txt) whose preflight is infra saying why, so the verdict names it rather than "no
-#       steps.tsv". Seam: GUEST_MACOSX_GATE_FETCH_PINNED (a script run in place of the fetcher,
+#       must boot the disc the candidate booted. Writes exit=<gate.sh's exit> to $GITHUB_OUTPUT and
+#       itself exits 0: the next job, not this one, decides (a failed job in a called workflow would
+#       fail a release whose retry passed). OUTCOME is the host-setup step's (steps.host.outcome); a
+#       DIR with no bin/gate.sh (a ref from before the gate, or no ref at all), or else an OUTCOME
+#       but success, or else a 10.6 media dir that could not be made or a disc that could not be
+#       fetched (named by the fetcher's last fetch-pinned: line), is exit=3 with a whole steps.tsv
+#       (and release.txt) whose preflight is infra saying why, so the verdict names it rather than
+#       "no steps.tsv". Seam: GUEST_MACOSX_GATE_FETCH_PINNED (a script run in place of the fetcher,
 #       with the same arguments, from the same directory).
 #
 #   bin/gate-ci.sh control-ref --event EVENT --given REF --pr-base SHA
@@ -29,27 +30,37 @@
 #       (workflow_call) the newest v0.* tag before HEAD; for a dispatch the merge base with
 #       origin/main. None found is empty output and a warning: the control then says it had no ref.
 #
-#   bin/gate-ci.sh verdict --decision D --reason R --scope-job RESULT
-#                          [--candidate DIR --candidate-job RESULT --candidate-exit N
-#                           --retry DIR --retry-job RESULT --retry-exit N --control DIR]
-#       The required check's verdict as Markdown on stdout, its first line the verdict; exit 0 to
-#       pass, 1 to fail, 2 on usage. D is the scope job's decision (gated, not-gated,
-#       pins-unfilled; empty when the scope job failed). When gated, the candidate is the retry's
-#       evidence if the retry ran, else the candidate's; with no steps.tsv there it is "CI itself
-#       failed"; else bin/gate-summary.sh <candidate> <control> decides by its exit (0 is a
-#       Passed: line), always given the control dir, so the local-only "Failed:" line never
-#       appears in CI. A RESULT is a job's needs.<job>.result; an empty N is "none".
+#   bin/gate-ci.sh scope-releases < <bin/gate-scope.sh's output>
+#       The releases a decision runs, as the scope job's outputs on stdout:
+#       releases=<a JSON array>, the legs' matrix, and release_list=<the same, space-separated>,
+#       the verdict's --releases. A gated decision's second line names them (`releases <r>...`,
+#       each a release lib/common.sh knows, once); not-gated and pins-unfilled are one line and run
+#       none (an empty release_list), yet their releases are every one lib/common.sh knows: the
+#       matrix is never empty, as an empty one might fail the legs job, and with it every change
+#       that is not gated, before its `if` could skip it. Anything else, or any argument, is
+#       exit 2 with nothing on stdout.
 #
-#   bin/gate-ci.sh verdict --decision D --reason R --scope-job RESULT --releases "R ..." --artifacts DIR
-#       The same verdict over every release a gated change gates, each decided as above from the
-#       artifacts DIR/gate-<release>-<leg> (leg: candidate, candidate-retry, control), each that
-#       leg's evidence plus a `job` file (its RESULT) and an `exit` file (its N, bare or as exit=N).
-#       A leg with no artifact is a job that never ran (RESULT skipped, N none); a release with no
-#       artifact at all fails, naming it, as does an artifact whose release.txt names another
-#       release. The first line is "Passed: <release>, ..." when every release passed, else the
-#       first failing release's own first line prefixed "<release>: "; under it, a "## <release>"
-#       section each. Every release must be one lib/common.sh knows, each once (else exit 2); the
-#       one-release flags are refused beside these. Not gated and pins unfilled need no releases.
+#   bin/gate-ci.sh verdict --decision D --reason R --scope-job RESULT [--releases "R ..." --artifacts DIR]
+#       The required check's verdict as Markdown on stdout, its first line the verdict; exit 0 to
+#       pass, 1 to fail, 2 on usage. D is the scope job's decision (gated, not-gated, pins-unfilled;
+#       empty when the scope job failed); only gated needs the releases and the artifacts. Each
+#       release is decided from the artifacts DIR/gate-<release>-<leg> (leg: candidate,
+#       candidate-retry, control), each that leg's evidence plus a `job` file (its job's result:
+#       success, failure, cancelled, skipped), an `exit` file (gate-ci.sh run's exit, bare or as
+#       exit=N; empty is "none") and an `attempt` file (the run attempt it ran in). A leg with no
+#       artifact is a job that never ran (job skipped, exit none), and so is a retry or control
+#       whose attempt is older than the candidate's, or missing beside the candidate's: an artifact
+#       outlives its attempt, and a re-run that skipped the leg left the last one's. A retry with no
+#       candidate artifact beside it, or with an attempt beside a candidate with none, fails as
+#       wiring, whatever it says. The candidate is the retry's evidence if the retry ran, else the
+#       candidate's; with no steps.tsv there it is "CI itself failed"; else bin/gate-summary.sh
+#       <candidate> <control> decides by its exit (0 is a Passed: line), always given a control
+#       argument (empty for a control that never ran), so the local-only "Failed:" line never
+#       appears in CI. A release with no artifact at all fails, naming it, as does an artifact whose
+#       release.txt names another release. The first line is "Passed: <release>, ..." when every
+#       release passed, else the first failing release's own first line prefixed "<release>: ";
+#       under it, a "## <release>" section each. Every release must be one lib/common.sh knows, each
+#       once (else exit 2).
 set -euo pipefail
 
 GUEST_MACOSX_REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -60,12 +71,11 @@ export GUEST_MACOSX_LOG_PREFIX
 . "$GUEST_MACOSX_REPO_ROOT/lib/common.sh"
 
 usage_die() { printf '%s: %s\n' "$GUEST_MACOSX_LOG_PREFIX" "$*" >&2; exit 2; }
-usage() { usage_die "usage: bin/gate-ci.sh run|control-ref|verdict ... (see its header)"; }
+usage() { usage_die "usage: bin/gate-ci.sh run|control-ref|scope-releases|verdict ... (see its header)"; }
 
 opt_release='' opt_media_dir='' opt_checkout='' opt_work_dir='' opt_evidence_dir='' opt_setup=''
 opt_event='' opt_given='' opt_pr_base=''
-opt_decision='' opt_reason='' opt_scope_job='' opt_candidate='' opt_candidate_job='' opt_candidate_exit=''
-opt_retry='' opt_retry_job='' opt_retry_exit='' opt_control='' opt_releases='' opt_artifacts=''
+opt_decision='' opt_reason='' opt_scope_job='' opt_releases='' opt_artifacts=''
 given=" "
 
 # opts <names> -- <args>: set opt_<name> for each --<name> VALUE among <names>; any other argument
@@ -90,13 +100,6 @@ opts() {
             --decision) opt_decision=$2 ;;
             --reason) opt_reason=$2 ;;
             --scope-job) opt_scope_job=$2 ;;
-            --candidate) opt_candidate=$2 ;;
-            --candidate-job) opt_candidate_job=$2 ;;
-            --candidate-exit) opt_candidate_exit=$2 ;;
-            --retry) opt_retry=$2 ;;
-            --retry-job) opt_retry_job=$2 ;;
-            --retry-exit) opt_retry_exit=$2 ;;
-            --control) opt_control=$2 ;;
             --releases) opt_releases=$2 ;;
             --artifacts) opt_artifacts=$2 ;;
         esac
@@ -299,9 +302,39 @@ leg_file() {
 
 # verdict_release <release>: verdict_one for one release's artifacts in the artifacts dir
 verdict_release() {
-    local r=$1 base=$opt_artifacts/gate-$1 l got any=false
+    local r=$1 base=$opt_artifacts/gate-$1 l got any=false cand_attempt stale=" "
+    # A retry or control always runs after its candidate, in the candidate's attempt. One from an
+    # earlier attempt is what "Re-run all jobs" left behind when this attempt skipped that leg, as
+    # artifacts belong to the run, so it is read as a leg that never ran: else its old evidence
+    # would decide this attempt's verdict, failing a candidate that passed or passing one that
+    # failed. Missing beside a candidate's attempt, it was written before legs wrote one.
+    cand_attempt=$(leg_file "$base-candidate" attempt '' '')
+    # A retry runs only after its candidate, in its attempt: one with no candidate beside it, or
+    # whose candidate says no attempt when it says one, is miswired or left over, and whatever it
+    # says is never this release's verdict.
+    if [ -d "$base-candidate-retry" ]; then
+        if [ ! -d "$base-candidate" ]; then
+            printf 'No clear regression: CI itself failed at wiring -- gate-%s-candidate missing beside gate-%s-candidate-retry\n' \
+                "$r" "$r"
+            return 1
+        fi
+        if [ -z "$cand_attempt" ] && [ -n "$(leg_file "$base-candidate-retry" attempt '' '')" ]; then
+            printf "No clear regression: CI itself failed at wiring -- gate-%s-candidate has no attempt beside gate-%s-candidate-retry's\n" \
+                "$r" "$r"
+            return 1
+        fi
+    fi
+    case $cand_attempt in
+        ''|*[!0-9]*) ;;
+        *)
+            for l in candidate-retry control; do
+                ! stale_leg "$base-$l" "$cand_attempt" || stale="$stale$l "
+            done
+            ;;
+    esac
     for l in candidate candidate-retry control; do
         [ -d "$base-$l" ] || continue
+        case $stale in *" $l "*) continue ;; esac
         any=true
         # the artifact's name and the run inside it come from different places in the workflow: a
         # disagreement is its wiring at fault, and either release's verdict read from it would lie
@@ -327,26 +360,77 @@ verdict_release() {
             "$r" "$r"
         return 1
     fi
+    # a stale control is passed as none at all, which gate-summary.sh reads as "the control could
+    # not run", never as the local-only Failed: line
+    local retry_job retry_exit control=$base-control
+    retry_job=$(leg_file "$base-candidate-retry" job skipped unknown)
+    retry_exit=$(leg_file "$base-candidate-retry" exit '' '')
+    case $stale in *" candidate-retry "*) retry_job=skipped retry_exit='' ;; esac
+    case $stale in *" control "*) control='' ;; esac
     verdict_one "$base-candidate" "$(leg_file "$base-candidate" job skipped unknown)" \
-        "$(leg_file "$base-candidate" exit '' '')" "$base-candidate-retry" \
-        "$(leg_file "$base-candidate-retry" job skipped unknown)" \
-        "$(leg_file "$base-candidate-retry" exit '' '')" "$base-control"
+        "$(leg_file "$base-candidate" exit '' '')" "$base-candidate-retry" "$retry_job" "$retry_exit" \
+        "$control"
+}
+
+# stale_leg <artifact-dir> <candidate's attempt, a number>: the leg's artifact is from an attempt
+# before the candidate's (its attempt file older, or missing); a leg with no artifact is not stale,
+# only absent
+stale_leg() {
+    local a
+    [ -d "$1" ] || return 1
+    a=$(leg_file "$1" attempt '' '')
+    case $a in ''|*[!0-9]*) return 0 ;; esac
+    [ "$a" -lt "$2" ]
+}
+
+# cmd_scope_releases: see the header; stdin is bin/gate-scope.sh's output
+cmd_scope_releases() {
+    [ "$#" -eq 0 ] || usage_die "scope-releases takes no arguments: it reads bin/gate-scope.sh's output"
+    local first='' second='' extra='' r json='' list='' seen=" "
+    local -a rs
+    IFS= read -r first || [ -n "$first" ] || usage_die "scope-releases: no bin/gate-scope.sh output to read"
+    IFS= read -r second || true
+    if IFS= read -r extra || [ -n "$extra" ]; then
+        usage_die "scope-releases: more than two lines from bin/gate-scope.sh: $extra"
+    fi
+    case ${first%% *} in
+        gated) ;;
+        not-gated|pins-unfilled)
+            [ -z "$second" ] || usage_die "scope-releases: a ${first%% *} decision runs no release, yet: $second"
+            # Never an empty matrix: GitHub might refuse a matrix of fromJSON('[]') as invalid, which
+            # would fail every change that is not gated. The legs job's `if` skips it anyway.
+            read -r -a rs <<< "$GUEST_MACOSX_RELEASES"
+            for r in "${rs[@]}"; do json="$json${json:+,}\"$r\""; done
+            printf 'releases=[%s]\nrelease_list=\n' "$json"
+            return 0 ;;
+        *) usage_die "scope-releases: not a decision from bin/gate-scope.sh: $first" ;;
+    esac
+    case $second in
+        'releases '*) ;;
+        *) usage_die "scope-releases: a gated decision's second line names its releases, not: $second" ;;
+    esac
+    read -r -a rs <<< "${second#releases }"
+    for r in ${rs[@]+"${rs[@]}"}; do
+        known_release "$r" || usage_die "scope-releases: $r is not one of $(releases_said)"
+        case $seen in *" $r "*) usage_die "scope-releases: $r is named twice" ;; esac
+        seen="$seen$r "
+        json="$json${json:+,}\"$r\""
+        list="$list${list:+ }$r"
+    done
+    [ -n "$list" ] || usage_die "scope-releases: a gated decision names no release"
+    printf 'releases=[%s]\nrelease_list=%s\n' "$json" "$list"
 }
 
 # fail_line <line>: the verdict that is no gate-summary.sh's
 fail_line() { printf '%s\n' "$1"; exit 1; }
 
 cmd_verdict() {
-    opts decision reason scope-job candidate candidate-job candidate-exit retry retry-job \
-        retry-exit control releases artifacts -- "$@"
+    opts decision reason scope-job releases artifacts -- "$@"
     need decision reason scope-job
-    local r seen=" " n rc=0 out first='' passed='' body=''
+    local r seen=" " rc=0 out first='' passed='' body=''
     case $given in
         *" releases "*|*" artifacts "*)
             need releases artifacts
-            for n in candidate candidate-job candidate-exit retry retry-job retry-exit control; do
-                case $given in *" $n "*) usage_die "--$n is one release's: give --releases and --artifacts alone" ;; esac
-            done
             for r in $opt_releases; do
                 known_release "$r" || usage_die "--releases names $r: want $(releases_said)"
                 case $seen in *" $r "*) usage_die "--releases names $r twice" ;; esac
@@ -361,15 +445,7 @@ cmd_verdict() {
         gated) ;;
         *) usage_die "--decision $opt_decision: want gated, not-gated or pins-unfilled" ;;
     esac
-    case $given in
-        *" releases "*) ;;
-        *)
-            need candidate candidate-job candidate-exit retry retry-job retry-exit control
-            verdict_one "$opt_candidate" "$opt_candidate_job" "$opt_candidate_exit" "$opt_retry" \
-                "$opt_retry_job" "$opt_retry_exit" "$opt_control" || rc=$?
-            exit "$rc"
-            ;;
-    esac
+    need releases artifacts
     [ "$seen" != " " ] || usage_die "--releases names no release: a gated change gates at least one"
     # every release is decided, so the summary shows each one's evidence, but the first line is the
     # first failure's in the order given: the one a person reads, and the check's annotation, names it
@@ -397,6 +473,7 @@ shift
 case $sub in
     run) cmd_run "$@" ;;
     control-ref) cmd_control_ref "$@" ;;
+    scope-releases) cmd_scope_releases "$@" ;;
     verdict) cmd_verdict "$@" ;;
     *) usage ;;
 esac

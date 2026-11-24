@@ -4,9 +4,10 @@ name: release
 # only when asked -- boots it and publishes it. Two kinds of check, told apart here:
 #   - the build job's in-job checks (the tree stays clean, no Apple bytes in the tree or the
 #     archives, the notes generate): on every run, cheap;
-#   - the boot gate (`release gate`, which calls gate.yml; docs/decisions/0017): builds 10.9 from
-#     scratch, boots it and restarts it 10 times, about an hour. publish needs it, so nothing
-#     publishes unless the exact commit being released passes.
+#   - the boot gate (`release gate`, which calls gate.yml; docs/decisions/0017): builds every
+#     release (10.9 and 10.6, side by side) from scratch, boots each and restarts it 10 times,
+#     about an hour. publish needs it, so nothing publishes unless the exact commit being released
+#     passes on every release.
 #
 # Entry points:
 #   - push to main / PR to main: build + in-job checks, never the boot gate, never publish (the PR

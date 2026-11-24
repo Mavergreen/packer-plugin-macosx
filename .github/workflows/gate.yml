@@ -1,28 +1,24 @@
 name: gate
 
-# The boot gate in CI (docs/decisions/0017): bin/gate.sh --release 10.9 on GitHub's hosted KVM, from
-# scratch (the base, the Aqua Transport layer, 10 restarts), and one required check, `gate`, whose
-# first summary line is the verdict. It runs the local command; the logic around it is
-# bin/gate-ci.sh, so nothing here reimplements the gate.
+# The boot gate in CI (docs/decisions/0017): bin/gate.sh on GitHub's hosted KVM, from scratch (the
+# base, the Aqua Transport layer for 10.9, 10 restarts), once for each release a change gates, and
+# one required check, `gate`, whose first summary line is the verdict over all of them. It runs the
+# local command; the logic around it is bin/gate-ci.sh, so nothing here reimplements the gate. 10.6
+# is gated here like 10.9: bin/gate-ci.sh fetches CI's pinned copy of its install disc
+# (snowleopard-disc-10A432, assets/pins/sources.tsv) before booting it.
 #
 #   - On a pull request: gated only when it is Renovate's and moves a `gate:` row of gate/scope.tsv
-#     (the boot stack's pins and config.plist, Aqua Transport). Everything else passes `gate` as
-#     "Not gated: <why>", without a runner booting anything; a stale sources.tsv checksum fails it
-#     as "Pins not filled yet: <what to do>". Snow Leopard is gated by hand: CI has no 10.6 disc.
-#   - Called by release.yml (workflow_call, input `caller`): always gated; the control is the
-#     newest v0.* release before HEAD, or `control-ref`.
-#   - Dispatched: as a pull request would be on that branch, or always with `force`.
+#     (the boot stack's pins and config.plists, Aqua Transport), on the releases that row names.
+#     Everything else passes `gate` as "Not gated: <why>", without a runner booting anything; a
+#     stale sources.tsv checksum fails it as "Pins not filled yet: <what to do>".
+#   - Called by release.yml (workflow_call, input `caller`): always gated, on every release; the
+#     control is the newest v0.* release before HEAD, or `control-ref`.
+#   - Dispatched: as a pull request would be on that branch, or always, on every release, with
+#     `force`.
 #
-# The jobs: scope decides; candidate runs the gate; candidate-retry runs it once more, on a fresh
-# runner, only when the candidate's job finished and could not run its check (exit 3: a download,
-# the disk, the runner; never a cancelled or timed-out job); control runs the control ref's own gate only when the candidate failed a check (exit 1),
-# so a regression is told from a failure main already has; gate reads their evidence and decides.
-# A check that ran and failed is never retried: an installer stall in a cold 10.9 base build (about
-# 2% on EPYC 7763 runners, docs/decisions/0040) is a `build-base` fail, read beside the control.
-#
-# Evidence is uploaded from outside the work dir, and is only what bin/gate.sh writes there (text,
-# logs, screenshots): never an image, a box or Apple's media. The work dir is /mnt/gate (the same
-# filesystem as / on these runners, 85-87 GiB free; the gate needs 60).
+# The jobs: scope decides, and names the releases (bin/gate-scope.sh); legs runs gate-release.yml
+# once per release, side by side and each to its end (its candidate, candidate-retry and control
+# legs, and why each runs, are described there); gate reads every release's evidence and decides.
 
 on:
   pull_request:
@@ -49,9 +45,8 @@ permissions:
   contents: read
 
 # No workflow-level concurrency: called by release.yml, github.workflow is the caller's, and a
-# group here would collide with its own. The jobs that boot take one keyed gate-, per ref for a
-# pull request (a new push cancels the old run's boot) and per run for everything else (never
-# queued behind or cancelled by another run).
+# group here would collide with its own. The jobs that boot, in gate-release.yml, each take one per
+# release.
 
 jobs:
   scope:
@@ -60,6 +55,9 @@ jobs:
       decision: ${{ steps.scope.outputs.decision }}
       reason: ${{ steps.scope.outputs.reason }}
       control_ref: ${{ steps.scope.outputs.control_ref }}
+      event: ${{ steps.scope.outputs.event }}
+      releases: ${{ steps.scope.outputs.releases }}
+      release_list: ${{ steps.scope.outputs.release_list }}
     steps:
       # fetch-depth: 0 so there is a base to diff against and a merge base with origin/main
       - uses: actions/checkout@v7
@@ -88,12 +86,14 @@ jobs:
             base=$(git merge-base origin/main HEAD)
             head=$(git rev-parse HEAD)
           fi
-          # The first line is the decision and its reason; a gated change's second line, the
-          # releases, is not used here yet.
+          # The first line is the decision and its reason; a gated change's second line names the
+          # releases, which bin/gate-ci.sh makes into the legs' matrix (every release when not gated,
+          # never an empty one) and the verdict's list (empty when not gated).
           out=$(bin/gate-scope.sh "$base" "$head" "$GATE_BRANCH" "$GATE_EVENT")
           line=${out%%$'\n'*}
           decision=${line%% *}
           reason=${line#* }
+          releases=$(printf '%s\n' "$out" | bin/gate-ci.sh scope-releases)
           control_ref=
           if [ "$decision" = gated ]; then
             control_ref=$(bin/gate-ci.sh control-ref --event "$GATE_EVENT" --given "$GATE_CONTROL_REF" --pr-base "$GATE_PR_BASE")
@@ -102,249 +102,36 @@ jobs:
             echo "decision=$decision"
             echo "reason=$reason"
             echo "control_ref=$control_ref"
+            echo "event=$GATE_EVENT"
+            echo "$releases"
           } >> "$GITHUB_OUTPUT"
           echo "$line${control_ref:+ (control: $control_ref)}"
+          printf '%s\n' "$releases"
 
-  candidate:
+  # One release's legs each, from the releases scope named: fail-fast: false, so one release's
+  # failure never cancels another's, and the verdict reads every release's evidence. Not gated,
+  # its `if` skips this job, yet its matrix still names every release: an empty fromJSON matrix
+  # might fail the job before the `if` is read. The verdict passes a change that is not gated
+  # whatever this job did, as it never reads needs.legs.result.
+  legs:
     needs: scope
     if: needs.scope.outputs.decision == 'gated'
-    runs-on: ubuntu-latest
-    timeout-minutes: 240
-    concurrency:
-      group: gate-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
-      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-    outputs:
-      exit: ${{ steps.gate.outputs.exit }}
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-
-      - name: Install mavericks-shipyard
-        uses: Mavergreen/shipyard/.github/actions/install@v1
-
-      - uses: actions/setup-go@v7.1.0
-        with:
-          go-version-file: go.mod
-
-      - name: Set up Packer 1.16.2
-        uses: hashicorp/setup-packer@v3.4.0
-        with:
-          version: "1.16.2"
-
-      # The .debs this runner image lacks, kept per image and package list (bin/gate-host-setup.sh
-      # says why). Only a GitHub-hosted runner names its image.
-      - name: The apt packages' cache key
-        id: debs
-        run: |
-          set -euo pipefail
-          list=$(bin/gate-host-setup.sh --packages | sha256sum | cut -c1-16)
-          echo "key=gate-debs-${ImageOS:-none}-${ImageVersion:-none}-$list" >> "$GITHUB_OUTPUT"
-
-      - name: Restore the apt packages this runner image lacks
-        uses: actions/cache/restore@v6.1.0
-        with:
-          path: ${{ runner.temp }}/gate-debs
-          key: ${{ steps.debs.outputs.key }}
-
-      # continue-on-error: a runner that cannot be readied (a slow mirror, a missing module) could
-      # not run the gate, which is exit 3 below, and the retry gets a fresh runner
-      - name: Ready the runner (bin/gate-host-setup.sh)
-        id: host
-        continue-on-error: true
-        env:
-          GATE_DEBS_DIR: ${{ runner.temp }}/gate-debs
-        run: bin/gate-host-setup.sh
-
-      - name: Save the apt packages this run fetched
-        if: steps.host.outputs.debs-save == 'true'
-        uses: actions/cache/save@v6.1.0
-        with:
-          path: ${{ runner.temp }}/gate-debs
-          key: ${{ steps.debs.outputs.key }}
-
-      - name: The gate (bin/gate.sh --release 10.9)
-        id: gate
-        env:
-          PACKER_GITHUB_API_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          sudo mkdir -p /mnt/gate && sudo chown "$(id -u):$(id -g)" /mnt/gate
-          bin/gate-ci.sh run --release 10.9 --checkout . --work-dir /mnt/gate --media-dir "$RUNNER_TEMP/media" --evidence-dir "$RUNNER_TEMP/gate-evidence" --setup ${{ steps.host.outcome }}
-
-      - name: Keep the evidence
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: gate-candidate
-          path: ${{ runner.temp }}/gate-evidence/
-          retention-days: 30
-
-  candidate-retry:
-    needs: [scope, candidate]
-    # result == 'success': a cancelled or timed-out candidate's gate.sh also exits 3 (interrupted),
-    # and retrying it would cancel the newer run's candidate in turn, or retry a 240-minute timeout
-    if: ${{ !cancelled() && needs.candidate.result == 'success' && needs.candidate.outputs.exit == '3' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 240
-    concurrency:
-      group: gate-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
-      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-    outputs:
-      exit: ${{ steps.gate.outputs.exit }}
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-
-      - name: Install mavericks-shipyard
-        uses: Mavergreen/shipyard/.github/actions/install@v1
-
-      - uses: actions/setup-go@v7.1.0
-        with:
-          go-version-file: go.mod
-
-      - name: Set up Packer 1.16.2
-        uses: hashicorp/setup-packer@v3.4.0
-        with:
-          version: "1.16.2"
-
-      - name: The apt packages' cache key
-        id: debs
-        run: |
-          set -euo pipefail
-          list=$(bin/gate-host-setup.sh --packages | sha256sum | cut -c1-16)
-          echo "key=gate-debs-${ImageOS:-none}-${ImageVersion:-none}-$list" >> "$GITHUB_OUTPUT"
-
-      - name: Restore the apt packages this runner image lacks
-        uses: actions/cache/restore@v6.1.0
-        with:
-          path: ${{ runner.temp }}/gate-debs
-          key: ${{ steps.debs.outputs.key }}
-
-      - name: Ready the runner (bin/gate-host-setup.sh)
-        id: host
-        continue-on-error: true
-        env:
-          GATE_DEBS_DIR: ${{ runner.temp }}/gate-debs
-        run: bin/gate-host-setup.sh
-
-      - name: Save the apt packages this run fetched
-        if: steps.host.outputs.debs-save == 'true'
-        uses: actions/cache/save@v6.1.0
-        with:
-          path: ${{ runner.temp }}/gate-debs
-          key: ${{ steps.debs.outputs.key }}
-
-      - name: The gate (bin/gate.sh --release 10.9)
-        id: gate
-        env:
-          PACKER_GITHUB_API_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          sudo mkdir -p /mnt/gate && sudo chown "$(id -u):$(id -g)" /mnt/gate
-          bin/gate-ci.sh run --release 10.9 --checkout . --work-dir /mnt/gate --media-dir "$RUNNER_TEMP/media" --evidence-dir "$RUNNER_TEMP/gate-evidence" --setup ${{ steps.host.outcome }}
-
-      - name: Keep the evidence
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: gate-candidate-retry
-          path: ${{ runner.temp }}/gate-evidence/
-          retention-days: 30
-
-  control:
-    needs: [scope, candidate, candidate-retry]
-    if: ${{ !cancelled() && ((needs.candidate-retry.result == 'skipped' && needs.candidate.result == 'success' && needs.candidate.outputs.exit == '1') || (needs.candidate-retry.result == 'success' && needs.candidate-retry.outputs.exit == '1')) }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 240
-    concurrency:
-      group: gate-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
-      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-    steps:
-      # This tree readies the runner; the control ref's own tree, in control/, is what is gated.
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-
-      - name: Check out the control ref
-        if: needs.scope.outputs.control_ref != ''
-        uses: actions/checkout@v7
-        with:
-          ref: ${{ needs.scope.outputs.control_ref }}
-          path: control
-          fetch-depth: 0
-
-      - name: Install mavericks-shipyard
-        if: needs.scope.outputs.control_ref != ''
-        uses: Mavergreen/shipyard/.github/actions/install@v1
-
-      - uses: actions/setup-go@v7.1.0
-        if: needs.scope.outputs.control_ref != ''
-        with:
-          go-version-file: control/go.mod
-
-      - name: Set up Packer 1.16.2
-        if: needs.scope.outputs.control_ref != ''
-        uses: hashicorp/setup-packer@v3.4.0
-        with:
-          version: "1.16.2"
-
-      - name: The apt packages' cache key
-        id: debs
-        if: needs.scope.outputs.control_ref != ''
-        run: |
-          set -euo pipefail
-          list=$(bin/gate-host-setup.sh --packages | sha256sum | cut -c1-16)
-          echo "key=gate-debs-${ImageOS:-none}-${ImageVersion:-none}-$list" >> "$GITHUB_OUTPUT"
-
-      - name: Restore the apt packages this runner image lacks
-        if: needs.scope.outputs.control_ref != ''
-        uses: actions/cache/restore@v6.1.0
-        with:
-          path: ${{ runner.temp }}/gate-debs
-          key: ${{ steps.debs.outputs.key }}
-
-      - name: Ready the runner (bin/gate-host-setup.sh)
-        id: host
-        if: needs.scope.outputs.control_ref != ''
-        continue-on-error: true
-        env:
-          GATE_DEBS_DIR: ${{ runner.temp }}/gate-debs
-        run: bin/gate-host-setup.sh
-
-      - name: Save the apt packages this run fetched
-        if: needs.scope.outputs.control_ref != '' && steps.host.outputs.debs-save == 'true'
-        uses: actions/cache/save@v6.1.0
-        with:
-          path: ${{ runner.temp }}/gate-debs
-          key: ${{ steps.debs.outputs.key }}
-
-      # A control ref with no bin/gate.sh, or none at all (the steps above then skip), gets a
-      # steps.tsv saying so: "the control could not run".
-      - name: The gate (bin/gate.sh --release 10.9)
-        id: gate
-        env:
-          PACKER_GITHUB_API_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          sudo mkdir -p /mnt/gate && sudo chown "$(id -u):$(id -g)" /mnt/gate
-          bin/gate-ci.sh run --release 10.9 --checkout control --work-dir /mnt/gate --media-dir "$RUNNER_TEMP/media" --evidence-dir "$RUNNER_TEMP/gate-evidence" --setup ${{ steps.host.outcome }}
-
-      - name: Keep the evidence
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: gate-control
-          path: ${{ runner.temp }}/gate-evidence/
-          retention-days: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        release: ${{ fromJSON(needs.scope.outputs.releases) }}
+    uses: ./.github/workflows/gate-release.yml
+    with:
+      release: ${{ matrix.release }}
+      control_ref: ${{ needs.scope.outputs.control_ref }}
+      caller: ${{ needs.scope.outputs.event }}
 
   # The required check. always(): a skipped job would count as passing a required check of its
   # name, so this one runs whatever happened above, and passes only on a Passed: verdict or a
   # change that is not gated.
   gate:
     name: gate
-    needs: [scope, candidate, candidate-retry, control]
+    needs: [scope, legs]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -352,50 +139,30 @@ jobs:
         with:
           fetch-depth: 0
 
-      # Each by name into its own dir: a pattern matching one artifact extracts it flat into `path`,
-      # not into path/<name>, and the verdict would find no steps.tsv. continue-on-error: a job that
-      # did not run uploaded nothing, and the verdict says so ("no steps.tsv")
-      - name: Download the candidate's evidence
+      # Merged, by pattern: a pattern matching one artifact extracts it flat into `path`, not into
+      # path/<name>, and the verdict would find no steps.tsv. Each artifact holds one dir named after
+      # itself, so merged they land at path/gate-<release>-<leg> however many matched.
+      # continue-on-error: a leg that did not run uploaded nothing, and the verdict says so.
+      - name: Download every leg's evidence
         if: needs.scope.outputs.decision == 'gated'
         continue-on-error: true
         uses: actions/download-artifact@v8
         with:
-          name: gate-candidate
-          path: ${{ runner.temp }}/gate-artifacts/gate-candidate
-
-      - name: Download the retry's evidence
-        if: needs.scope.outputs.decision == 'gated'
-        continue-on-error: true
-        uses: actions/download-artifact@v8
-        with:
-          name: gate-candidate-retry
-          path: ${{ runner.temp }}/gate-artifacts/gate-candidate-retry
-
-      - name: Download the control's evidence
-        if: needs.scope.outputs.decision == 'gated'
-        continue-on-error: true
-        uses: actions/download-artifact@v8
-        with:
-          name: gate-control
-          path: ${{ runner.temp }}/gate-artifacts/gate-control
+          pattern: gate-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/gate-artifacts
 
       - name: The verdict (bin/gate-ci.sh verdict)
         env:
           GATE_DECISION: ${{ needs.scope.outputs.decision }}
           GATE_REASON: ${{ needs.scope.outputs.reason }}
           GATE_SCOPE_JOB: ${{ needs.scope.result }}
-          GATE_CANDIDATE_JOB: ${{ needs.candidate.result }}
-          GATE_CANDIDATE_EXIT: ${{ needs.candidate.outputs.exit }}
-          GATE_RETRY_JOB: ${{ needs.candidate-retry.result }}
-          GATE_RETRY_EXIT: ${{ needs.candidate-retry.outputs.exit }}
+          GATE_RELEASES: ${{ needs.scope.outputs.release_list }}
         run: |
           set -uo pipefail
-          a=$RUNNER_TEMP/gate-artifacts
           rc=0
           bin/gate-ci.sh verdict --decision "$GATE_DECISION" --reason "$GATE_REASON" --scope-job "$GATE_SCOPE_JOB" \
-            --candidate "$a/gate-candidate" --candidate-job "$GATE_CANDIDATE_JOB" --candidate-exit "$GATE_CANDIDATE_EXIT" \
-            --retry "$a/gate-candidate-retry" --retry-job "$GATE_RETRY_JOB" --retry-exit "$GATE_RETRY_EXIT" \
-            --control "$a/gate-control" > "$RUNNER_TEMP/verdict.md" || rc=$?
+            --releases "$GATE_RELEASES" --artifacts "$RUNNER_TEMP/gate-artifacts" > "$RUNNER_TEMP/verdict.md" || rc=$?
           cat "$RUNNER_TEMP/verdict.md" >> "$GITHUB_STEP_SUMMARY"
           cat "$RUNNER_TEMP/verdict.md"
           if [ "$rc" -eq 0 ]; then

@@ -2,9 +2,10 @@
 # platform: host-agnostic
 # shellcheck disable=SC2154  # $stderr is set by bats run --separate-stderr
 #
-# bin/gate-ci.sh is what .github/workflows/gate.yml runs around bin/gate.sh: `run` (one gate run on
-# a runner, its exit for the next job), `control-ref` (what the control checks out) and `verdict`
-# (the one line the required check `gate` reports). The checkout's bin/gate.sh here is a stand-in
+# bin/gate-ci.sh is what .github/workflows/gate.yml (and gate-release.yml, its legs) runs around
+# bin/gate.sh: `run` (one gate run on a runner, its exit for the next job), `control-ref` (what the
+# control checks out), `scope-releases` (the releases the legs run, as the scope job's outputs) and
+# `verdict` (the one line the required check `gate` reports). The checkout's bin/gate.sh here is a stand-in
 # that records its arguments; bin/gate-summary.sh is the real one. No ssh, sudo or power command is
 # reachable, so these tests need no stubs and are exempt from the stub-safety assertion (R9).
 
@@ -445,88 +446,6 @@ verdict() { run --separate-stderr "$CI" verdict "$@"; }
     [ "${lines[0]}" = "No clear regression: CI itself failed at scope -- it decided nothing (job failure)" ]
 }
 
-@test "verdict: a candidate with no steps.tsv is CI itself failing, naming the job's result and gate.sh's exit" {
-    verdict --decision gated --reason "a release" --scope-job success \
-        --candidate "$BATS_TEST_TMPDIR/none" --candidate-job cancelled --candidate-exit '' \
-        --retry "$BATS_TEST_TMPDIR/none2" --retry-job skipped --retry-exit '' \
-        --control "$BATS_TEST_TMPDIR/none3"
-    [ "$status" -eq 1 ]
-    [ "${lines[0]}" = "No clear regression: CI itself failed at candidate -- no steps.tsv (job cancelled, gate.sh exit none)" ]
-}
-
-@test "verdict: gate.sh's usage error (exit 2, no steps.tsv) is CI itself failing too" {
-    verdict --decision gated --reason x --scope-job success \
-        --candidate "$BATS_TEST_TMPDIR/none" --candidate-job success --candidate-exit 2 \
-        --retry "$BATS_TEST_TMPDIR/none2" --retry-job skipped --retry-exit '' \
-        --control "$BATS_TEST_TMPDIR/none3"
-    [ "$status" -eq 1 ]
-    [ "${lines[0]}" = "No clear regression: CI itself failed at candidate -- no steps.tsv (job success, gate.sh exit 2)" ]
-}
-
-@test "verdict: a candidate that passed is Passed, exit 0, with the table under it" {
-    full "$BATS_TEST_TMPDIR/cand"
-    verdict --decision gated --reason x --scope-job success \
-        --candidate "$BATS_TEST_TMPDIR/cand" --candidate-job success --candidate-exit 0 \
-        --retry "$BATS_TEST_TMPDIR/none" --retry-job skipped --retry-exit '' \
-        --control "$BATS_TEST_TMPDIR/none2"
-    [ "$status" -eq 0 ]
-    [ "${lines[0]}" = "Passed: every step, 3 restarts" ]
-    [[ "$output" == *"| restart-3 | pass |"* ]] || false
-}
-
-@test "verdict: when the retry ran, its evidence is the candidate's" {
-    full "$BATS_TEST_TMPDIR/cand" "build-base:infra:no space left on device"
-    full "$BATS_TEST_TMPDIR/retry"
-    verdict --decision gated --reason x --scope-job success \
-        --candidate "$BATS_TEST_TMPDIR/cand" --candidate-job success --candidate-exit 3 \
-        --retry "$BATS_TEST_TMPDIR/retry" --retry-job success --retry-exit 0 \
-        --control "$BATS_TEST_TMPDIR/none"
-    [ "$status" -eq 0 ]
-    [ "${lines[0]}" = "Passed: every step, 3 restarts" ]
-}
-
-@test "verdict: a retry with no steps.tsv is CI itself failing at candidate-retry" {
-    full "$BATS_TEST_TMPDIR/cand" "build-base:infra:no space left on device"
-    verdict --decision gated --reason x --scope-job success \
-        --candidate "$BATS_TEST_TMPDIR/cand" --candidate-job success --candidate-exit 3 \
-        --retry "$BATS_TEST_TMPDIR/none" --retry-job failure --retry-exit '' \
-        --control "$BATS_TEST_TMPDIR/none2"
-    [ "$status" -eq 1 ]
-    [ "${lines[0]}" = "No clear regression: CI itself failed at candidate-retry -- no steps.tsv (job failure, gate.sh exit none)" ]
-}
-
-@test "verdict: the candidate fails a check and the control passes it: Regression" {
-    full "$BATS_TEST_TMPDIR/cand" "versions:fail:virtualsmc: want 1.3.8, got 1.3.7"
-    full "$BATS_TEST_TMPDIR/ctl"
-    verdict --decision gated --reason x --scope-job success \
-        --candidate "$BATS_TEST_TMPDIR/cand" --candidate-job success --candidate-exit 1 \
-        --retry "$BATS_TEST_TMPDIR/none" --retry-job skipped --retry-exit '' \
-        --control "$BATS_TEST_TMPDIR/ctl"
-    [ "$status" -eq 1 ]
-    [ "${lines[0]}" = "Regression: versions -- virtualsmc: want 1.3.8, got 1.3.7" ]
-}
-
-@test "verdict: a candidate failure with no control evidence is never the local-only Failed: line" {
-    full "$BATS_TEST_TMPDIR/cand" "versions:fail:virtualsmc: want 1.3.8"
-    verdict --decision gated --reason x --scope-job success \
-        --candidate "$BATS_TEST_TMPDIR/cand" --candidate-job success --candidate-exit 1 \
-        --retry "$BATS_TEST_TMPDIR/none" --retry-job skipped --retry-exit '' \
-        --control "$BATS_TEST_TMPDIR/absent"
-    [ "$status" -eq 1 ]
-    [[ "${lines[0]}" == "No clear regression: the control could not run -- control -- no steps.tsv in "* ]] || false
-}
-
-@test "verdict: a malformed steps.tsv is CI itself failing at the summary, naming what is wrong" {
-    mkdir -p "$BATS_TEST_TMPDIR/cand"
-    printf 'preflight\tmaybe\t1\t\n' > "$BATS_TEST_TMPDIR/cand/steps.tsv"
-    verdict --decision gated --reason x --scope-job success \
-        --candidate "$BATS_TEST_TMPDIR/cand" --candidate-job success --candidate-exit 1 \
-        --retry "$BATS_TEST_TMPDIR/none" --retry-job skipped --retry-exit '' \
-        --control "$BATS_TEST_TMPDIR/none2"
-    [ "$status" -eq 1 ]
-    [[ "${lines[0]}" == "No clear regression: CI itself failed at summary -- "*'result "maybe"'* ]] || false
-}
-
 @test "verdict: an unknown decision is a usage error" {
     verdict --decision maybe --reason x --scope-job success
     [ "$status" -eq 2 ]
@@ -537,7 +456,8 @@ verdict() { run --separate-stderr "$CI" verdict "$@"; }
 # leg <release> <leg> <job> <exit> [step:result:note]...: the artifact gate-<release>-<leg> in $A
 # as the gate job downloads it: that leg's evidence (a whole run of <release>, its release.txt
 # included, every step pass but those given), its job's result in `job` and gate-ci.sh's exit in
-# `exit`. A 10.6 run's build-layer and reach are n/a, as bin/gate.sh writes them.
+# `exit`, and the run attempt it ran in, 1, in `attempt` (`attempt_of` changes it). A 10.6 run's
+# build-layer and reach are n/a, as bin/gate.sh writes them.
 leg() {
     local r=$1 l=$2 j=$3 x=$4 d
     shift 4
@@ -550,7 +470,11 @@ leg() {
     printf '%s\n' "$r" > "$d/release.txt"
     printf '%s\n' "$j" > "$d/job"
     printf 'exit=%s\n' "$x" > "$d/exit"
+    printf '1\n' > "$d/attempt"
 }
+
+# attempt_of <release> <leg> <n>: that leg's artifact ran in run attempt <n>
+attempt_of() { printf '%s\n' "$3" > "$A/gate-$1-$2/attempt"; }
 
 verdicts() {
     run --separate-stderr "$CI" verdict --decision gated --reason x --scope-job success --artifacts "$A" "$@"
@@ -563,6 +487,7 @@ verdicts() {
     verdicts --releases "10.9 10.6"
     [ "$status" -eq 0 ]
     [ "${lines[0]}" = "Passed: 10.9, 10.6" ]
+    [[ "$output" == *"| restart-3 | pass |"* ]] || false
     [[ "$output" == *$'\n## 10.9\nPassed: every step, 3 restarts\n'* ]] || false
     [[ "$output" == *$'\n## 10.6\nPassed: every step that applies, 3 restarts; not applicable: build-layer, reach\n'* ]] || false
 }
@@ -619,6 +544,107 @@ verdicts() {
     [ "${lines[0]}" = "Passed: 10.9" ]
 }
 
+# Artifacts belong to the run, not the attempt: "Re-run all jobs" leaves the last attempt's
+# gate-<release>-candidate-retry and -control in place when this attempt skips them.
+@test "verdicts: a failing retry left from an earlier attempt never fails a candidate that now passes" {
+    A=$BATS_TEST_TMPDIR/a
+    leg 10.9 candidate success 0
+    attempt_of 10.9 candidate 2
+    leg 10.9 candidate-retry success 3 "preflight:infra:no space left on device"
+    verdicts --releases "10.9"
+    [ "$status" -eq 0 ]
+    [ "${lines[0]}" = "Passed: 10.9" ]
+}
+
+@test "verdicts: a passing retry left from an earlier attempt never passes a candidate that now fails" {
+    A=$BATS_TEST_TMPDIR/a
+    leg 10.9 candidate success 1 "versions:fail:virtualsmc: want 1.3.8"
+    attempt_of 10.9 candidate 2
+    leg 10.9 candidate-retry success 0
+    leg 10.9 control success 0
+    attempt_of 10.9 control 2
+    verdicts --releases "10.9"
+    [ "$status" -eq 1 ]
+    [ "${lines[0]}" = "10.9: Regression: versions -- virtualsmc: want 1.3.8" ]
+}
+
+@test "verdicts: a retry or control with no attempt beside a candidate with one is from an earlier attempt" {
+    A=$BATS_TEST_TMPDIR/a
+    leg 10.9 candidate success 0
+    attempt_of 10.9 candidate 2
+    leg 10.9 candidate-retry success 3 "preflight:infra:no space left on device"
+    rm "$A/gate-10.9-candidate-retry/attempt"
+    verdicts --releases "10.9"
+    [ "$status" -eq 0 ]
+    [ "${lines[0]}" = "Passed: 10.9" ]
+    rm -rf "$A"
+    leg 10.9 candidate success 1 "versions:fail:virtualsmc: want 1.3.8"
+    attempt_of 10.9 candidate 2
+    leg 10.9 control success 1 "versions:fail:virtualsmc: want 1.3.8"
+    rm "$A/gate-10.9-control/attempt"
+    verdicts --releases "10.9"
+    [ "$status" -eq 1 ]
+    [ "${lines[0]}" = "10.9: No clear regression: the control could not run -- control -- no steps.tsv in (no control directory given)" ]
+}
+
+# A retry runs only after its candidate, in the candidate's attempt, so a retry with no candidate
+# beside it (or a candidate that says no attempt beside a retry that says one) is miswired or
+# left over: whatever the retry says, it is never this release's verdict.
+@test "verdicts: a retry with no candidate artifact beside it fails as wiring, whatever it says" {
+    A=$BATS_TEST_TMPDIR/a
+    leg 10.9 candidate-retry success 0
+    verdicts --releases "10.9"
+    [ "$status" -eq 1 ]
+    [ "${lines[0]}" = "10.9: No clear regression: CI itself failed at wiring -- gate-10.9-candidate missing beside gate-10.9-candidate-retry" ]
+}
+
+@test "verdicts: a candidate with no attempt beside a retry with one fails as wiring" {
+    A=$BATS_TEST_TMPDIR/a
+    leg 10.9 candidate success 3 "build-base:infra:no space left on device"
+    rm "$A/gate-10.9-candidate/attempt"
+    leg 10.9 candidate-retry success 0
+    verdicts --releases "10.9"
+    [ "$status" -eq 1 ]
+    [ "${lines[0]}" = "10.9: No clear regression: CI itself failed at wiring -- gate-10.9-candidate has no attempt beside gate-10.9-candidate-retry's" ]
+}
+
+@test "verdicts: a control left from an earlier attempt is no control, never a pass for this one" {
+    A=$BATS_TEST_TMPDIR/a
+    leg 10.9 candidate success 1 "versions:fail:virtualsmc: want 1.3.8"
+    attempt_of 10.9 candidate 2
+    leg 10.9 control success 1 "versions:fail:virtualsmc: want 1.3.8"
+    verdicts --releases "10.9"
+    [ "$status" -eq 1 ]
+    [ "${lines[0]}" = "10.9: No clear regression: the control could not run -- control -- no steps.tsv in (no control directory given)" ]
+}
+
+@test "verdicts: a leg left from an earlier attempt is not read for wiring either" {
+    A=$BATS_TEST_TMPDIR/a
+    leg 10.9 candidate success 0
+    attempt_of 10.9 candidate 2
+    leg 10.9 candidate-retry success 0
+    rm "$A/gate-10.9-candidate-retry/release.txt"
+    verdicts --releases "10.9"
+    [ "$status" -eq 0 ]
+    [ "${lines[0]}" = "Passed: 10.9" ]
+}
+
+@test "verdicts: a retry of the candidate's attempt, or a later one, still supersedes it" {
+    A=$BATS_TEST_TMPDIR/a
+    leg 10.6 candidate success 3 "build-base:infra:no space left on device"
+    attempt_of 10.6 candidate 2
+    leg 10.6 candidate-retry success 0
+    attempt_of 10.6 candidate-retry 2
+    verdicts --releases "10.6"
+    [ "$status" -eq 0 ]
+    [ "${lines[0]}" = "Passed: 10.6" ]
+    leg 10.6 candidate-retry success 1 "versions:fail:virtualsmc: want 1.3.8"
+    attempt_of 10.6 candidate-retry 3
+    verdicts --releases "10.6"
+    [ "$status" -eq 1 ]
+    [[ "${lines[0]}" == "10.6: No clear regression: the control could not run -- "* ]] || false
+}
+
 @test "verdicts: a candidate artifact with no steps.tsv names its job's result and gate.sh's exit" {
     A=$BATS_TEST_TMPDIR/a
     leg 10.9 candidate cancelled 2
@@ -631,6 +657,8 @@ verdicts() {
 @test "verdicts: an artifact with no job or exit file is a job that ran and said neither" {
     A=$BATS_TEST_TMPDIR/a
     leg 10.9 candidate success 0 "build-base:infra:no space left on device"
+    # a candidate with no attempt either, so the retry is not taken for an earlier attempt's
+    rm "$A/gate-10.9-candidate/attempt"
     mkdir -p "$A/gate-10.9-candidate-retry"
     verdicts --releases "10.9"
     [ "$status" -eq 1 ]
@@ -702,13 +730,45 @@ verdicts() {
     [ "$status" -eq 2 ]
 }
 
-@test "verdicts: --releases needs --artifacts and refuses the one-release flags" {
+@test "verdicts: a gated verdict needs --releases and --artifacts, and the one-release flags are gone" {
     run --separate-stderr "$CI" verdict --decision gated --reason x --scope-job success --releases 10.9
+    [ "$status" -eq 2 ]
+    run --separate-stderr "$CI" verdict --decision gated --reason x --scope-job success
     [ "$status" -eq 2 ]
     A=$BATS_TEST_TMPDIR/a
     mkdir -p "$A"
-    verdicts --releases 10.9 --candidate "$A/x"
-    [ "$status" -eq 2 ]
+    for f in --candidate --candidate-job --candidate-exit --retry --retry-job --retry-exit --control; do
+        verdicts --releases 10.9 "$f" x
+        [ "$status" -eq 2 ]
+        [[ "$stderr" == *"unknown argument: $f"* ]] || false
+    done
+}
+
+@test "verdicts: gate.sh's usage error (exit 2, no steps.tsv) is CI itself failing" {
+    A=$BATS_TEST_TMPDIR/a
+    mkdir -p "$A/gate-10.9-candidate"
+    printf 'success\n' > "$A/gate-10.9-candidate/job"
+    printf 'exit=2\n' > "$A/gate-10.9-candidate/exit"
+    verdicts --releases 10.9
+    [ "$status" -eq 1 ]
+    [ "${lines[0]}" = "10.9: No clear regression: CI itself failed at candidate -- no steps.tsv (job success, gate.sh exit 2)" ]
+}
+
+@test "verdicts: a candidate failure with no control evidence is never the local-only Failed: line" {
+    A=$BATS_TEST_TMPDIR/a
+    leg 10.9 candidate success 1 "versions:fail:virtualsmc: want 1.3.8"
+    verdicts --releases 10.9
+    [ "$status" -eq 1 ]
+    [[ "${lines[0]}" == "10.9: No clear regression: the control could not run -- control -- no steps.tsv in "* ]] || false
+}
+
+@test "verdicts: a malformed steps.tsv is CI itself failing at the summary, naming what is wrong" {
+    A=$BATS_TEST_TMPDIR/a
+    leg 10.9 candidate success 1
+    printf 'preflight\tmaybe\t1\t\n' > "$A/gate-10.9-candidate/steps.tsv"
+    verdicts --releases 10.9
+    [ "$status" -eq 1 ]
+    [[ "${lines[0]}" == "10.9: No clear regression: CI itself failed at summary -- "*'result "maybe"'* ]] || false
 }
 
 @test "verdicts: not gated and pins unfilled are as before, with or without releases" {
@@ -720,4 +780,41 @@ verdicts() {
         --releases "" --artifacts "$BATS_TEST_TMPDIR/none"
     [ "$status" -eq 1 ]
     [ "${lines[0]}" = "Pins not filled yet: re-pin it" ]
+}
+
+# --- scope-releases -----------------------------------------------------------------------------
+
+# scope_releases <gate-scope.sh's output>: what the scope job adds to $GITHUB_OUTPUT from it
+scope_releases() { run --separate-stderr "$CI" scope-releases <<< "$1"; }
+
+@test "scope-releases: a gated change's releases, as a JSON array for the matrix and a list for the verdict" {
+    scope_releases "$(printf 'gated changed: assets/pins/sources.tsv\nreleases 10.9 10.6')"
+    [ "$status" -eq 0 ]
+    [ "$output" = "$(printf '%s\n' 'releases=["10.9","10.6"]' 'release_list=10.9 10.6')" ]
+    scope_releases "$(printf 'gated changed: x\nreleases 10.6')"
+    [ "$status" -eq 0 ]
+    [ "$output" = "$(printf '%s\n' 'releases=["10.6"]' 'release_list=10.6')" ]
+}
+
+# The matrix is never empty, as fromJSON of [] could fail the legs job and with it every change
+# that is not gated: not gated, it names every release, and the legs job's `if` skips it anyway.
+@test "scope-releases: not gated or pins unfilled verdict no release, yet the matrix is never empty" {
+    for line in "not-gated not a Renovate update" "pins-unfilled re-pin it"; do
+        scope_releases "$line"
+        [ "$status" -eq 0 ]
+        [ "$output" = "$(printf '%s\n' 'releases=["10.9","10.6"]' 'release_list=')" ]
+    done
+}
+
+@test "scope-releases: anything gate-scope.sh does not print is a usage error, and prints nothing" {
+    for in in "gated changed: x" "$(printf 'gated x\nreleases')" "$(printf 'gated x\nreleases 10.9 10.5')" \
+        "$(printf 'gated x\nreleases 10.9 10.9')" "$(printf 'gated x\n10.9')" \
+        "$(printf 'gated x\nreleases 10.9\nmore')" "$(printf 'not-gated x\nreleases 10.9')" \
+        "maybe x" "" "$(printf 'gated x\nreleases *')"; do
+        scope_releases "$in"
+        [ "$status" -eq 2 ] || { echo "for: $in"; false; }
+        [ -z "$output" ]
+    done
+    run --separate-stderr "$CI" scope-releases --releases 10.9 < /dev/null
+    [ "$status" -eq 2 ]
 }
