@@ -6,6 +6,7 @@
 # (aquatransport-observer.yml) and moves the version and SHA-256 together.
 # A drifted pattern or datasource silently stops the pin from moving. A bump
 # automerges only behind the required `gate` check, which boots the layer.
+# So do the boot stack's (OpenCore, Lilu, VirtualSMC): the gate boots 10.6 and 10.9.
 
 setup() {
     REPO="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
@@ -81,4 +82,20 @@ assert re.fullmatch(r"[0-9a-f]{64}", g["currentDigest"]), g
 @test "repackage-on-ingredient-bump watches the pin file" {
     grep -qx '      - templates/mavericks-aquatransport/aquatransport.pkr.hcl' \
         "$REPO/.github/workflows/repackage-on-ingredient-bump.yml"
+}
+
+@test "OpenCore, Lilu and VirtualSMC automerge, and the rule says the gate covers 10.6 and 10.9" {
+    run python3 -I -c '
+import json, sys
+c = json.load(open(sys.argv[1]))
+for dep in ("acidanthera/OpenCorePkg", "acidanthera/Lilu", "acidanthera/VirtualSMC"):
+    rules = [x for x in c["packageRules"] if dep in x.get("matchDepNames", [])]
+    assert len(rules) == 1, dep
+    r = rules[0]
+    assert r.get("automerge") is True, dep + " does not automerge"
+    d = r["description"]
+    assert "gate" in d and "10.6" in d and "10.9" in d, dep + ": " + d
+    assert "by hand" not in d and "no 10.6 disc" not in d, d
+' "$REPO/.github/renovate.json"
+    [ "$status" -eq 0 ]
 }

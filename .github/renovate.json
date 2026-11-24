@@ -87,13 +87,13 @@
   ],
   "packageRules": [
     {
-      "description": "A boot-stack bump changes what every future guest boots, and every guest and box already built stops being what the repository would build, with nothing going red. pins-bot.yml fills its checksum and gate boots a 10.9 guest on it, but 10.6 is still gated by hand (CI has no 10.6 disc yet). So these land by hand, with a read of the upstream release notes and a local 10.6 gate, until 10.6 is gated in CI. This is the 'builds fine and is wrong' exception the shared preset asks for a reason for.",
+      "description": "A boot-stack bump changes what every future guest boots, and every guest and box already built stops being what the repository would build, with nothing going red. pins-bot.yml fills its checksum, and gate boots a 10.6 guest and a 10.9 guest on it, each installed from its own media, and gate is a required check on main, so a green PR has booted both. It automerges on that, as the shared preset would; the rule stays to say why that is safe.",
       "matchDepNames": [
         "acidanthera/OpenCorePkg",
         "acidanthera/Lilu",
         "acidanthera/VirtualSMC"
       ],
-      "automerge": false
+      "automerge": true
     },
     {
       "description": "Aqua Transport patches Security.framework on the guest, so a bump that downloads and hashes correctly can still leave a guest that cannot make an outbound TLS connection. gate boots the Aqua Transport layer on every bump and checks it, and gate is a required check on main (2026-11-22), so a green PR has booted it. It automerges on that, as the shared preset would; the rule stays to say why that is safe.",

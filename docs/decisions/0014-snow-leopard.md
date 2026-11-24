@@ -13,7 +13,13 @@ of its own (`templates/snowleopard/`). What differs, and why:
 1. **The installer is the user's.** Apple serves 10.9 free through
    osrecovery; 10.6 was a paid DVD with no Apple download. The plugin
    ships no URL for a 10.6 image and its docs name no source; the user
-   passes `installer`, a path to their own image.
+   passes `installer`, a path to their own image. Amended 2026-11-23: the
+   plugin still works that way. CI is the one exception: the boot gate
+   fetches a pinned copy of the 10.6.0 disc, `snowleopard-disc-10A432` in
+   `assets/pins/sources.tsv`, from where it already is (archive.org), so
+   10.6 is gated on every change that touches it (the owner's ruling,
+   2026-11-23; `docs/decisions/0017`). The project pins the URL and does
+   not redistribute the disc, as shipyard pins 10.9's SDK.
 2. **The disc is verified by its contents, not its bytes.** Any faithful
    copy of a retail disc -- an ISO, a Disk Utility master, a `.dmg`, the
    volume alone -- passes, because `internal/disc` reads the HFS+ volume

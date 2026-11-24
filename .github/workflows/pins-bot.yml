@@ -17,8 +17,8 @@ name: pins-bot
 #   Its checkout keeps the App's credentials (actions/checkout's default) because its `git push`
 #   authenticates with them.
 # renovate.json's gitIgnoredAuthors keeps this bot's commit from marking the branch as edited by someone
-# else, so Renovate still rebases it. Merging stays as renovate.json says: the boot stack by hand until 10.6
-# is gated in CI.
+# else, so Renovate still rebases it. Merging stays as renovate.json says: the boot stack and Aqua Transport
+# automerge behind the required `gate` check.
 
 on:
   push:
