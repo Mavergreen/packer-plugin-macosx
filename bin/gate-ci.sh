@@ -39,6 +39,17 @@
 #       failed"; else bin/gate-summary.sh <candidate> <control> decides by its exit (0 is a
 #       Passed: line), always given the control dir, so the local-only "Failed:" line never
 #       appears in CI. A RESULT is a job's needs.<job>.result; an empty N is "none".
+#
+#   bin/gate-ci.sh verdict --decision D --reason R --scope-job RESULT --releases "R ..." --artifacts DIR
+#       The same verdict over every release a gated change gates, each decided as above from the
+#       artifacts DIR/gate-<release>-<leg> (leg: candidate, candidate-retry, control), each that
+#       leg's evidence plus a `job` file (its RESULT) and an `exit` file (its N, bare or as exit=N).
+#       A leg with no artifact is a job that never ran (RESULT skipped, N none); a release with no
+#       artifact at all fails, naming it, as does an artifact whose release.txt names another
+#       release. The first line is "Passed: <release>, ..." when every release passed, else the
+#       first failing release's own first line prefixed "<release>: "; under it, a "## <release>"
+#       section each. Every release must be one lib/common.sh knows, each once (else exit 2); the
+#       one-release flags are refused beside these. Not gated and pins unfilled need no releases.
 set -euo pipefail
 
 GUEST_MACOSX_REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -54,7 +65,7 @@ usage() { usage_die "usage: bin/gate-ci.sh run|control-ref|verdict ... (see its 
 opt_release='' opt_media_dir='' opt_checkout='' opt_work_dir='' opt_evidence_dir='' opt_setup=''
 opt_event='' opt_given='' opt_pr_base=''
 opt_decision='' opt_reason='' opt_scope_job='' opt_candidate='' opt_candidate_job='' opt_candidate_exit=''
-opt_retry='' opt_retry_job='' opt_retry_exit='' opt_control=''
+opt_retry='' opt_retry_job='' opt_retry_exit='' opt_control='' opt_releases='' opt_artifacts=''
 given=" "
 
 # opts <names> -- <args>: set opt_<name> for each --<name> VALUE among <names>; any other argument
@@ -86,6 +97,8 @@ opts() {
             --retry-job) opt_retry_job=$2 ;;
             --retry-exit) opt_retry_exit=$2 ;;
             --control) opt_control=$2 ;;
+            --releases) opt_releases=$2 ;;
+            --artifacts) opt_artifacts=$2 ;;
         esac
         given="$given${1#--} "
         shift 2
@@ -240,13 +253,107 @@ cmd_control_ref() {
     printf '%s\n' "$ref"
 }
 
+# verdict_one <candidate> <candidate-job> <candidate-exit> <retry> <retry-job> <retry-exit> <control>:
+# one release's verdict as Markdown on stdout, its first line the verdict; returns 0 for a pass and
+# 1 for anything else. The candidate is the retry's evidence if the retry ran, else the candidate's.
+verdict_one() {
+    local dir=$1 job=candidate result=$2 ex=$3
+    case $5 in
+        ''|skipped) ;;
+        *) dir=$4 job=candidate-retry result=$5 ex=$6 ;;
+    esac
+    if [ ! -f "$dir/steps.tsv" ]; then
+        printf 'No clear regression: CI itself failed at %s -- no steps.tsv (job %s, gate.sh exit %s)\n' \
+            "$job" "$result" "${ex:-none}"
+        return 1
+    fi
+    local out err rc=0
+    err=$(mktemp "${TMPDIR:-/tmp}/gate-ci.XXXXXX") || die "cannot create a temp file"
+    out=$("$GUEST_MACOSX_REPO_ROOT/bin/gate-summary.sh" "$dir" "$7" 2>"$err") || rc=$?
+    if [ "$rc" -eq 2 ]; then
+        printf 'No clear regression: CI itself failed at summary -- %s\n' "$(head -n 1 "$err")"
+        rm -f "$err"
+        return 1
+    fi
+    rm -f "$err"
+    printf '%s\n' "$out"
+    [ "$rc" -eq 0 ] || return 1
+    return 0
+}
+
+# leg_file <artifact-dir> <file> <no-artifact> <no-file>: one line the leg's job wrote beside its
+# evidence; else <no-artifact> for a leg with no artifact (a job that never ran uploaded nothing),
+# or <no-file> for an artifact without the file (a job that ran, then stopped before writing it).
+# An exit written as GITHUB_OUTPUT has it (exit=N) is read as its N.
+leg_file() {
+    local v
+    if [ -f "$1/$2" ]; then
+        v=$(head -n 1 "$1/$2")
+        printf '%s\n' "${v#exit=}"
+    elif [ -d "$1" ]; then
+        printf '%s\n' "$4"
+    else
+        printf '%s\n' "$3"
+    fi
+}
+
+# verdict_release <release>: verdict_one for one release's artifacts in the artifacts dir
+verdict_release() {
+    local r=$1 base=$opt_artifacts/gate-$1 l got any=false
+    for l in candidate candidate-retry control; do
+        [ -d "$base-$l" ] || continue
+        any=true
+        # the artifact's name and the run inside it come from different places in the workflow: a
+        # disagreement is its wiring at fault, and either release's verdict read from it would lie
+        # gate.sh and the placeholder always write release.txt, so a candidate or retry run without
+        # one was miswired too (gate-summary.sh would take it for 10.9); only a control, whose ref
+        # may predate releases, can lack it
+        if [ "$l" != control ] && [ -f "$base-$l/steps.tsv" ] && [ ! -f "$base-$l/release.txt" ]; then
+            printf 'No clear regression: CI itself failed at wiring -- gate-%s-%s holds a run with no release.txt, not a %s run\n' \
+                "$r" "$l" "$r"
+            return 1
+        fi
+        if [ -f "$base-$l/release.txt" ]; then
+            got=$(head -n 1 "$base-$l/release.txt")
+            if [ "$got" != "$r" ]; then
+                printf 'No clear regression: CI itself failed at wiring -- gate-%s-%s holds a %s run, not %s\n' \
+                    "$r" "$l" "$got" "$r"
+                return 1
+            fi
+        fi
+    done
+    if [ "$any" = false ]; then
+        printf "No clear regression: CI itself failed at candidate -- no evidence from %s's gate at all (no gate-%s-* artifact)\n" \
+            "$r" "$r"
+        return 1
+    fi
+    verdict_one "$base-candidate" "$(leg_file "$base-candidate" job skipped unknown)" \
+        "$(leg_file "$base-candidate" exit '' '')" "$base-candidate-retry" \
+        "$(leg_file "$base-candidate-retry" job skipped unknown)" \
+        "$(leg_file "$base-candidate-retry" exit '' '')" "$base-control"
+}
+
 # fail_line <line>: the verdict that is no gate-summary.sh's
 fail_line() { printf '%s\n' "$1"; exit 1; }
 
 cmd_verdict() {
     opts decision reason scope-job candidate candidate-job candidate-exit retry retry-job \
-        retry-exit control -- "$@"
+        retry-exit control releases artifacts -- "$@"
     need decision reason scope-job
+    local r seen=" " n rc=0 out first='' passed='' body=''
+    case $given in
+        *" releases "*|*" artifacts "*)
+            need releases artifacts
+            for n in candidate candidate-job candidate-exit retry retry-job retry-exit control; do
+                case $given in *" $n "*) usage_die "--$n is one release's: give --releases and --artifacts alone" ;; esac
+            done
+            for r in $opt_releases; do
+                known_release "$r" || usage_die "--releases names $r: want $(releases_said)"
+                case $seen in *" $r "*) usage_die "--releases names $r twice" ;; esac
+                seen="$seen$r "
+            done
+            ;;
+    esac
     case $opt_decision in
         not-gated) printf 'Not gated: %s\n' "$opt_reason"; exit 0 ;;
         pins-unfilled) fail_line "Pins not filled yet: $opt_reason" ;;
@@ -254,25 +361,33 @@ cmd_verdict() {
         gated) ;;
         *) usage_die "--decision $opt_decision: want gated, not-gated or pins-unfilled" ;;
     esac
-    need candidate candidate-job candidate-exit retry retry-job retry-exit control
-    local dir=$opt_candidate job=candidate result=$opt_candidate_job ex=$opt_candidate_exit
-    case $opt_retry_job in
-        ''|skipped) ;;
-        *) dir=$opt_retry job=candidate-retry result=$opt_retry_job ex=$opt_retry_exit ;;
+    case $given in
+        *" releases "*) ;;
+        *)
+            need candidate candidate-job candidate-exit retry retry-job retry-exit control
+            verdict_one "$opt_candidate" "$opt_candidate_job" "$opt_candidate_exit" "$opt_retry" \
+                "$opt_retry_job" "$opt_retry_exit" "$opt_control" || rc=$?
+            exit "$rc"
+            ;;
     esac
-    [ -f "$dir/steps.tsv" ] ||
-        fail_line "No clear regression: CI itself failed at $job -- no steps.tsv (job $result, gate.sh exit ${ex:-none})"
-    local out err rc=0
-    err=$(mktemp "${TMPDIR:-/tmp}/gate-ci.XXXXXX") || die "cannot create a temp file"
-    out=$("$GUEST_MACOSX_REPO_ROOT/bin/gate-summary.sh" "$dir" "$opt_control" 2>"$err") || rc=$?
-    if [ "$rc" -eq 2 ]; then
-        out="No clear regression: CI itself failed at summary -- $(head -n 1 "$err")"
-        rm -f "$err"
-        fail_line "$out"
+    [ "$seen" != " " ] || usage_die "--releases names no release: a gated change gates at least one"
+    # every release is decided, so the summary shows each one's evidence, but the first line is the
+    # first failure's in the order given: the one a person reads, and the check's annotation, names it
+    for r in $opt_releases; do
+        rc=0
+        out=$(verdict_release "$r") || rc=$?
+        if [ "$rc" -eq 0 ]; then
+            passed="$passed${passed:+, }$r"
+        elif [ -z "$first" ]; then
+            first="$r: $(printf '%s\n' "$out" | head -n 1)"
+        fi
+        body="$body"$'\n'"## $r"$'\n'"$out"$'\n'
+    done
+    if [ -n "$first" ]; then
+        printf '%s\n%s' "$first" "$body"
+        exit 1
     fi
-    rm -f "$err"
-    printf '%s\n' "$out"
-    [ "$rc" -eq 0 ] || exit 1
+    printf 'Passed: %s\n%s' "$passed" "$body"
     exit 0
 }
 
