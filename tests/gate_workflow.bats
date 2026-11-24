@@ -127,6 +127,16 @@ assert uses("scope", "Mavergreen/shipyard/.github/actions/install"), "scope"
 '
 }
 
+@test "each gate run names its release and a media dir outside the work dir" {
+    py '
+for j in ["candidate", "candidate-retry", "control"]:
+    s = [s for s in steps(j) if "gate-ci.sh run" in s.get("run", "")][0]
+    assert "--release 10.9 " in s["run"], (j, s["run"])
+    assert "--media-dir \"$RUNNER_TEMP/media\" " in s["run"], (j, s["run"])
+    assert "--work-dir /mnt/gate " in s["run"], (j, s["run"])
+'
+}
+
 @test "the gate step has the API token for packer plugins install" {
     py '
 for j in ["candidate", "candidate-retry", "control"]:

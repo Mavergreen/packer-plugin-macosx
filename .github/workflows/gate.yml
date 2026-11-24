@@ -167,7 +167,7 @@ jobs:
         run: |
           set -euo pipefail
           sudo mkdir -p /mnt/gate && sudo chown "$(id -u):$(id -g)" /mnt/gate
-          bin/gate-ci.sh run --checkout . --work-dir /mnt/gate --evidence-dir "$RUNNER_TEMP/gate-evidence" --setup ${{ steps.host.outcome }}
+          bin/gate-ci.sh run --release 10.9 --checkout . --work-dir /mnt/gate --media-dir "$RUNNER_TEMP/media" --evidence-dir "$RUNNER_TEMP/gate-evidence" --setup ${{ steps.host.outcome }}
 
       - name: Keep the evidence
         if: always()
@@ -240,7 +240,7 @@ jobs:
         run: |
           set -euo pipefail
           sudo mkdir -p /mnt/gate && sudo chown "$(id -u):$(id -g)" /mnt/gate
-          bin/gate-ci.sh run --checkout . --work-dir /mnt/gate --evidence-dir "$RUNNER_TEMP/gate-evidence" --setup ${{ steps.host.outcome }}
+          bin/gate-ci.sh run --release 10.9 --checkout . --work-dir /mnt/gate --media-dir "$RUNNER_TEMP/media" --evidence-dir "$RUNNER_TEMP/gate-evidence" --setup ${{ steps.host.outcome }}
 
       - name: Keep the evidence
         if: always()
@@ -326,7 +326,7 @@ jobs:
         run: |
           set -euo pipefail
           sudo mkdir -p /mnt/gate && sudo chown "$(id -u):$(id -g)" /mnt/gate
-          bin/gate-ci.sh run --checkout control --work-dir /mnt/gate --evidence-dir "$RUNNER_TEMP/gate-evidence" --setup ${{ steps.host.outcome }}
+          bin/gate-ci.sh run --release 10.9 --checkout control --work-dir /mnt/gate --media-dir "$RUNNER_TEMP/media" --evidence-dir "$RUNNER_TEMP/gate-evidence" --setup ${{ steps.host.outcome }}
 
       - name: Keep the evidence
         if: always()
