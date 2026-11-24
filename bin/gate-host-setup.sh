@@ -2,7 +2,8 @@
 # platform: host-agnostic -- GitHub's Linux runners only (apt, sudo)
 # Ready one of GitHub's hosted Linux runners for bin/gate.sh: what Mavergreen/mavericks-vm's
 # scripts/install-tools.sh does there (89da498), but age, oras and packer, which the gate does not
-# use or gate.yml sets up itself (hashicorp/setup-packer, the version ci.yml validates with).
+# use or gate-release.yml sets up itself (hashicorp/setup-packer, the version ci.yml validates
+# with).
 #
 #   usage: bin/gate-host-setup.sh | bin/gate-host-setup.sh --packages (prints the apt packages, one
 #          a line, for the cache key of their .debs)
@@ -81,7 +82,7 @@ apt_step() {
 
 # One runner in six got the archive's .debs at about 70 kB/s on 2026-10-26 (mavericks-vm's
 # install-tools.sh), so the .debs this runner image lacks are kept in actions/cache, keyed by the
-# image and this list (gate.yml): a hit installs them with no mirror; a miss fetches them once, into
+# image and this list (gate-release.yml): a hit installs them with no mirror; a miss fetches them once, into
 # GATE_DEBS_DIR, for the workflow to save. Offline means apt has no sources at all: --no-download
 # refuses local .debs, and a plain install of them fetches them all again.
 debs=${GATE_DEBS_DIR:-}
