@@ -5,7 +5,7 @@ name: gate
 # first summary line is the verdict. It runs the local command; the logic around it is
 # bin/gate-ci.sh, so nothing here reimplements the gate.
 #
-#   - On a pull request: gated only when it is Renovate's and moves a `gate` row of gate/scope.tsv
+#   - On a pull request: gated only when it is Renovate's and moves a `gate:` row of gate/scope.tsv
 #     (the boot stack's pins and config.plist, Aqua Transport). Everything else passes `gate` as
 #     "Not gated: <why>", without a runner booting anything; a stale sources.tsv checksum fails it
 #     as "Pins not filled yet: <what to do>". Snow Leopard is gated by hand: CI has no 10.6 disc.
@@ -88,7 +88,10 @@ jobs:
             base=$(git merge-base origin/main HEAD)
             head=$(git rev-parse HEAD)
           fi
-          line=$(bin/gate-scope.sh "$base" "$head" "$GATE_BRANCH" "$GATE_EVENT")
+          # The first line is the decision and its reason; a gated change's second line, the
+          # releases, is not used here yet.
+          out=$(bin/gate-scope.sh "$base" "$head" "$GATE_BRANCH" "$GATE_EVENT")
+          line=${out%%$'\n'*}
           decision=${line%% *}
           reason=${line#* }
           control_ref=

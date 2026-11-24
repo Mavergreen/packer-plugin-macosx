@@ -310,24 +310,63 @@ assert got == want, (got, want)
 '
 }
 
-@test "every scope row is path, gate or skip, and a reason; every skip says why" {
+@test "every scope row is path, skip or gate:<releases>, and a reason" {
+    # shellcheck source=../lib/common.sh
+    . "$REPO/lib/common.sh"
     while IFS= read -r line; do
         case $line in '#'*|'') continue ;; esac
         IFS=$'\t' read -r path what reason <<< "$line"
         [ -n "$path" ]
-        [ "$what" = gate ] || [ "$what" = skip ]
-        if [ "$what" = skip ]; then [ -n "$reason" ]; fi
+        [ -n "$reason" ]
+        case $what in
+            skip) ;;
+            gate:?*)
+                IFS=, read -r -a rs <<< "${what#gate:}"
+                for r in "${rs[@]}"; do known_release "$r"; done ;;
+            *) false ;;
+        esac
         [ "$(printf '%s' "$line" | awk -F'\t' '{ print NF }')" -eq 3 ]
     done < "$REPO/gate/scope.tsv"
 }
 
-@test "the scope rows gate the boot stack and Aqua Transport, and skip OpenSSH and 10.6, saying why" {
+@test "the scope rows gate each path on the releases it can break, and skip OpenSSH, saying why" {
     s="$REPO/gate/scope.tsv"
-    grep -qx "assets/pins/sources.tsv	gate	.*" "$s"
-    grep -qx "assets/firmware/config.plist	gate	.*" "$s"
-    grep -qx "templates/mavericks-aquatransport/aquatransport.pkr.hcl	gate	.*" "$s"
+    grep -qx "assets/pins/sources.tsv	gate:10.9,10.6	.*" "$s"
+    grep -qx "assets/firmware/config.plist	gate:10.9	.*" "$s"
+    grep -qx "assets/firmware/snowleopard/config.plist	gate:10.6	.*" "$s"
+    grep -qx "templates/mavericks-aquatransport/aquatransport.pkr.hcl	gate:10.9	.*" "$s"
     grep -qxF "components/**	skip	OpenSSH has its own on-VM smoke test before it releases; the owner, 2026-10-12" "$s"
-    grep -qxF "assets/firmware/snowleopard/config.plist	skip	10.6 is gated by hand: a boot-stack change gets a local bin/gate.sh --release 10.6 --installer <disc> before merge (the owner's rulings R52, R59); CI has no 10.6 disc" "$s"
+    run grep -n "gated by hand\|no 10.6 disc" "$s"
+    [ "$status" -eq 1 ]
+}
+
+@test "the scope step takes its decision and reason from gate-scope.sh's first line alone" {
+    # gate-scope.sh prints a second line, the releases, when it gates; the step's outputs must
+    # not take it into the reason, where it would break $GITHUB_OUTPUT's name=value lines.
+    w="$BATS_TEST_TMPDIR/w"
+    mkdir -p "$w/bin"
+    python3 -I -c '
+import sys, yaml
+with open(sys.argv[1] + "/.github/workflows/gate.yml") as f:
+    gate = yaml.safe_load(f)
+s = [s for s in gate["jobs"]["scope"]["steps"] if "bin/gate-scope.sh" in s.get("run", "")][0]
+print(s["run"])
+' "$REPO" > "$w/step.sh"
+    cat > "$w/bin/gate-scope.sh" <<'EOF'
+#!/bin/sh
+echo "gated changed: x"
+echo "releases 10.9 10.6"
+EOF
+    cat > "$w/bin/gate-ci.sh" <<'EOF'
+#!/bin/sh
+echo v0.1
+EOF
+    chmod +x "$w/bin/gate-scope.sh" "$w/bin/gate-ci.sh"
+    cd "$w"
+    GITHUB_OUTPUT="$w/out" GATE_EVENT=pull_request GATE_PR_BASE=b GATE_PR_HEAD=h GATE_BRANCH=renovate/x \
+        GATE_FORCE='' GATE_CONTROL_REF='' run bash "$w/step.sh"
+    [ "$status" -eq 0 ]
+    [ "$(cat "$w/out")" = "$(printf 'decision=gated\nreason=changed: x\ncontrol_ref=v0.1')" ]
 }
 
 @test "renovate's Packer manager reads gate.yml as well as ci.yml" {
