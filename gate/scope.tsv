@@ -1,8 +1,9 @@
-# Which of repackage-on-ingredient-bump.yml's paths: the CI boot gate runs on (bin/gate-scope.sh),
-# one row each, tab-separated: the path (a paths: glob, as the workflow has it), gate or skip,
-# and why. tests/gate_workflow.bats holds the paths equal to the workflow's.
-assets/pins/sources.tsv	gate	every pinned source: the boot stack (OpenCorePkg, Lilu, VirtualSMC), what builds it, and Apple's media
-assets/firmware/config.plist	gate	10.9's OpenCore configuration, which loads Lilu and VirtualSMC and boots the guest
-templates/mavericks-aquatransport/aquatransport.pkr.hcl	gate	the Aqua Transport version and digest the 10.9 layer installs
+# Which of repackage-on-ingredient-bump.yml's paths the CI boot gate runs on (bin/gate-scope.sh),
+# one row each, tab-separated: the path (a paths: glob, as the workflow has it), skip or
+# gate:<releases> (the releases, comma-separated, that a change to it can break, so the gate boots
+# those alone), and why. tests/gate_workflow.bats holds the paths equal to the workflow's.
+assets/pins/sources.tsv	gate:10.9,10.6	every pinned source: the boot stack (OpenCorePkg, Lilu, VirtualSMC), what builds it, and Apple's media, which both releases boot from
+assets/firmware/config.plist	gate:10.9	10.9's OpenCore configuration, which loads Lilu and VirtualSMC and boots the guest
+templates/mavericks-aquatransport/aquatransport.pkr.hcl	gate:10.9	the Aqua Transport version and digest the 10.9 layer installs
 components/**	skip	OpenSSH has its own on-VM smoke test before it releases; the owner, 2026-10-12
-assets/firmware/snowleopard/config.plist	skip	10.6 is gated by hand: a boot-stack change gets a local bin/gate.sh --release 10.6 --installer <disc> before merge (the owner's rulings R52, R59); CI has no 10.6 disc
+assets/firmware/snowleopard/config.plist	gate:10.6	10.6's OpenCore configuration, which loads Lilu and VirtualSMC and boots the guest

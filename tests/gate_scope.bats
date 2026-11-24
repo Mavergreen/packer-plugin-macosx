@@ -71,19 +71,23 @@ bats_require_minimum_version 1.5.0
     [[ "$stderr" == *0000000000000000000000000000000000000000* ]] || false
 }
 
-@test "a release (workflow_call) is gated, whatever changed and whatever the branch" {
+@test "a release (workflow_call) is gated on every release, whatever changed and whatever the branch" {
     change README.md
     scope "$BASE" "$HEAD" main workflow_call
     [ "$status" -eq 0 ]
-    [ "$output" = "gated a release" ]
+    [ "${#lines[@]}" -eq 2 ]
+    [ "${lines[0]}" = "gated a release" ]
+    [ "${lines[1]}" = "releases 10.9 10.6" ]
     [ ! -e "$VERIFY_LOG" ]
 }
 
-@test "a dispatch with force is gated" {
+@test "a dispatch with force is gated on every release" {
     change README.md
     GATE_FORCE=true scope "$BASE" "$HEAD" main workflow_dispatch
     [ "$status" -eq 0 ]
-    [ "$output" = "gated dispatched with force" ]
+    [ "${#lines[@]}" -eq 2 ]
+    [ "${lines[0]}" = "gated dispatched with force" ]
+    [ "${lines[1]}" = "releases 10.9 10.6" ]
 }
 
 @test "force counts only on a dispatch: a pull_request with GATE_FORCE set is judged as usual" {
@@ -123,40 +127,112 @@ bats_require_minimum_version 1.5.0
     [ "$output" = "not-gated no gated path changed; components/** is not gated: OpenSSH has its own on-VM smoke test before it releases; the owner, 2026-10-12" ]
 }
 
-@test "a Renovate PR touching only Snow Leopard's config.plist is not gated, and says 10.6 is gated by hand" {
+@test "a Renovate PR touching only Snow Leopard's config.plist is gated on 10.6 alone" {
     change assets/firmware/snowleopard/config.plist
     scope "$BASE" "$HEAD" renovate/thing pull_request
     [ "$status" -eq 0 ]
-    [[ "$output" == "not-gated no gated path changed; assets/firmware/snowleopard/config.plist is not gated: 10.6 is gated by hand"* ]] || false
+    [ "${#lines[@]}" -eq 2 ]
+    [ "${lines[0]}" = "gated changed: assets/firmware/snowleopard/config.plist" ]
+    [ "${lines[1]}" = "releases 10.6" ]
 }
 
 @test "a Renovate PR moving a pin whose checksum is stale is pins-unfilled, verified against the base" {
     change assets/pins/sources.tsv
     VERIFY_RC=1 scope "$BASE" "$HEAD" renovate/thing pull_request
     [ "$status" -eq 0 ]
+    [ "${#lines[@]}" -eq 1 ]
     [ "$output" = "pins-unfilled re-pin the changed assets/pins/sources.tsv row on this branch (bin/verify-changed-sources.sh names it); the pins bot is not built yet" ]
     [ "$(cat "$VERIFY_LOG")" = "$BASE" ]
     # what verify-changed-sources said reaches the log, for a person to read
     [[ "$stderr" == *"does not match its pinned checksum"* ]] || false
 }
 
-@test "a Renovate PR moving a pin that verifies is gated, naming the path" {
+@test "a Renovate PR moving a pin that verifies is gated on every release, naming the path" {
     change assets/pins/sources.tsv
     scope "$BASE" "$HEAD" renovate/thing pull_request
     [ "$status" -eq 0 ]
-    [ "$output" = "gated changed: assets/pins/sources.tsv" ]
+    [ "${#lines[@]}" -eq 2 ]
+    [ "${lines[0]}" = "gated changed: assets/pins/sources.tsv" ]
+    [ "${lines[1]}" = "releases 10.9 10.6" ]
 }
 
-@test "an Aqua Transport bump is gated" {
+@test "an Aqua Transport bump is gated on 10.9 alone" {
     change templates/mavericks-aquatransport/aquatransport.pkr.hcl
     scope "$BASE" "$HEAD" renovate/wowfunhappy-aquatransport-2026.x pull_request
-    [ "$output" = "gated changed: templates/mavericks-aquatransport/aquatransport.pkr.hcl" ]
+    [ "${#lines[@]}" -eq 2 ]
+    [ "${lines[0]}" = "gated changed: templates/mavericks-aquatransport/aquatransport.pkr.hcl" ]
+    [ "${lines[1]}" = "releases 10.9" ]
+}
+
+@test "10.9's config.plist is gated on 10.9 alone" {
+    change assets/firmware/config.plist
+    scope "$BASE" "$HEAD" renovate/thing pull_request
+    [ "${lines[0]}" = "gated changed: assets/firmware/config.plist" ]
+    [ "${lines[1]}" = "releases 10.9" ]
 }
 
 @test "gated names every gated path that changed, and not the skipped ones" {
     change assets/firmware/config.plist components/openssh/version assets/pins/sources.tsv
     scope "$BASE" "$HEAD" renovate/thing pull_request
-    [ "$output" = "gated changed: assets/pins/sources.tsv, assets/firmware/config.plist" ]
+    [ "${lines[0]}" = "gated changed: assets/pins/sources.tsv, assets/firmware/config.plist" ]
+}
+
+@test "the releases are the union of the rows hit, in GUEST_MACOSX_RELEASES order, not row order" {
+    change assets/firmware/snowleopard/config.plist templates/mavericks-aquatransport/aquatransport.pkr.hcl
+    scope "$BASE" "$HEAD" renovate/thing pull_request
+    [ "${#lines[@]}" -eq 2 ]
+    [ "${lines[1]}" = "releases 10.9 10.6" ]
+}
+
+@test "a not-gated change prints one line, naming no releases" {
+    change README.md
+    scope "$BASE" "$HEAD" renovate/thing pull_request
+    [ "${#lines[@]}" -eq 1 ]
+}
+
+# bad_row <what>: append a row gating README.md as <what> to the copied scope.tsv
+bad_row() {
+    printf 'README.md\t%s\tbad\n' "$1" >> "$R/gate/scope.tsv"
+}
+
+@test "a gate row naming no release is exit 2, naming the row" {
+    bad_row gate:
+    change assets/pins/sources.tsv
+    scope "$BASE" "$HEAD" renovate/thing pull_request
+    [ "$status" -eq 2 ]
+    [[ "$stderr" == *"README.md"*"gate:"* ]] || false
+}
+
+@test "a gate row naming a release not in GUEST_MACOSX_RELEASES is exit 2, naming the row" {
+    bad_row gate:10.5
+    change assets/pins/sources.tsv
+    scope "$BASE" "$HEAD" renovate/thing pull_request
+    [ "$status" -eq 2 ]
+    [[ "$stderr" == *"README.md"*"gate:10.5"* ]] || false
+}
+
+@test "a gate row with an empty release in its list is exit 2, naming the row" {
+    bad_row gate:10.9,,10.6
+    change assets/pins/sources.tsv
+    scope "$BASE" "$HEAD" renovate/thing pull_request
+    [ "$status" -eq 2 ]
+    [[ "$stderr" == *"README.md"*"gate:10.9,,10.6"* ]] || false
+}
+
+@test "a gate row ending in a comma is exit 2, naming the row" {
+    bad_row gate:10.9,
+    change assets/pins/sources.tsv
+    scope "$BASE" "$HEAD" renovate/thing pull_request
+    [ "$status" -eq 2 ]
+    [[ "$stderr" == *"README.md"*"gate:10.9,"* ]] || false
+}
+
+@test "a bare gate row, naming no releases, is exit 2" {
+    bad_row gate
+    change assets/pins/sources.tsv
+    scope "$BASE" "$HEAD" renovate/thing pull_request
+    [ "$status" -eq 2 ]
+    [[ "$stderr" == *"README.md"*"'gate'"* ]] || false
 }
 
 @test "only what the branch changed counts, not what moved on the base since it forked" {
