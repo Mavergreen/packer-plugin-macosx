@@ -67,18 +67,30 @@ EOF
 # --- run ----------------------------------------------------------------------------------------
 
 @test "run: usage errors are exit 2" {
+    fake_checkout "$BATS_TEST_TMPDIR/co" 0
     run "$CI"
     [ "$status" -eq 2 ]
-    run "$CI" run --checkout "$BATS_TEST_TMPDIR"
+    run "$CI" run --release 10.9 --media-dir "$BATS_TEST_TMPDIR/media" \
+        --checkout "$BATS_TEST_TMPDIR"
     [ "$status" -eq 2 ]
+    # --release and --media-dir are each required, even for 10.9, which uses no media dir
+    run "$CI" run --media-dir "$BATS_TEST_TMPDIR/media" --checkout "$BATS_TEST_TMPDIR/co" \
+        --work-dir /mnt/gate --evidence-dir "$BATS_TEST_TMPDIR/ev" --setup success
+    [ "$status" -eq 2 ]
+    run "$CI" run --release 10.9 --checkout "$BATS_TEST_TMPDIR/co" \
+        --work-dir /mnt/gate --evidence-dir "$BATS_TEST_TMPDIR/ev" --setup success
+    [ "$status" -eq 2 ]
+    [ ! -e "$BATS_TEST_TMPDIR/gate.args" ]
+    [ ! -s "$OUT" ]
     run "$CI" nonsense
     [ "$status" -eq 2 ]
 }
 
 @test "run: gates 10.9 alone, with the work and evidence dirs it is given, and passes the API token" {
     fake_checkout "$BATS_TEST_TMPDIR/co" 0 writes-steps
-    PACKER_GITHUB_API_TOKEN=tok run "$CI" run --checkout "$BATS_TEST_TMPDIR/co" \
-        --work-dir /mnt/gate --evidence-dir "$BATS_TEST_TMPDIR/ev" --setup success
+    PACKER_GITHUB_API_TOKEN=tok run "$CI" run --release 10.9 --media-dir "$BATS_TEST_TMPDIR/media" \
+        --checkout "$BATS_TEST_TMPDIR/co" --work-dir /mnt/gate \
+        --evidence-dir "$BATS_TEST_TMPDIR/ev" --setup success
     [ "$status" -eq 0 ]
     [ "$(cat "$BATS_TEST_TMPDIR/gate.args")" = "--release
 10.9
@@ -94,7 +106,8 @@ $BATS_TEST_TMPDIR/ev" ]
     for rc in 1 2 3; do
         : > "$OUT"
         fake_checkout "$BATS_TEST_TMPDIR/co$rc" "$rc"
-        run "$CI" run --checkout "$BATS_TEST_TMPDIR/co$rc" --work-dir /mnt/gate \
+        run "$CI" run --release 10.9 --media-dir "$BATS_TEST_TMPDIR/media" \
+            --checkout "$BATS_TEST_TMPDIR/co$rc" --work-dir /mnt/gate \
             --evidence-dir "$BATS_TEST_TMPDIR/ev$rc" --setup success
         [ "$status" -eq 0 ]
         grep -qx "exit=$rc" "$OUT"
@@ -103,7 +116,8 @@ $BATS_TEST_TMPDIR/ev" ]
 
 @test "run: a host setup that failed is exit 3 and a steps.tsv saying so, so the retry runs" {
     fake_checkout "$BATS_TEST_TMPDIR/co" 0
-    run "$CI" run --checkout "$BATS_TEST_TMPDIR/co" --work-dir /mnt/gate \
+    run "$CI" run --release 10.9 --media-dir "$BATS_TEST_TMPDIR/media" \
+        --checkout "$BATS_TEST_TMPDIR/co" --work-dir /mnt/gate \
         --evidence-dir "$BATS_TEST_TMPDIR/ev" --setup failure
     [ "$status" -eq 0 ]
     grep -qx 'exit=3' "$OUT"
@@ -115,7 +129,8 @@ $BATS_TEST_TMPDIR/ev" ]
 
 @test "run: a ref with no bin/gate.sh (it predates the gate) writes a whole steps.tsv, never a crash" {
     mkdir -p "$BATS_TEST_TMPDIR/old"
-    run "$CI" run --checkout "$BATS_TEST_TMPDIR/old" --work-dir /mnt/gate \
+    run "$CI" run --release 10.9 --media-dir "$BATS_TEST_TMPDIR/media" \
+        --checkout "$BATS_TEST_TMPDIR/old" --work-dir /mnt/gate \
         --evidence-dir "$BATS_TEST_TMPDIR/ctl" --setup success
     [ "$status" -eq 0 ]
     grep -qx 'exit=3' "$OUT"
@@ -127,7 +142,8 @@ $BATS_TEST_TMPDIR/ev" ]
 
 @test "run: the placeholder is bin/gate.sh's step order with its default restart count" {
     mkdir -p "$BATS_TEST_TMPDIR/old"
-    run "$CI" run --checkout "$BATS_TEST_TMPDIR/old" --work-dir /mnt/gate \
+    run "$CI" run --release 10.9 --media-dir "$BATS_TEST_TMPDIR/media" \
+        --checkout "$BATS_TEST_TMPDIR/old" --work-dir /mnt/gate \
         --evidence-dir "$BATS_TEST_TMPDIR/ctl" --setup success
     [ "$status" -eq 0 ]
     fixed=$(sed -n 's/^STEPS=(\(.*\))$/\1/p' "$REPO/bin/gate.sh")
@@ -142,11 +158,203 @@ $BATS_TEST_TMPDIR/ev" ]
 }
 
 @test "run: no control ref at all (its setup skipped) still says the ref has no gate, not a setup failure" {
-    run "$CI" run --checkout "$BATS_TEST_TMPDIR/absent" --work-dir /mnt/gate \
+    run "$CI" run --release 10.9 --media-dir "$BATS_TEST_TMPDIR/media" \
+        --checkout "$BATS_TEST_TMPDIR/absent" --work-dir /mnt/gate \
         --evidence-dir "$BATS_TEST_TMPDIR/ctl" --setup skipped
     [ "$status" -eq 0 ]
     grep -qx 'exit=3' "$OUT"
     [ "$(head -n 1 "$BATS_TEST_TMPDIR/ctl/steps.tsv" | cut -f4)" = "the ref has no bin/gate.sh: it predates the gate, or there was no ref to check out" ]
+}
+
+# fake_fetcher [fails]: a stand-in for `go run ./cmd/fetch-pinned` (GUEST_MACOSX_GATE_FETCH_PINNED)
+# that records its arguments and the directory it ran in, then either makes a file in the dir it
+# is given and prints its path, or says why it could not, after go's and its own progress lines, as
+# the real one does, and exits 1. The file's name has a literal %20, as the 10.6 disc's cache name
+# does.
+fake_fetcher() {
+    local f=$BATS_TEST_TMPDIR/fake-fetch-pinned
+    cat > "$f" <<'SH'
+#!/usr/bin/env bash
+printf '%s\n' "$@" > "$FAKE_LOG_DIR/fetch.args"
+if [ "${FAKE_FETCH_FAILS:-}" = 1 ]; then
+    # as the real one says it: go's own lines and progress first, the error last
+    printf 'go: downloading go1.26.11 (linux/amd64)\n' >&2
+    printf 'snowleopard-disc-10A432: 100 of 7000 MiB\n' >&2
+    printf 'fetch-pinned: snowleopard-disc-10A432: sha256 mismatch\n\n' >&2
+    exit 1
+fi
+if [ "${FAKE_FETCH_FAILS:-}" = 2 ]; then
+    # killed before it could say why: go's own line, then go run's
+    printf 'go: downloading go1.26.11 (linux/amd64)\nsignal: killed\n\n' >&2
+    exit 1
+fi
+mkdir -p "$2"
+p="$2/Mac%20OS%20X%2010.6.dmg"
+: > "$p"
+printf '%s\n' "$p"
+SH
+    chmod +x "$f"
+    export GUEST_MACOSX_GATE_FETCH_PINNED="$f"
+}
+
+@test "run: 10.6 fetches its pinned disc into the media dir, then gates with it as the installer" {
+    fake_checkout "$BATS_TEST_TMPDIR/co" 0 writes-steps
+    fake_fetcher
+    run "$CI" run --release 10.6 --media-dir "$BATS_TEST_TMPDIR/media" \
+        --checkout "$BATS_TEST_TMPDIR/co" --work-dir /mnt/gate \
+        --evidence-dir "$BATS_TEST_TMPDIR/ev" --setup success
+    [ "$status" -eq 0 ]
+    [ "$(cat "$BATS_TEST_TMPDIR/fetch.args")" = "snowleopard-disc-10A432
+$BATS_TEST_TMPDIR/media" ]
+    [ "$(cat "$BATS_TEST_TMPDIR/gate.args")" = "--release
+10.6
+--installer
+$BATS_TEST_TMPDIR/media/Mac%20OS%20X%2010.6.dmg
+--work-dir
+/mnt/gate
+--evidence-dir
+$BATS_TEST_TMPDIR/ev" ]
+    grep -qx 'exit=0' "$OUT"
+}
+
+@test "run: 10.9 fetches nothing: its gate.sh fetches its own InstallESD" {
+    fake_checkout "$BATS_TEST_TMPDIR/co" 0
+    fake_fetcher
+    run "$CI" run --release 10.9 --media-dir "$BATS_TEST_TMPDIR/media" \
+        --checkout "$BATS_TEST_TMPDIR/co" --work-dir /mnt/gate \
+        --evidence-dir "$BATS_TEST_TMPDIR/ev" --setup success
+    [ "$status" -eq 0 ]
+    [ ! -e "$BATS_TEST_TMPDIR/fetch.args" ]
+    [ ! -e "$BATS_TEST_TMPDIR/media" ]
+    grep -qx -- '--release' "$BATS_TEST_TMPDIR/gate.args"
+    run ! grep -qx -- '--installer' "$BATS_TEST_TMPDIR/gate.args"
+}
+
+@test "run: a release the gate does not know is a usage error, and runs nothing" {
+    fake_checkout "$BATS_TEST_TMPDIR/co" 0
+    fake_fetcher
+    run --separate-stderr "$CI" run --release 10.5 --media-dir "$BATS_TEST_TMPDIR/media" \
+        --checkout "$BATS_TEST_TMPDIR/co" --work-dir /mnt/gate \
+        --evidence-dir "$BATS_TEST_TMPDIR/ev" --setup success
+    [ "$status" -eq 2 ]
+    [[ "$stderr" == *"10.5"* ]] || false
+    [ ! -e "$BATS_TEST_TMPDIR/fetch.args" ]
+    [ ! -e "$BATS_TEST_TMPDIR/gate.args" ]
+    [ ! -s "$OUT" ]
+}
+
+@test "run: a 10.6 disc that could not be fetched is exit 3 and a 10.6 steps.tsv naming the disc" {
+    fake_checkout "$BATS_TEST_TMPDIR/co" 0
+    fake_fetcher
+    FAKE_FETCH_FAILS=1 run "$CI" run --release 10.6 --media-dir "$BATS_TEST_TMPDIR/media" \
+        --checkout "$BATS_TEST_TMPDIR/co" --work-dir /mnt/gate \
+        --evidence-dir "$BATS_TEST_TMPDIR/ev" --setup success
+    [ "$status" -eq 0 ]
+    grep -qx 'exit=3' "$OUT"
+    [ ! -e "$BATS_TEST_TMPDIR/gate.args" ]
+    [ "$(cat "$BATS_TEST_TMPDIR/ev/release.txt")" = 10.6 ]
+    run "$REPO/bin/gate-summary.sh" "$BATS_TEST_TMPDIR/ev"
+    [ "$status" -eq 1 ]
+    [ "${lines[0]}" = "No clear regression: CI itself failed at preflight -- could not fetch the 10.6 disc: fetch-pinned: snowleopard-disc-10A432: sha256 mismatch" ]
+}
+
+@test "run: a fetcher that never said fetch-pinned: is named by its last line" {
+    fake_checkout "$BATS_TEST_TMPDIR/co" 0
+    fake_fetcher
+    FAKE_FETCH_FAILS=2 run "$CI" run --release 10.6 --media-dir "$BATS_TEST_TMPDIR/media" \
+        --checkout "$BATS_TEST_TMPDIR/co" --work-dir /mnt/gate \
+        --evidence-dir "$BATS_TEST_TMPDIR/ev" --setup success
+    [ "$status" -eq 0 ]
+    grep -qx 'exit=3' "$OUT"
+    [ "$(head -n 1 "$BATS_TEST_TMPDIR/ev/steps.tsv" | cut -f4)" = "could not fetch the 10.6 disc: signal: killed" ]
+}
+
+@test "run: a 10.6 host setup that failed fetches nothing, and its placeholder is a 10.6 run" {
+    fake_checkout "$BATS_TEST_TMPDIR/co" 0
+    fake_fetcher
+    run "$CI" run --release 10.6 --media-dir "$BATS_TEST_TMPDIR/media" \
+        --checkout "$BATS_TEST_TMPDIR/co" --work-dir /mnt/gate \
+        --evidence-dir "$BATS_TEST_TMPDIR/ev" --setup failure
+    [ "$status" -eq 0 ]
+    grep -qx 'exit=3' "$OUT"
+    [ ! -e "$BATS_TEST_TMPDIR/fetch.args" ]
+    [ "$(cat "$BATS_TEST_TMPDIR/ev/release.txt")" = 10.6 ]
+    # a 10.6 candidate's placeholder compares with a 10.6 control, never as a 10.9 run
+    full "$BATS_TEST_TMPDIR/ctl"
+    printf '10.6\n' > "$BATS_TEST_TMPDIR/ctl/release.txt"
+    run "$REPO/bin/gate-summary.sh" "$BATS_TEST_TMPDIR/ev" "$BATS_TEST_TMPDIR/ctl"
+    [ "$status" -eq 1 ]
+    [[ "${lines[0]}" == "No clear regression: CI itself failed at preflight -- "* ]] || false
+}
+
+@test "run: a control's older checkout gets the disc this checkout's fetcher fetched" {
+    # the control runs the control ref's gate.sh, but the fetch is this checkout's, run from this
+    # checkout's root: an older ref may have no fetcher, or one that pins another disc
+    fake_checkout "$BATS_TEST_TMPDIR/control" 0
+    fake_fetcher
+    export FAKE_FETCH_INNER="$GUEST_MACOSX_GATE_FETCH_PINNED"
+    cat > "$FAKE_FETCH_INNER.wrap" <<'SH'
+#!/usr/bin/env bash
+pwd > "$FAKE_LOG_DIR/fetch.pwd"
+exec "$FAKE_FETCH_INNER" "$@"
+SH
+    chmod +x "$FAKE_FETCH_INNER.wrap"
+    GUEST_MACOSX_GATE_FETCH_PINNED="$FAKE_FETCH_INNER.wrap"
+    cd "$BATS_TEST_TMPDIR"
+    run "$CI" run --release 10.6 --media-dir media \
+        --checkout control --work-dir /mnt/gate --evidence-dir "$BATS_TEST_TMPDIR/ev" --setup success
+    [ "$status" -eq 0 ]
+    [ "$(cat "$BATS_TEST_TMPDIR/fetch.pwd")" = "$REPO" ]
+    [ "$(sed -n 4p "$BATS_TEST_TMPDIR/gate.args")" = "$BATS_TEST_TMPDIR/media/Mac%20OS%20X%2010.6.dmg" ]
+    [ -f "$BATS_TEST_TMPDIR/media/Mac%20OS%20X%2010.6.dmg" ]
+}
+
+@test "run: a media dir in the evidence or work dir is a usage error, before anything runs" {
+    # the evidence dir is uploaded as an artifact: the disc must never be swept into it
+    fake_checkout "$BATS_TEST_TMPDIR/co" 0
+    fake_fetcher
+    mkdir -p "$BATS_TEST_TMPDIR/ev" "$BATS_TEST_TMPDIR/work"
+    for m in "$BATS_TEST_TMPDIR/ev" "$BATS_TEST_TMPDIR/ev/media" "$BATS_TEST_TMPDIR/ev/./x/../media" \
+        "$BATS_TEST_TMPDIR/work" "$BATS_TEST_TMPDIR/work/media/" "$BATS_TEST_TMPDIR/work/new/media"; do
+        for r in 10.6 10.9; do
+            run --separate-stderr "$CI" run --release "$r" --media-dir "$m" \
+                --checkout "$BATS_TEST_TMPDIR/co" --work-dir "$BATS_TEST_TMPDIR/work" \
+                --evidence-dir "$BATS_TEST_TMPDIR/ev" --setup success
+            [ "$status" -eq 2 ]
+            [[ "$stderr" == *"--media-dir"* ]] || false
+        done
+    done
+    # a relative media dir is resolved before it is compared
+    cd "$BATS_TEST_TMPDIR"
+    run "$CI" run --release 10.6 --media-dir work/media \
+        --checkout "$BATS_TEST_TMPDIR/co" --work-dir "$BATS_TEST_TMPDIR/work" \
+        --evidence-dir "$BATS_TEST_TMPDIR/ev" --setup success
+    [ "$status" -eq 2 ]
+    [ ! -e "$BATS_TEST_TMPDIR/fetch.args" ]
+    [ ! -e "$BATS_TEST_TMPDIR/gate.args" ]
+    [ ! -e "$BATS_TEST_TMPDIR/ev/steps.tsv" ]
+    [ ! -s "$OUT" ]
+    # a sibling whose name merely starts with the work dir's is not inside it
+    run "$CI" run --release 10.6 --media-dir "$BATS_TEST_TMPDIR/work-media" \
+        --checkout "$BATS_TEST_TMPDIR/co" --work-dir "$BATS_TEST_TMPDIR/work" \
+        --evidence-dir "$BATS_TEST_TMPDIR/ev" --setup success
+    [ "$status" -eq 0 ]
+    grep -qx 'exit=0' "$OUT"
+}
+
+@test "run: a media dir that cannot be made is exit 3 and a steps.tsv saying so, not a crash" {
+    fake_checkout "$BATS_TEST_TMPDIR/co" 0
+    fake_fetcher
+    : > "$BATS_TEST_TMPDIR/a-file"
+    run "$CI" run --release 10.6 --media-dir "$BATS_TEST_TMPDIR/a-file/media" \
+        --checkout "$BATS_TEST_TMPDIR/co" --work-dir /mnt/gate \
+        --evidence-dir "$BATS_TEST_TMPDIR/ev" --setup success
+    [ "$status" -eq 0 ]
+    grep -qx 'exit=3' "$OUT"
+    [ ! -e "$BATS_TEST_TMPDIR/fetch.args" ]
+    [ ! -e "$BATS_TEST_TMPDIR/gate.args" ]
+    [ "$(cat "$BATS_TEST_TMPDIR/ev/release.txt")" = 10.6 ]
+    [[ "$(head -n 1 "$BATS_TEST_TMPDIR/ev/steps.tsv" | cut -f4)" == "could not prepare the media dir: "?* ]] || false
 }
 
 # --- control-ref --------------------------------------------------------------------------------

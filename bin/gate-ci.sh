@@ -3,14 +3,26 @@
 # What .github/workflows/gate.yml runs around bin/gate.sh, so the workflow holds no logic of its own
 # (decision 0017: CI runs the local command; it does not reimplement it in YAML).
 #
-#   bin/gate-ci.sh run --checkout DIR --work-dir DIR --evidence-dir DIR --setup OUTCOME
-#       One gate run on this runner: DIR/bin/gate.sh --release 10.9 (CI has no 10.6 disc; 10.6 is
-#       gated by hand), with the given work and evidence dirs. Writes exit=<gate.sh's exit> to
-#       $GITHUB_OUTPUT and itself exits 0: the next job, not this one, decides (a failed job in a
-#       called workflow would fail a release whose retry passed). OUTCOME is the host-setup step's
-#       (steps.host.outcome); a DIR with no bin/gate.sh (a ref from before the gate, or no ref at
-#       all), or else an OUTCOME but success, is exit=3 with a whole steps.tsv whose preflight is
-#       infra saying why, so the verdict names it rather than "no steps.tsv".
+#   bin/gate-ci.sh run --release R --checkout DIR --work-dir DIR --evidence-dir DIR --media-dir DIR
+#                      --setup OUTCOME
+#       One gate run on this runner: DIR/bin/gate.sh --release R, with the given work and evidence
+#       dirs. R is a release lib/common.sh knows (GUEST_MACOSX_RELEASES). For 10.6 this script
+#       first fetches CI's pinned copy of the install disc (snowleopard-disc-10A432) into the media
+#       dir with `go run ./cmd/fetch-pinned`, and gives its path to gate.sh as --installer. A media
+#       dir that is, or is inside, the work or evidence dir is a usage error for any release (exit
+#       2, nothing run): the evidence dir is uploaded, and gate.sh refuses one in its work dir.
+#       10.9 takes the media dir and leaves it unused: its gate.sh fetches its own InstallESD. The
+#       fetcher is always this checkout's, run from this checkout's root, even when DIR is a control
+#       ref's older checkout: that ref may have no fetcher, or pin another disc, and the control
+#       must boot the disc the candidate booted. Writes exit=<gate.sh's exit> to $GITHUB_OUTPUT and itself exits 0: the
+#       next job, not this one, decides (a failed job in a called workflow would fail a release
+#       whose retry passed). OUTCOME is the host-setup step's (steps.host.outcome); a DIR with no
+#       bin/gate.sh (a ref from before the gate, or no ref at all), or else an OUTCOME but success,
+#       or else a 10.6 media dir that could not be made or a disc that could not be fetched (named
+#       by the fetcher's last fetch-pinned: line), is exit=3 with a whole steps.tsv (and
+#       release.txt) whose preflight is infra saying why, so the verdict names it rather than "no
+#       steps.tsv". Seam: GUEST_MACOSX_GATE_FETCH_PINNED (a script run in place of the fetcher,
+#       with the same arguments, from the same directory).
 #
 #   bin/gate-ci.sh control-ref --event EVENT --given REF --pr-base SHA
 #       The control's ref, on stdout: REF when given; for a pull_request its base; for a release
@@ -39,7 +51,8 @@ export GUEST_MACOSX_LOG_PREFIX
 usage_die() { printf '%s: %s\n' "$GUEST_MACOSX_LOG_PREFIX" "$*" >&2; exit 2; }
 usage() { usage_die "usage: bin/gate-ci.sh run|control-ref|verdict ... (see its header)"; }
 
-opt_checkout='' opt_work_dir='' opt_evidence_dir='' opt_setup='' opt_event='' opt_given='' opt_pr_base=''
+opt_release='' opt_media_dir='' opt_checkout='' opt_work_dir='' opt_evidence_dir='' opt_setup=''
+opt_event='' opt_given='' opt_pr_base=''
 opt_decision='' opt_reason='' opt_scope_job='' opt_candidate='' opt_candidate_job='' opt_candidate_exit=''
 opt_retry='' opt_retry_job='' opt_retry_exit='' opt_control=''
 given=" "
@@ -54,6 +67,8 @@ opts() {
         case $names in *" ${1#--} "*) ;; *) usage_die "unknown argument: $1" ;; esac
         [ "$#" -ge 2 ] || usage_die "$1 needs a value"
         case $1 in
+            --release) opt_release=$2 ;;
+            --media-dir) opt_media_dir=$2 ;;
             --checkout) opt_checkout=$2 ;;
             --work-dir) opt_work_dir=$2 ;;
             --evidence-dir) opt_evidence_dir=$2 ;;
@@ -85,11 +100,14 @@ need() {
     done
 }
 
-# placeholder <evidence-dir> <note>: a whole 10.9 steps.tsv whose preflight could not run, in
-# bin/gate.sh's step order with its default 10 restarts (tests/gate_ci.bats holds them equal)
+# placeholder <evidence-dir> <note>: a whole steps.tsv of the release being run whose preflight
+# could not run, in bin/gate.sh's step order with its default 10 restarts (tests/gate_ci.bats holds
+# them equal). Its release.txt is written as gate.sh writes one, so bin/gate-summary.sh compares a
+# 10.6 placeholder with a 10.6 control rather than taking it for a 10.9 run.
 placeholder() {
     local s
     mkdir -p "$1"
+    printf '%s\n' "$opt_release" > "$1/release.txt"
     printf 'preflight\tinfra\t0\t%s\n' "$2" > "$1/steps.tsv"
     for s in plugin build-base build-layer varstore boot versions health reach host-uuid \
         restart-1 restart-2 restart-3 restart-4 restart-5 restart-6 restart-7 restart-8 restart-9 \
@@ -100,10 +118,59 @@ placeholder() {
 
 output() { printf '%s\n' "$1" >> "${GITHUB_OUTPUT:-/dev/null}"; }
 
+# fetch_disc <media-dir> <stdout-file> <stderr-file>: this checkout's fetcher, run from this
+# checkout's root so `go run` finds this module whatever the caller's directory is
+fetch_disc() {
+    (
+        cd "$GUEST_MACOSX_REPO_ROOT" || exit 1
+        if [ -n "${GUEST_MACOSX_GATE_FETCH_PINNED:-}" ]; then
+            "$GUEST_MACOSX_GATE_FETCH_PINNED" snowleopard-disc-10A432 "$1"
+        else
+            go run "$GUEST_MACOSX_REPO_ROOT/cmd/fetch-pinned" snowleopard-disc-10A432 "$1"
+        fi
+    ) > "$2" 2> "$3"
+}
+
+# abs_path <path>: an absolute path for <path>, which need not exist yet: its longest existing
+# ancestor resolved physically, the rest with . and .. taken lexically, so two spellings of one
+# directory compare equal
+abs_path() {
+    local p=$1 part head='' rest='' d
+    local -a parts out
+    case $p in /*) ;; *) p=$PWD/$p ;; esac
+    IFS=/ read -r -a parts <<< "$p"
+    out=()
+    for part in ${parts[@]+"${parts[@]}"}; do
+        case $part in
+            ''|.) ;;
+            ..) [ "${#out[@]}" -eq 0 ] || unset "out[$((${#out[@]} - 1))]" ;;
+            *) out+=("$part") ;;
+        esac
+    done
+    for part in ${out[@]+"${out[@]}"}; do
+        if [ -z "$rest" ] && [ -d "$head/$part" ]; then head=$head/$part; else rest=$rest/$part; fi
+    done
+    d=$(cd "${head:-/}" && pwd -P)
+    printf '%s\n' "${d%/}$rest"
+}
+
+# within <path> <dir>: path is dir or inside it (both absolute, from abs_path)
+within() { case "$1/" in "${2%/}/"*) return 0 ;; esac; return 1; }
+
 cmd_run() {
-    opts checkout work-dir evidence-dir setup -- "$@"
-    need checkout work-dir evidence-dir setup
-    local rc=0
+    opts release checkout work-dir evidence-dir media-dir setup -- "$@"
+    need release checkout work-dir evidence-dir media-dir setup
+    known_release "$opt_release" || usage_die "--release $opt_release: want $(releases_said)"
+    # refused here, before anything runs: the evidence dir is uploaded as an artifact, which the
+    # disc must never be swept into, and gate.sh's own refusal of a media dir in its work dir would
+    # read as a gate failure rather than as this call's mistake
+    local m d
+    m=$(abs_path "$opt_media_dir")
+    for d in "$opt_evidence_dir" "$opt_work_dir"; do
+        ! within "$m" "$(abs_path "$d")" ||
+            usage_die "--media-dir $opt_media_dir is in $d: give it a directory of its own"
+    done
+    local rc=0 installer=() media out err why
     # no gate.sh first: with no control ref, the control job skips readying the runner too
     if [ ! -f "$opt_checkout/bin/gate.sh" ]; then
         warn "$opt_checkout has no bin/gate.sh"
@@ -113,10 +180,41 @@ cmd_run() {
         warn "the host setup did not succeed ($opt_setup): this runner could not run the gate"
         placeholder "$opt_evidence_dir" "the runner's host setup (bin/gate-host-setup.sh) did not succeed: $opt_setup; see the job's log"
         rc=3
-    else
-        log "running $opt_checkout/bin/gate.sh --release 10.9"
-        "$opt_checkout/bin/gate.sh" --release 10.9 --work-dir "$opt_work_dir" \
-            --evidence-dir "$opt_evidence_dir" || rc=$?
+    elif [ "$opt_release" = 10.6 ]; then
+        # the fetcher runs from this checkout's root, so a relative media dir is made absolute here
+        if ! why=$(mkdir -p "$opt_media_dir" 2>&1) || ! media=$(cd "$opt_media_dir" 2>&1 && pwd); then
+            why=$(printf '%s\n%s\n' "$why" "${media:-}" | grep -v '^[[:space:]]*$' | tail -n 1 | tr '\t' ' ' || true)
+            [ -n "$why" ] || why="cannot make or enter $opt_media_dir"
+            warn "could not prepare the media dir: $why"
+            placeholder "$opt_evidence_dir" "could not prepare the media dir: $why"
+            rc=3
+        else
+            out=$(mktemp "${TMPDIR:-/tmp}/gate-ci.XXXXXX") || die "cannot create a temp file"
+            err=$(mktemp "${TMPDIR:-/tmp}/gate-ci.XXXXXX") || die "cannot create a temp file"
+            log "fetching the 10.6 disc into $media"
+            if fetch_disc "$media" "$out" "$err" && [ -f "$(head -n 1 "$out")" ]; then
+                # the path is quoted throughout: the disc's cache name has a literal %20 in it
+                installer=(--installer "$(head -n 1 "$out")")
+            else
+                # the fetcher's error is its last line that says fetch-pinned:, after go's own
+                # lines (a toolchain download) and its progress; with none (killed before it could
+                # say), the last line said at all. A tab in the note would split its steps.tsv row.
+                why=$( { grep '^fetch-pinned:' "$err" || true; } | tail -n 1 | tr '\t' ' ')
+                [ -n "$why" ] ||
+                    why=$( { grep -v '^[[:space:]]*$' "$err" || true; } | tail -n 1 | tr '\t' ' ')
+                [ -n "$why" ] || why="the fetcher printed no path to a file"
+                warn "could not fetch the 10.6 disc: $why"
+                placeholder "$opt_evidence_dir" "could not fetch the 10.6 disc: $why"
+                rc=3
+            fi
+            cat "$err" >&2
+            rm -f "$out" "$err"
+        fi
+    fi
+    if [ "$rc" -eq 0 ]; then
+        log "running $opt_checkout/bin/gate.sh --release $opt_release"
+        "$opt_checkout/bin/gate.sh" --release "$opt_release" ${installer[@]+"${installer[@]}"} \
+            --work-dir "$opt_work_dir" --evidence-dir "$opt_evidence_dir" || rc=$?
     fi
     log "gate.sh exit $rc"
     output "exit=$rc"
