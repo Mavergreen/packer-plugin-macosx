@@ -20,7 +20,7 @@ setup() {
 }
 
 # full <dir> [step:result:note]...: a complete 10.9 run of 3 restarts, every step pass but those
-# given; every row after the first non-pass becomes skip.
+# given; every row after the first non-pass becomes skip. A step given as n/a is neither.
 full() {
     local d=$1; shift
     local st o ov res note broke=0
@@ -33,7 +33,7 @@ full() {
             if [ "${o%%:*}" = "$st" ]; then ov=${o#*:}; res=${ov%%:*}; note=${ov#*:}; fi
         done
         if [ "$broke" = 1 ]; then res=skip; note=; fi
-        [ "$res" = pass ] || broke=1
+        case $res in pass|n/a) ;; *) broke=1 ;; esac
         printf '%s\t%s\t%s\t%s\n' "$st" "$res" 3 "$note" >> "$d/steps.tsv"
     done
 }
@@ -530,4 +530,194 @@ verdict() { run --separate-stderr "$CI" verdict "$@"; }
 @test "verdict: an unknown decision is a usage error" {
     verdict --decision maybe --reason x --scope-job success
     [ "$status" -eq 2 ]
+}
+
+# --- verdict over several releases --------------------------------------------------------------
+
+# leg <release> <leg> <job> <exit> [step:result:note]...: the artifact gate-<release>-<leg> in $A
+# as the gate job downloads it: that leg's evidence (a whole run of <release>, its release.txt
+# included, every step pass but those given), its job's result in `job` and gate-ci.sh's exit in
+# `exit`. A 10.6 run's build-layer and reach are n/a, as bin/gate.sh writes them.
+leg() {
+    local r=$1 l=$2 j=$3 x=$4 d
+    shift 4
+    d=$A/gate-$r-$l
+    if [ "$r" = 10.6 ]; then
+        full "$d" "build-layer:n/a:no layer for 10.6" "reach:n/a:no network check for 10.6" "$@"
+    else
+        full "$d" "$@"
+    fi
+    printf '%s\n' "$r" > "$d/release.txt"
+    printf '%s\n' "$j" > "$d/job"
+    printf 'exit=%s\n' "$x" > "$d/exit"
+}
+
+verdicts() {
+    run --separate-stderr "$CI" verdict --decision gated --reason x --scope-job success --artifacts "$A" "$@"
+}
+
+@test "verdicts: every release passing is Passed, naming them, exit 0, a section each" {
+    A=$BATS_TEST_TMPDIR/a
+    leg 10.9 candidate success 0
+    leg 10.6 candidate success 0
+    verdicts --releases "10.9 10.6"
+    [ "$status" -eq 0 ]
+    [ "${lines[0]}" = "Passed: 10.9, 10.6" ]
+    [[ "$output" == *$'\n## 10.9\nPassed: every step, 3 restarts\n'* ]] || false
+    [[ "$output" == *$'\n## 10.6\nPassed: every step that applies, 3 restarts; not applicable: build-layer, reach\n'* ]] || false
+}
+
+@test "verdicts: one release regressing fails, its own first line prefixed with it" {
+    A=$BATS_TEST_TMPDIR/a
+    leg 10.9 candidate success 0
+    leg 10.6 candidate success 1 "versions:fail:virtualsmc: want 1.3.8"
+    leg 10.6 control success 0
+    verdicts --releases "10.9 10.6"
+    [ "$status" -eq 1 ]
+    [ "${lines[0]}" = "10.6: Regression: versions -- virtualsmc: want 1.3.8" ]
+    [[ "$output" == *$'\n## 10.9\nPassed: every step, 3 restarts\n'* ]] || false
+    [[ "$output" == *$'\n## 10.6\nRegression: versions -- virtualsmc: want 1.3.8\n'* ]] || false
+}
+
+@test "verdicts: the first line is the first failing release's, in the order given" {
+    A=$BATS_TEST_TMPDIR/a
+    leg 10.9 candidate success 1 "health:fail:sshd down"
+    leg 10.9 control success 0
+    leg 10.6 candidate success 1 "versions:fail:virtualsmc: want 1.3.8"
+    leg 10.6 control success 0
+    verdicts --releases "10.6 10.9"
+    [ "$status" -eq 1 ]
+    [ "${lines[0]}" = "10.6: Regression: versions -- virtualsmc: want 1.3.8" ]
+    [[ "$output" == *$'\n## 10.9\nRegression: health -- sshd down\n'* ]] || false
+}
+
+@test "verdicts: a release with no artifact at all fails, naming it, though the other passed" {
+    A=$BATS_TEST_TMPDIR/a
+    leg 10.9 candidate success 0
+    verdicts --releases "10.9 10.6"
+    [ "$status" -eq 1 ]
+    [ "${lines[0]}" = "10.6: No clear regression: CI itself failed at candidate -- no evidence from 10.6's gate at all (no gate-10.6-* artifact)" ]
+    [[ "$output" == *$'\n## 10.6\nNo clear regression: CI itself failed at candidate -- no evidence'* ]] || false
+}
+
+@test "verdicts: a retry that ran supersedes the candidate, as with one release" {
+    A=$BATS_TEST_TMPDIR/a
+    leg 10.6 candidate success 3 "build-base:infra:no space left on device"
+    leg 10.6 candidate-retry success 0
+    verdicts --releases "10.6"
+    [ "$status" -eq 0 ]
+    [ "${lines[0]}" = "Passed: 10.6" ]
+}
+
+@test "verdicts: a retry that was skipped leaves the candidate's evidence the verdict's" {
+    A=$BATS_TEST_TMPDIR/a
+    leg 10.9 candidate success 0
+    leg 10.9 candidate-retry skipped ''
+    rm "$A/gate-10.9-candidate-retry/steps.tsv"
+    verdicts --releases "10.9"
+    [ "$status" -eq 0 ]
+    [ "${lines[0]}" = "Passed: 10.9" ]
+}
+
+@test "verdicts: a candidate artifact with no steps.tsv names its job's result and gate.sh's exit" {
+    A=$BATS_TEST_TMPDIR/a
+    leg 10.9 candidate cancelled 2
+    rm "$A/gate-10.9-candidate/steps.tsv" "$A/gate-10.9-candidate/release.txt"
+    verdicts --releases "10.9"
+    [ "$status" -eq 1 ]
+    [ "${lines[0]}" = "10.9: No clear regression: CI itself failed at candidate -- no steps.tsv (job cancelled, gate.sh exit 2)" ]
+}
+
+@test "verdicts: an artifact with no job or exit file is a job that ran and said neither" {
+    A=$BATS_TEST_TMPDIR/a
+    leg 10.9 candidate success 0 "build-base:infra:no space left on device"
+    mkdir -p "$A/gate-10.9-candidate-retry"
+    verdicts --releases "10.9"
+    [ "$status" -eq 1 ]
+    [ "${lines[0]}" = "10.9: No clear regression: CI itself failed at candidate-retry -- no steps.tsv (job unknown, gate.sh exit none)" ]
+}
+
+@test "verdicts: a missing candidate artifact beside a retry that never ran is as a candidate that never ran" {
+    A=$BATS_TEST_TMPDIR/a
+    leg 10.9 control success 0
+    verdicts --releases "10.9"
+    [ "$status" -eq 1 ]
+    [ "${lines[0]}" = "10.9: No clear regression: CI itself failed at candidate -- no steps.tsv (job skipped, gate.sh exit none)" ]
+}
+
+@test "verdicts: an artifact whose evidence is another release's fails, naming both" {
+    A=$BATS_TEST_TMPDIR/a
+    leg 10.6 candidate success 0
+    printf '10.9\n' > "$A/gate-10.6-candidate/release.txt"
+    verdicts --releases "10.6"
+    [ "$status" -eq 1 ]
+    [ "${lines[0]}" = "10.6: No clear regression: CI itself failed at wiring -- gate-10.6-candidate holds a 10.9 run, not 10.6" ]
+}
+
+@test "verdicts: a candidate or retry run with no release.txt fails as wiring, naming the leg and release" {
+    A=$BATS_TEST_TMPDIR/a
+    leg 10.6 candidate success 0
+    rm "$A/gate-10.6-candidate/release.txt"
+    verdicts --releases "10.6"
+    [ "$status" -eq 1 ]
+    [ "${lines[0]}" = "10.6: No clear regression: CI itself failed at wiring -- gate-10.6-candidate holds a run with no release.txt, not a 10.6 run" ]
+    rm -rf "$A"
+    leg 10.9 candidate success 3 "build-base:infra:no space left on device"
+    leg 10.9 candidate-retry success 0
+    rm "$A/gate-10.9-candidate-retry/release.txt"
+    verdicts --releases "10.9"
+    [ "$status" -eq 1 ]
+    [ "${lines[0]}" = "10.9: No clear regression: CI itself failed at wiring -- gate-10.9-candidate-retry holds a run with no release.txt, not a 10.9 run" ]
+}
+
+@test "verdicts: a control with no release.txt (an older ref's) is compared as before" {
+    A=$BATS_TEST_TMPDIR/a
+    leg 10.9 candidate success 1 "versions:fail:virtualsmc: want 1.3.8"
+    leg 10.9 control success 0
+    rm "$A/gate-10.9-control/release.txt"
+    verdicts --releases "10.9"
+    [ "$status" -eq 1 ]
+    [ "${lines[0]}" = "10.9: Regression: versions -- virtualsmc: want 1.3.8" ]
+}
+
+@test "verdicts: an exit file holding a bare N is read as that N" {
+    A=$BATS_TEST_TMPDIR/a
+    leg 10.9 candidate failure 3
+    rm "$A/gate-10.9-candidate/steps.tsv"
+    printf '3\n' > "$A/gate-10.9-candidate/exit"
+    verdicts --releases "10.9"
+    [ "$status" -eq 1 ]
+    [ "${lines[0]}" = "10.9: No clear regression: CI itself failed at candidate -- no steps.tsv (job failure, gate.sh exit 3)" ]
+}
+
+@test "verdicts: a release the gate does not know, or none, or a repeat, is a usage error" {
+    A=$BATS_TEST_TMPDIR/a
+    mkdir -p "$A"
+    verdicts --releases "10.9 10.5"
+    [ "$status" -eq 2 ]
+    [[ "$stderr" == *"10.5"* ]] || false
+    verdicts --releases ""
+    [ "$status" -eq 2 ]
+    verdicts --releases "10.9 10.9"
+    [ "$status" -eq 2 ]
+}
+
+@test "verdicts: --releases needs --artifacts and refuses the one-release flags" {
+    run --separate-stderr "$CI" verdict --decision gated --reason x --scope-job success --releases 10.9
+    [ "$status" -eq 2 ]
+    A=$BATS_TEST_TMPDIR/a
+    mkdir -p "$A"
+    verdicts --releases 10.9 --candidate "$A/x"
+    [ "$status" -eq 2 ]
+}
+
+@test "verdicts: not gated and pins unfilled are as before, with or without releases" {
+    run --separate-stderr "$CI" verdict --decision not-gated --reason "not a Renovate update" --scope-job success \
+        --releases "" --artifacts "$BATS_TEST_TMPDIR/none"
+    [ "$status" -eq 0 ]
+    [ "${lines[0]}" = "Not gated: not a Renovate update" ]
+    run --separate-stderr "$CI" verdict --decision pins-unfilled --reason "re-pin it" --scope-job success \
+        --releases "" --artifacts "$BATS_TEST_TMPDIR/none"
+    [ "$status" -eq 1 ]
+    [ "${lines[0]}" = "Pins not filled yet: re-pin it" ]
 }
