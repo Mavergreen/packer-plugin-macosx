@@ -7,7 +7,9 @@ local half has run since 2026-10-13). The CI half, `gate.yml`, landed with
 this decision and was proven on GitHub's runners on 2026-11-20 ("Measured
 on GitHub", below). A real Renovate PR (#10, VirtualSMC) ran it on
 2026-11-22, and `gate` became a required check on main the same day; Aqua
-Transport bumps automerge behind it from then on.
+Transport bumps automerge behind it from then on. Amended 2026-11-23: 10.6
+is gated in CI too, and the boot stack automerges behind `gate` ("Amended
+2026-11-23", below).
 
 ## Context
 
@@ -106,10 +108,14 @@ the packer cache, and CI uploads only the evidence dir, kept 30 days.
   stack is both releases', so a change to it is gated on both, and
   skipping 10.6 is never silent). KVM is the only tested accelerator;
   `--accel hvf` and `nvmm` are accepted and say they are untested.
-- On GitHub (`gate.yml`), `--release 10.9` only, on GitHub's hosted KVM:
-  - on Renovate's PRs that move a `gate` row of `gate/scope.tsv`
-    (`assets/pins/sources.tsv`, `assets/firmware/config.plist`, Aqua
-    Transport's pin); its paths are exactly
+- On GitHub (`gate.yml`), on GitHub's hosted KVM, once for each release
+  the change touches (`gate/scope.tsv`; amended 2026-11-23, below):
+  - on Renovate's PRs that move a `gate:<releases>` row of
+    `gate/scope.tsv`, booting only the releases that row names
+    (`assets/pins/sources.tsv`: 10.9 and 10.6;
+    `assets/firmware/config.plist`: 10.9;
+    `assets/firmware/snowleopard/config.plist`: 10.6; Aqua Transport's
+    pin: 10.9); its paths are exactly
     `repackage-on-ingredient-bump.yml`'s, each `skip` row saying why;
   - before every release, a person's and the repackage's alike:
     `release.yml`'s job `release gate` calls `gate.yml` between `build`
@@ -133,10 +139,8 @@ the packer cache, and CI uploads only the evidence dir, kept 30 days.
 
 ### What it does not cover
 
-- **10.6 in CI**: CI has no 10.6 disc. A boot-stack change gets a local
-  `bin/gate.sh --release 10.6 --installer <disc>` before it merges (the
-  owner's ruling R59), so those PRs do not automerge. Aqua Transport has
-  no 10.6 half (ADR 0016), so its bumps do.
+- **Aqua Transport on 10.6**: it has no 10.6 half (ADR 0016), so its
+  bumps gate 10.9 alone.
 - **HVF and NVMM**: accepted, untested.
 - **PRs that are not Renovate's**: whoever lands one runs the gate locally
   first; so does a push to main that touches an ingredient path, since it
@@ -197,3 +201,32 @@ this ADR's PR merged:
 - Disk: preflight saw 89 GiB free in `/mnt/gate`. The gate does not
   record the runner's peak use, so it is not measured here. The local
   cold peak is 44 to 49 GiB (see the 60 GiB floor in `bin/gate.sh`).
+
+## Amended 2026-11-23: 10.6 in CI
+
+Status: accepted, on the owner's rulings of 2026-11-23.
+
+What changed: `gate.yml` runs `gate-release.yml` once for each release a
+change touches, `gate/scope.tsv` names them (`gate:<releases>`), and the
+required check `gate` gives one verdict over all of them. 10.6 is gated
+here like 10.9, so the owner's ruling R59 (a boot-stack change is gated on
+10.6 before it merges) is met in CI, and the boot stack's Renovate rules
+(OpenCore, Lilu, VirtualSMC) automerge behind `gate`. This replaces "10.6
+in CI: CI has no 10.6 disc" under "What it does not cover".
+
+Why, the owner's rulings:
+
+- Parity with 10.9: every gated run installs 10.6 from the disc. No cached
+  media, no persisted VM.
+- The disc's URL is pinned in the repository, as `snowleopard-disc-10A432`
+  in `assets/pins/sources.tsv`, the way shipyard pins 10.9's SDK from
+  phracker/MacOSX-SDKs. The project enables fetching from where the disc
+  already is (archive.org) and does not redistribute it. `bin/gate-ci.sh`
+  fetches it with `cmd/fetch-pinned`, and the bytes are checked against the
+  pinned sha256 and, by `internal/disc.Verify`, by content.
+- The fetch is a parallel ranged download, 64 MiB pieces, 8 at a time.
+  Measured on a GitHub runner: 5.6 GB in 69 s, against about 13 minutes
+  for a single stream.
+
+What does not change: the plugin itself still takes the user's own disc
+(`installer`; ADR 0014, item 1). Only CI fetches the pinned copy.

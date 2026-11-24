@@ -254,8 +254,12 @@ jobs:
         uses: Mavergreen/shipyard/.github/actions/install@v1
 
       # This tree's go.mod, not the control's: bin/gate-ci.sh fetches 10.6's disc with this tree's
-      # `go run ./cmd/fetch-pinned`, which refuses an older Go than its go.mod names, and the
-      # control ref is older, so this Go builds its plugin too.
+      # `go run ./cmd/fetch-pinned`, which refuses an older Go than its go.mod names. This Go builds
+      # the control's plugin too, for every release, and setup-go (v7.1.0's setGoToolchain) exports
+      # GOTOOLCHAIN=local, so no newer toolchain is ever downloaded. A control is normally older (a
+      # PR's base, the last release, the merge base), whose go.mod this Go satisfies; a control ref
+      # given by hand whose go.mod names a newer Go fails to build its plugin, an infra `plugin`
+      # step, so the verdict says the control could not run rather than reading a regression.
       - uses: actions/setup-go@v7.1.0
         if: inputs.control_ref != ''
         with:
