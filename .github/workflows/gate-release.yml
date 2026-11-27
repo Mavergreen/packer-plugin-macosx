@@ -69,7 +69,7 @@ jobs:
       - name: Set up Packer 1.16.2
         uses: hashicorp/setup-packer@v3.4.0
         with:
-          version: "1.16.2"
+          version: "1.16.3"
 
       # The .debs this runner image lacks, kept per image and package list (bin/gate-host-setup.sh
       # says why). Only a GitHub-hosted runner names its image.
@@ -164,7 +164,7 @@ jobs:
       - name: Set up Packer 1.16.2
         uses: hashicorp/setup-packer@v3.4.0
         with:
-          version: "1.16.2"
+          version: "1.16.3"
 
       - name: The apt packages' cache key
         id: debs
@@ -269,7 +269,7 @@ jobs:
         if: inputs.control_ref != ''
         uses: hashicorp/setup-packer@v3.4.0
         with:
-          version: "1.16.2"
+          version: "1.16.3"
 
       - name: The apt packages' cache key
         id: debs
